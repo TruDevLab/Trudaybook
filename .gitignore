@@ -1,0 +1,16 @@
+.build/
+.swiftpm/
+build/
+*.dmg
+.DS_Store
+
+# Внутренние документы процесса: наружу не едут.
+HANDOFF.md
+PLAN.md
+PUBLISH.md
+TECHDEBT.md
+# Указания ассистенту: устройство и правила — в DEVELOPMENT.md.
+CLAUDE.md
+# Черновик описания релиза: на GitHub он живёт на странице релиза,
+# а в репозитории дублировал бы её и расходился с ней.
+RELEASE.md

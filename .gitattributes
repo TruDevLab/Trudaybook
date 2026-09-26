@@ -1,0 +1,4 @@
+# Внутренние документы процесса не попадают в публичный снимок (git archive).
+HANDOFF.md export-ignore
+PLAN.md export-ignore
+CLAUDE.md export-ignore
