@@ -54,6 +54,11 @@ public final class ItemStateStore {
                 value TEXT NOT NULL
             );
             """)
+        // Оформленная заметка — RTF рядом с простым текстом. Текст остаётся
+        // главным: по нему поиск, отметки в календаре и файл для Trunook.
+        var hasRich = false
+        db.query("PRAGMA table_info(day_notes)") { row in if row.text(1) == "rich" { hasRich = true } }
+        if !hasRich { try db.execute("ALTER TABLE day_notes ADD COLUMN rich BLOB") }
     }
 
     // MARK: - Отметки
@@ -127,22 +132,45 @@ public final class ItemStateStore {
         return date
     }
 
-    /// Пустая заметка (одни пробелы) удаляет строку.
-    public func setNote(_ text: String, for day: String, now: Date = Date()) throws {
+    /// Оформление заметки (RTF). `nil` — заметка простым текстом: её так
+    /// написали или поправили в Trunook, где оформления нет.
+    public func richNote(for day: String) -> Data? {
+        var data: Data?
+        db.query("SELECT rich FROM day_notes WHERE day = ?", [.text(day)]) { row in data = row.blob(0) }
+        return data
+    }
+
+    /// Пустая заметка (одни пробелы) удаляет строку. Без `rich` оформление
+    /// сбрасывается: прежнее уже не совпало бы с новым текстом.
+    public func setNote(_ text: String, rich: Data? = nil, for day: String, now: Date = Date()) throws {
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             try db.run("DELETE FROM day_notes WHERE day = ?", [.text(day)])
             return
         }
         try db.run("""
-            INSERT INTO day_notes (day, text, updated_at) VALUES (?, ?, ?)
-            ON CONFLICT(day) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at
-            """, [.text(day), .text(text), .date(now)])
+            INSERT INTO day_notes (day, text, rich, updated_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT(day) DO UPDATE SET text = excluded.text, rich = excluded.rich, updated_at = excluded.updated_at
+            """, [.text(day), .text(text), rich.map { .blob($0) } ?? .null, .date(now)])
+    }
+
+    /// Тексты заметок по ключам — для итогов недели и месяца. Нет заметки —
+    /// нет и ключа в ответе.
+    public func notes(for keys: [String]) -> [String: String] {
+        var result: [String: String] = [:]
+        for key in keys {
+            let text = note(for: key)
+            if !text.isEmpty { result[key] = text }
+        }
+        return result
     }
 
     /// Дни, у которых есть заметка, — для отметки в календаре месяца.
+    /// Заметки недель и месяцев сюда не попадают.
     public func daysWithNotes() -> Set<String> {
         var days: Set<String> = []
-        db.query("SELECT day FROM day_notes") { row in if let day = row.text(0) { days.insert(day) } }
+        db.query("SELECT day FROM day_notes") { row in
+            if let day = row.text(0), NoteKeys.isDayKey(day) { days.insert(day) }
+        }
         return days
     }
 

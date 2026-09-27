@@ -22,14 +22,30 @@ final class TrunookModel {
         !NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).isEmpty
     }
 
+    /// Какие просьбы понимает запущенный Trunook: он пишет их список
+    /// в скрытый файл своей папки просьб. Нет файла — Trunook 0.26.1 или
+    /// раньше: пересказ и метки он знает, а повестку и итоги — нет, и
+    /// просьбу о них молча выбросит.
+    func understands(_ kind: String) -> Bool {
+        guard let data = try? Data(contentsOf: requests.appendingPathComponent(".kinds.json")),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let kinds = json["kinds"] as? [String] else { return false }
+        return kinds.contains(kind)
+    }
+
     /// Отправить просьбу и дождаться ответа. Пересказ местной моделью —
     /// десятки секунд, первый после простоя — ещё и загрузка модели в память.
-    func ask(_ payload: [String: Any], id: String, timeout: TimeInterval) async -> TrunookModelRequest.Answer {
+    /// `kind` — вид просьбы, которого нет у прежнего Trunook: без него
+    /// ответа пришлось бы ждать до упора.
+    func ask(_ payload: [String: Any], id: String, timeout: TimeInterval, kind: String? = nil) async -> TrunookModelRequest.Answer {
         if TrunookLink.appURL == nil {
             return .failed(code: "notInstalled", message: String(localized: "Trunook не установлен."))
         }
         if requireRunningTrunook, !isTrunookRunning {
             return .failed(code: "offline", message: String(localized: "Trunook не запущен."))
+        }
+        if let kind, !understands(kind) {
+            return .failed(code: "outdated", message: String(localized: "Этот Trunook не умеет повестку и итоги — обновите Trunook."))
         }
         let answer = answers.appendingPathComponent("\(id).json")
         do {

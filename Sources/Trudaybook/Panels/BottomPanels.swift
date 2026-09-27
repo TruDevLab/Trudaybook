@@ -588,11 +588,11 @@ struct WeekNumberCell: View {
 
 /// Заметка на выбранный день — под календарём месяца. Хранится только на
 /// этом Mac (`ItemStateStore`, таблица `day_notes`), в журнал не пишется.
+/// Оформление — то же, что в окне заметки; кнопки оформления и повестка —
+/// там, здесь для них мало места.
 struct DayNotePanel: View {
     @EnvironmentObject private var model: AppModel
-    @ViewState private var text = ""
-    @ViewState private var loadedFor: Date?
-    @FocusState private var focused: Bool
+    @StateObject private var session = NoteSession()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -600,41 +600,39 @@ struct DayNotePanel: View {
                 Image(systemName: "note.text")
                 Text("Заметка · \(Format.dayTitle(model.day))")
                     .lineLimit(1)
+                Spacer(minLength: 4)
+                Button { NoteWindow.show(model: model, period: .day) } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help("Открыть заметку в окне: оформление, списки, повестка дня")
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             ZStack(alignment: .topLeading) {
-                if text.isEmpty {
+                if session.isEmpty {
                     Text("Что важно в этот день…")
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
                         .allowsHitTesting(false)
                 }
-                TextEditor(text: $text)
-                    .focused($focused)
-                    .scrollContentBackground(.hidden)
-                    .font(.callout)
+                NoteEditorView(controller: session.editor, inset: NSSize(width: 0, height: 1), onAttach: session.attached)
             }
             .frame(maxHeight: .infinity)
         }
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Panel())
-        .onAppear(perform: load)
-        .onChange(of: model.day) { _, _ in load() }
-        .onChange(of: model.noteRevision) { _, _ in load() }
-        .onChange(of: text) { _, value in
-            // Сохраняется сразу: заметка короткая, запись в SQLite — мгновенная,
-            // а потерять набранное при закрытии окна обиднее.
-            guard let day = loadedFor, value != model.note(for: day) else { return }
-            model.setNote(value, for: day)
-        }
+        .onAppear(perform: open)
+        .onChange(of: model.day) { _, _ in open() }
+        .onChange(of: model.noteRevision) { _, _ in session.reload() }
     }
 
-    private func load() {
-        loadedFor = model.day
-        text = model.note(for: model.day)
+    private func open() {
+        session.open(model.noteKey(.day, for: model.day), model: model)
     }
 }
 

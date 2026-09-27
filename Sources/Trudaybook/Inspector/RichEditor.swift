@@ -12,6 +12,9 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
     static let bodyFont = NSFont.systemFont(ofSize: 13)
 
     weak var textView: NSTextView?
+    /// Текст поправил человек (или вставка с отменой) — для сохранения
+    /// заметки. Загрузка через `load` сюда не приходит.
+    var onChange: (() -> Void)?
 
     var attributed: NSAttributedString {
         textView.map { NSAttributedString(attributedString: $0.attributedString()) } ?? NSAttributedString()
@@ -50,6 +53,26 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
         guard let textView, let storage = textView.textStorage, storage.length == 0, !text.isEmpty else { return }
         let attributes: [NSAttributedString.Key: Any] = [.font: Self.bodyFont, .foregroundColor: NSColor.textColor]
         storage.setAttributedString(NSAttributedString(string: text, attributes: attributes))
+    }
+
+    /// Заменить весь текст — заметка другого дня. Без отмены: ⌘Z не должен
+    /// возвращать заметку соседнего дня.
+    func load(_ text: NSAttributedString) {
+        guard let textView, let storage = textView.textStorage else { return }
+        storage.setAttributedString(text)
+        textView.undoManager?.removeAllActions(withTarget: storage)
+        textView.undoManager?.removeAllActions(withTarget: textView)
+        textView.typingAttributes = [.font: Self.bodyFont, .foregroundColor: NSColor.textColor]
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+    }
+
+    /// Вставить собранный текст (повестку, итоги) с отменой по ⌘Z.
+    func insert(_ text: NSAttributedString, at location: Int) {
+        guard let textView, let storage = textView.textStorage else { return }
+        let range = NSRange(location: min(location, storage.length), length: 0)
+        edit(range) { storage.replaceCharacters(in: range, with: text) }
+        textView.setSelectedRange(NSRange(location: range.location + text.length, length: 0))
+        textView.scrollRangeToVisible(NSRange(location: range.location, length: 0))
     }
 
     // MARK: - Цвет и выделение
@@ -179,11 +202,45 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
 
     var hasSelection: Bool { (textView?.selectedRange().length ?? 0) > 0 }
 
+    // MARK: - Заголовок
+
+    static let headingFont = NSFont.systemFont(ofSize: 16, weight: .bold)
+
+    /// Строки выделения — заголовком или обратно обычным текстом. Жирный,
+    /// а не полужирный: RTF заметки хранит только «жирный», и полужирный
+    /// после перезапуска стал бы обычным.
+    func toggleHeading() {
+        guard let view = textView, let storage = view.textStorage else { return }
+        let string = view.string as NSString
+        let paragraphs = string.paragraphRange(for: view.selectedRange())
+        guard paragraphs.length > 0 else {
+            let font = view.typingAttributes[.font] as? NSFont ?? Self.bodyFont
+            view.typingAttributes[.font] = font.pointSize > Self.bodyFont.pointSize ? Self.bodyFont : Self.headingFont
+            return
+        }
+        let first = storage.attribute(.font, at: paragraphs.location, effectiveRange: nil) as? NSFont ?? Self.bodyFont
+        let makeHeading = first.pointSize <= Self.bodyFont.pointSize
+        edit(paragraphs) {
+            storage.addAttribute(.font, value: makeHeading ? Self.headingFont : Self.bodyFont, range: paragraphs)
+        }
+        view.typingAttributes[.font] = makeHeading ? Self.headingFont : Self.bodyFont
+    }
+
     // MARK: - Списки
+
+    enum ListKind {
+        case bullet, numbered, check
+    }
 
     /// Списки — метками в начале строк («• », «1. »): их видно и в тексте,
     /// и в текстовой копии письма, а в HTML они становятся `<ul>`/`<ol>`.
     func toggleList(numbered: Bool) {
+        toggleList(numbered ? .numbered : .bullet)
+    }
+
+    /// Пункты с галочкой «☐ »/«☑ » — в заметке: дела и напоминания дня.
+    /// Галочка ставится щелчком (`NoteTextView`).
+    func toggleList(_ kind: ListKind) {
         guard let view = textView, let storage = view.textStorage else { return }
         let string = view.string as NSString
         let paragraphs = string.paragraphRange(for: view.selectedRange())
@@ -193,12 +250,12 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
         }
         if lines.isEmpty { lines = [NSRange(location: paragraphs.location, length: 0)] }
 
-        let allMarked = lines.allSatisfy { Self.marker(in: string.substring(with: $0), numbered: numbered) != nil }
+        let allMarked = lines.allSatisfy { Self.marker(in: string.substring(with: $0), kind: kind) != nil }
         edit(paragraphs) {
             // С конца, чтобы вставки не сдвигали ещё не тронутые строки.
             for (index, line) in lines.enumerated().reversed() {
                 let text = string.substring(with: line)
-                let existing = Self.marker(in: text, numbered: true) ?? Self.marker(in: text, numbered: false)
+                let existing = Self.anyMarker(in: text)
                 let attributes = storage.length > 0
                     ? storage.attributes(at: min(line.location, storage.length - 1), effectiveRange: nil)
                     : [.font: Self.bodyFont]
@@ -206,7 +263,11 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
                     storage.replaceCharacters(in: NSRange(location: line.location, length: (existing as NSString).length), with: "")
                 }
                 if !allMarked {
-                    let marker = numbered ? "\(index + 1). " : RichTextHTML.bullet
+                    let marker = switch kind {
+                    case .numbered: "\(index + 1). "
+                    case .bullet: RichTextHTML.bullet
+                    case .check: NoteMarkers.unchecked
+                    }
                     storage.insert(NSAttributedString(string: marker, attributes: attributes), at: line.location)
                 }
             }
@@ -214,11 +275,43 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
     }
 
     static func marker(in line: String, numbered: Bool) -> String? {
-        if numbered {
+        marker(in: line, kind: numbered ? .numbered : .bullet)
+    }
+
+    static func marker(in line: String, kind: ListKind) -> String? {
+        switch kind {
+        case .numbered:
             guard let range = line.range(of: #"^\d+\. "#, options: .regularExpression) else { return nil }
             return String(line[range])
+        case .bullet:
+            return line.hasPrefix(RichTextHTML.bullet) ? RichTextHTML.bullet : nil
+        case .check:
+            if line.hasPrefix(NoteMarkers.unchecked) { return NoteMarkers.unchecked }
+            return line.hasPrefix(NoteMarkers.checked) ? NoteMarkers.checked : nil
         }
-        return line.hasPrefix(RichTextHTML.bullet) ? RichTextHTML.bullet : nil
+    }
+
+    static func anyMarker(in line: String) -> String? {
+        marker(in: line, kind: .numbered) ?? marker(in: line, kind: .bullet) ?? marker(in: line, kind: .check)
+    }
+
+    /// Щелчок по галочке в начале строки: ☐ ↔ ☑. `false` — там не галочка.
+    func toggleCheckbox(at index: Int) -> Bool {
+        guard let view = textView, let storage = view.textStorage, index < storage.length else { return false }
+        let string = storage.string as NSString
+        let paragraph = string.paragraphRange(for: NSRange(location: index, length: 0))
+        guard index == paragraph.location else { return false }
+        let box = string.substring(with: NSRange(location: index, length: 1))
+        let replacement: String
+        switch box {
+        case "☐": replacement = "☑"
+        case "☑": replacement = "☐"
+        default: return false
+        }
+        let range = NSRange(location: index, length: 1)
+        let attributes = storage.attributes(at: index, effectiveRange: nil)
+        edit(range) { storage.replaceCharacters(in: range, with: NSAttributedString(string: replacement, attributes: attributes)) }
+        return true
     }
 
     /// Return в пункте списка продолжает список; Return в пустом пункте —
@@ -230,8 +323,7 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
         let paragraph = string.paragraphRange(for: NSRange(location: selection.location, length: 0))
         let line = string.substring(with: paragraph).trimmingCharacters(in: .newlines)
 
-        let marker = Self.marker(in: line, numbered: true) ?? Self.marker(in: line, numbered: false)
-        guard let marker else { return false }
+        guard let marker = Self.anyMarker(in: line) else { return false }
         if line == marker {
             edit(NSRange(location: paragraph.location, length: (marker as NSString).length)) {
                 storage.replaceCharacters(in: NSRange(location: paragraph.location, length: (marker as NSString).length), with: "")
@@ -241,9 +333,16 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
         var next = RichTextHTML.bullet
         if let number = Int(marker.trimmingCharacters(in: CharacterSet(charactersIn: ". "))) {
             next = "\(number + 1). "
+        } else if marker == NoteMarkers.unchecked || marker == NoteMarkers.checked {
+            // Следующее дело — ещё не сделано.
+            next = NoteMarkers.unchecked
         }
         textView.insertText("\n" + next, replacementRange: selection)
         return true
+    }
+
+    func textDidChange(_ notification: Notification) {
+        onChange?()
     }
 
     private func edit(_ range: NSRange, _ change: () -> Void) {
@@ -279,4 +378,88 @@ struct RichTextEditorView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSScrollView, context: Context) {}
+}
+
+/// Кнопки оформления — общие у ответа и у заметки. У жирного, курсива
+/// и подчёркивания — привычные ⌘B, ⌘I, ⌘U.
+struct RichFormatControls: View {
+    let editor: RichTextController
+    /// Заголовок и дела с галочкой — в заметке; в письме их нет.
+    var noteTools = false
+
+    var body: some View {
+        RichFormatButton(symbol: "bold", help: String(localized: "Жирный (⌘B)"), key: "b") { editor.toggleBold() }
+        RichFormatButton(symbol: "italic", help: String(localized: "Курсив (⌘I)"), key: "i") { editor.toggleItalic() }
+        RichFormatButton(symbol: "underline", help: String(localized: "Подчёркнутый (⌘U)"), key: "u") { editor.toggleUnderline() }
+        if noteTools {
+            RichFormatButton(symbol: "textformat.size", help: String(localized: "Заголовок")) { editor.toggleHeading() }
+        }
+        Divider().frame(height: 16).padding(.horizontal, 4)
+        RichFormatButton(symbol: "list.bullet", help: String(localized: "Маркированный список")) { editor.toggleList(.bullet) }
+        RichFormatButton(symbol: "list.number", help: String(localized: "Нумерованный список")) { editor.toggleList(.numbered) }
+        if noteTools {
+            RichFormatButton(symbol: "checklist", help: String(localized: "Список дел с галочками")) { editor.toggleList(.check) }
+        }
+        Divider().frame(height: 16).padding(.horizontal, 4)
+        // Цвет текста, выделение маркером, таблица.
+        Menu {
+            ForEach(TextPalette.text, id: \.name) { choice in
+                Button { editor.setTextColor(choice.color) } label: {
+                    Label { Text(choice.name) } icon: { ColorDot.image(choice.rgb) }
+                }
+            }
+            Divider()
+            Button("Обычный цвет") { editor.setTextColor(nil) }
+        } label: {
+            Image(systemName: "character.textbox").frame(width: 26, height: 22)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Цвет текста")
+        Menu {
+            ForEach(TextPalette.highlight, id: \.name) { choice in
+                Button { editor.setHighlight(choice.color) } label: {
+                    Label { Text(choice.name) } icon: { ColorDot.image(choice.rgb) }
+                }
+            }
+            Divider()
+            Button("Без выделения") { editor.setHighlight(nil) }
+        } label: {
+            Image(systemName: "highlighter").frame(width: 26, height: 22)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Выделить цветом")
+        Menu {
+            ForEach(TextPalette.tableSizes, id: \.self) { size in
+                Button("\(size.columns) × \(size.rows)") { editor.insertTable(rows: size.rows, columns: size.columns) }
+            }
+        } label: {
+            Image(systemName: "tablecells").frame(width: 26, height: 22)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Вставить таблицу (столбцы × строки)")
+    }
+}
+
+struct RichFormatButton: View {
+    let symbol: String
+    let help: String
+    var key: KeyEquivalent?
+    let action: () -> Void
+
+    var body: some View {
+        let button = Button(action: action) {
+            Image(systemName: symbol)
+                .frame(width: 26, height: 22)
+                .contentShape(Rectangle())
+        }
+        .help(help)
+        if let key {
+            button.keyboardShortcut(key, modifiers: .command)
+        } else {
+            button
+        }
+    }
 }

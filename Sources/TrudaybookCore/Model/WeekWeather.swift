@@ -12,13 +12,19 @@ public struct WeekWeather: Equatable, Sendable {
         public var min: Double
         /// Вероятность осадков за день, %.
         public var precipitation: Int
+        /// Восход и закат — от Trunook новее 0.26.1; у прежнего их нет.
+        public var sunrise: Date?
+        public var sunset: Date?
 
-        public init(date: String, code: Int, max: Double, min: Double, precipitation: Int) {
+        public init(date: String, code: Int, max: Double, min: Double, precipitation: Int,
+                    sunrise: Date? = nil, sunset: Date? = nil) {
             self.date = date
             self.code = code
             self.max = max
             self.min = min
             self.precipitation = precipitation
+            self.sunrise = sunrise
+            self.sunset = sunset
         }
     }
 
@@ -68,7 +74,9 @@ public struct WeekWeather: Equatable, Sendable {
         let days: [Day] = ((json["days"] as? [[String: Any]]) ?? []).prefix(40).compactMap { day in
             guard let date = day["date"] as? String, date.count == 10,
                   let code = number(day["code"]), let max = number(day["max"]), let min = number(day["min"]) else { return nil }
-            return Day(date: date, code: Int(code), max: max, min: min, precipitation: Int(number(day["precip"]) ?? 0))
+            return Day(date: date, code: Int(code), max: max, min: min, precipitation: Int(number(day["precip"]) ?? 0),
+                       sunrise: (day["sunrise"] as? String).flatMap(iso.date(from:)),
+                       sunset: (day["sunset"] as? String).flatMap(iso.date(from:)))
         }
         let hours: [Hour] = ((json["hours"] as? [[String: Any]]) ?? []).prefix(24 * 40).compactMap { hour in
             guard let time = (hour["time"] as? String).flatMap(iso.date(from:)),
@@ -85,6 +93,15 @@ public struct WeekWeather: Equatable, Sendable {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         let key = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
         return days.first { $0.date == key }
+    }
+
+    /// Погода «сейчас»: час, в который попадает `date`, а нет часов —
+    /// погода дня. `nil` — прогноза на это время нет.
+    public func code(at date: Date, calendar: Calendar = .current) -> Int? {
+        if let hour = hours.filter({ $0.time <= date && date.timeIntervalSince($0.time) < 3600 }).max(by: { $0.time < $1.time }) {
+            return hour.code
+        }
+        return day(date, calendar: calendar)?.code
     }
 
     /// Часы дня `date` — по порядку.

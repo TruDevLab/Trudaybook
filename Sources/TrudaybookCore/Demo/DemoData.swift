@@ -751,3 +751,56 @@ extension Demo {
         return WeekWeather(updated: now, place: String(localized: "Москва"), days: days, hours: hours)
     }
 }
+
+extension Demo {
+    /// Заметки рабочих дней вокруг `now` — для проверки итогов недели и
+    /// месяца. Как пишет человек: протоколы встреч, решения, дела.
+    public static func dayNotes(around now: Date, calendar: Calendar) -> [String: String] {
+        let texts = [
+            """
+            Обзор квартального плана
+            Протокол:
+            • Бюджет на рекламу режем на 10%, деньги — в поддержку
+            • Ольга готовит новый прогноз к пятнице
+            ☑ Отправить Андрею цифры по продажам
+            """,
+            """
+            Созвон с партнёром (Дмитрий Орлов)
+            Протокол:
+            • Договор продлеваем на год, скидка 5%
+            • Юристы смотрят правки до среды
+            ☐ Напомнить про счёт за сентябрь
+            """,
+            """
+            Ревью дизайна
+            Протокол:
+            • Новый экран входа принят, тёмную тему доделать
+            • Марина собирает отзывы пользователей
+            Мысль: вынести настройки уведомлений в отдельный раздел
+            """,
+            """
+            Весь день — отчёт для правления
+            • Отчёт отправлен
+            • Вопрос о найме двух разработчиков — перенесли на следующую неделю
+            """,
+            """
+            Планёрка
+            Протокол:
+            • Релиз 2.4 — в понедельник
+            • Андрей в отпуске с 5 по 12 октября
+            ☐ Согласовать замену на время отпуска
+            """,
+        ]
+        let today = calendar.startOfDay(for: now)
+        var notes: [String: String] = [:]
+        for offset in -30...0 {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: today),
+                  !calendar.isDateInWeekend(day) else { continue }
+            let key = dayKey(day, calendar: calendar)
+            let parts = calendar.dateComponents([.year, .month, .day], from: day)
+            notes[String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)] =
+                texts[abs(key) % texts.count]
+        }
+        return notes
+    }
+}

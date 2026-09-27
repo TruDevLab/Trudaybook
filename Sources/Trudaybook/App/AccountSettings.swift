@@ -489,9 +489,10 @@ struct AppearanceSettingsView: View {
                 details
                 SettingsHint(String(localized: "Панели — стекло (Liquid Glass): фон просвечивает сквозь них. Окно само становится светлым или тёмным — по яркости фона."))
             }
-            if model.background == .aurora {
+            if model.background == .aurora || model.background == .sky {
                 SettingsCard(title: String(localized: "Анимация"), icon: "wind") {
-                    Toggle("Пятна света плывут", isOn: $model.themeAnimated)
+                    Toggle(model.background == .sky ? String(localized: "Облака плывут, идёт дождь и снег") : String(localized: "Пятна света плывут"),
+                           isOn: $model.themeAnimated)
                         .toggleStyle(.switch)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     SettingsHint(String(localized: "Выключено — фон замирает на одном кадре и не тратит процессор. Касается и этого окна. При «Уменьшить движение» в Универсальном доступе фон стоит всегда."))
@@ -500,11 +501,28 @@ struct AppearanceSettingsView: View {
         }
     }
 
+    /// «Сейчас: день, дождь».
+    private var skyNow: String {
+        let scene = model.skyScene
+        let time = switch scene.daylight {
+        case ..<0.15: String(localized: "ночь")
+        case ..<0.85: scene.twilight > 0 && scene.sun.map({ $0.x < 0.5 }) == true ? String(localized: "рассвет") : String(localized: "сумерки")
+        default: String(localized: "день")
+        }
+        let weather = model.weekWeather.flatMap { $0.isFresh(at: model.now) ? $0 : nil } == nil && model.options.skyWeather == nil
+            ? String(localized: "погоды нет — Trunook её не прислал")
+            : WeekWeather.title(SkyRules.code(for: scene.weather)).lowercased()
+        return String(localized: "Сейчас: \(time), \(weather)")
+    }
+
     @ViewBuilder
     private var details: some View {
         switch model.background {
         case .system:
             SettingsHint(String(localized: "Цвет окна как у системы — светлый или тёмный по настройке macOS."))
+        case .sky:
+            SettingsHint(skyNow)
+            SettingsHint(String(localized: "Ночью — тёмное окно, луна и звёзды; днём — светлое и солнце. Облака, дождь, снег, туман и гроза — по погоде из Trunook, без него — только время суток."))
         case .aurora:
             SettingsHint(String(localized: "Тёмное окно с плывущими пятнами света — как настройки и знакомство в Trunook."))
         case .color:

@@ -99,11 +99,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     SettingsWindow.show(model: model, tab: SettingsWindow.Tab(rawValue: tab) ?? .mail)
                     try? await Task.sleep(for: .seconds(1))
                 }
+                if let period = model.options.note {
+                    await Self.prepareNoteWindow(model: model, period: period)
+                }
                 // Открытый лист (редактор встречи) — отдельное окно поверх главного.
-                WindowSnapshot.write(SettingsWindow.current ?? window.attachedSheet ?? window, to: path)
+                WindowSnapshot.write(NoteWindow.current ?? SettingsWindow.current ?? window.attachedSheet ?? window, to: path)
                 NSApp.terminate(nil)
             }
         }
+    }
+
+    /// Окно заметки для снимка: `--note day|week|month`, с повесткой
+    /// (`--agenda`, `--agenda-offline`) или итогами (`--digest`) — ждём
+    /// ответа Trunook, а не снимаем «готовит…».
+    private static func prepareNoteWindow(model: AppModel, period: NotePeriod) async {
+        if model.options.demo, period != .day { model.seedDemoNotes() }
+        NoteWindow.show(model: model, period: period)
+        try? await Task.sleep(for: .seconds(1))
+        let state = NoteWindow.state
+        if model.options.agenda || model.options.agendaOffline {
+            state.assistant.agenda(model: model, day: model.day, session: state.session, offline: model.options.agendaOffline)
+        } else if model.options.digest, period != .day {
+            let title = NoteWindow.title(period, day: model.day, calendar: model.calendar)
+            state.assistant.digest(model: model, period: period, date: model.day, title: title, session: state.session)
+        }
+        let deadline = Date().addingTimeInterval(300)
+        while state.assistant.isWorking, Date() < deadline {
+            try? await Task.sleep(for: .seconds(1))
+        }
+        try? await Task.sleep(for: .seconds(0.8))
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -163,6 +187,7 @@ enum MainMenu {
             ClosureItem(String(localized: "Сегодня"), key: "t") { model.showToday() },
             ClosureItem(String(localized: "Предыдущий день"), key: "[") { model.shiftDay(-1) },
             ClosureItem(String(localized: "Следующий день"), key: "]") { model.shiftDay(1) },
+            ClosureItem(String(localized: "Заметка в окне"), key: "j") { NoteWindow.show(model: model) },
             .separator(),
             ClosureItem(String(localized: "Крупнее"), key: "=") { model.zoom(by: 1.25) },
             ClosureItem(String(localized: "Мельче"), key: "-") { model.zoom(by: 0.8) },

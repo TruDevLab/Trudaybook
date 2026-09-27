@@ -2,6 +2,11 @@ import SwiftUI
 import TrudaybookCore
 import TrudaybookMail
 
+extension Notification.Name {
+    /// Заметку правили: в `userInfo["key"]` — её ключ, отправитель — редактор.
+    static let noteEdited = Notification.Name("TrudaybookNoteEdited")
+}
+
 /// Параметры запуска. Отладочные — для проверки интерфейса без аккаунтов.
 struct LaunchOptions {
     /// Тестовые почта и календарь, без запроса доступов.
@@ -71,6 +76,16 @@ struct LaunchOptions {
     var summary = false
     /// Разметить «Не разобрано» моделью Trunook сразу после запуска: `--label-mail`.
     var labelMail = false
+    /// Погода темы «Небо» для снимка: `--sky-weather rain|snow|clear|…`.
+    var skyWeather: SkyScene.Weather?
+    /// Окно заметки перед снимком: `--note day|week|month`.
+    var note: NotePeriod?
+    /// Сразу подготовить повестку или итоги в окне заметки моделью Trunook:
+    /// `--note day --agenda`, `--note week --digest`. `--agenda-offline` —
+    /// повестка без Trunook (снимок раскладки).
+    var agenda = false
+    var digest = false
+    var agendaOffline = false
 
     static func parse(_ arguments: [String]) -> LaunchOptions {
         var options = LaunchOptions()
@@ -99,6 +114,11 @@ struct LaunchOptions {
             case "--update-preview": options.updatePreview = iterator.next()
             case "--summary": options.summary = true
             case "--label-mail": options.labelMail = true
+            case "--note": options.note = iterator.next().flatMap(NotePeriod.init(rawValue:)) ?? .day
+            case "--agenda": options.agenda = true
+            case "--sky-weather": options.skyWeather = iterator.next().flatMap(SkyScene.Weather.init(rawValue:))
+            case "--digest": options.digest = true
+            case "--agenda-offline": options.agendaOffline = true
             case "--background": options.backgroundKind = iterator.next()
             case "--hover": options.hoverAction = iterator.next()
             case "--size":
@@ -272,6 +292,24 @@ final class AppModel: ObservableObject {
         weekWeather = (try? Data(contentsOf: file)).flatMap(WeekWeather.decode)
     }
 
+    /// Тема «Небо»: время суток — по восходу и закату из прогноза Trunook
+    /// (без него — приблизительно, по времени года), погода — этого часа.
+    var skyScene: SkyScene {
+        let fresh = weekWeather.flatMap { $0.isFresh(at: now) ? $0 : nil }
+        func sun(_ day: Date) -> (sunrise: Date, sunset: Date) {
+            if let forecast = fresh?.day(day, calendar: calendar), let rise = forecast.sunrise, let set = forecast.sunset {
+                return (rise, set)
+            }
+            return SkyRules.approximateSun(on: day, calendar: calendar)
+        }
+        let today = sun(now)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: now).map(sun)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: now).map(sun)
+        let code = options.skyWeather.map(SkyRules.code(for:)) ?? fresh?.code(at: now, calendar: calendar)
+        return SkyRules.scene(now: now, sunrise: today.sunrise, sunset: today.sunset, code: code,
+                              previousSunset: yesterday?.sunset, nextSunrise: tomorrow?.sunrise)
+    }
+
     /// Погода дня — если прогноз свежий.
     func weather(on day: Date) -> WeekWeather.Day? {
         guard let weekWeather, weekWeather.isFresh(at: now) else { return nil }
@@ -345,6 +383,7 @@ final class AppModel: ObservableObject {
         let luminance: Double
         switch background {
         case .system: return nil
+        case .sky: return skyScene.isDark ? .darkAqua : .aqua
         case .aurora: return .darkAqua
         case .color: luminance = backgroundColor1.luminance
         case .gradient: luminance = (backgroundColor1.luminance + backgroundColor2.luminance) / 2
@@ -552,7 +591,7 @@ final class AppModel: ObservableObject {
                 .appendingPathComponent("Library/Caches/TrudaybookDemo/trunook-inbox", isDirectory: true)
             // Пересказ и разметка по флагу — настоящая просьба к Trunook
             // (тестовые письма вымышленные); сводка и заметки остаются в кэше.
-            let asksModel = options.summary || options.labelMail
+            let asksModel = options.summary || options.labelMail || options.agenda || options.digest
             // `--trunook-real-folders`: сводка и команды — в настоящих папках,
             // чтобы живой Trunook увидел тестовую почту (проверка помощника).
             if !options.trunookRealFolders {
@@ -1202,17 +1241,66 @@ final class AppModel: ObservableObject {
     }
 
     func setNote(_ text: String, for day: Date) {
-        let key = ItemStateStore.dayKey(day, calendar: calendar)
+        saveNote(text, rich: nil, key: ItemStateStore.dayKey(day, calendar: calendar))
+    }
+
+    /// Заметка дня, недели или месяца: текст и оформление (RTF).
+    func noteContent(_ key: String) -> (text: String, rich: Data?) {
+        (store.note(for: key), store.richNote(for: key))
+    }
+
+    /// Записать заметку. `origin` — редактор, который её правит: соседний
+    /// (панель под календарём или окно заметки) перечитает её, а сам он — нет,
+    /// иначе у него сбился бы курсор.
+    func saveNote(_ text: String, rich: Data?, key: String, origin: AnyObject? = nil) {
         do {
-            try store.setNote(text, for: key, now: now)
-            let has = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            if has != noteDays.contains(key) {
-                if has { noteDays.insert(key) } else { noteDays.remove(key) }
-            }
-            trunook.noteChanged(key)
+            try store.setNote(text, rich: rich, for: key, now: now)
         } catch {
             errorMessage = String(localized: "Заметка не сохранилась: \(error.localizedDescription)")
+            return
         }
+        NotificationCenter.default.post(name: .noteEdited, object: origin, userInfo: ["key": key])
+        // Отметки в календаре и общая с Trunook заметка — только у дней.
+        guard NoteKeys.isDayKey(key) else { return }
+        let has = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if has != noteDays.contains(key) {
+            if has { noteDays.insert(key) } else { noteDays.remove(key) }
+        }
+        trunook.noteChanged(key)
+    }
+
+    func noteKey(_ period: NotePeriod, for date: Date) -> String {
+        NoteKeys.key(period, for: date, calendar: calendar)
+    }
+
+    /// Тексты заметок дней периода — для итогов недели и месяца.
+    func dayNotes(_ period: NotePeriod, containing date: Date) -> [NoteDigest.Note] {
+        let keys = NoteKeys.days(period, containing: date, calendar: calendar).map { noteKey(.day, for: $0) }
+        return NoteDigest.notes(store.notes(for: keys), days: keys)
+    }
+
+    /// Что пойдёт в повестку дня: встречи и напоминания этого дня (из всех
+    /// календарей, а не только показанного дня) и неразобранные письма.
+    func agendaInput(for day: Date) async -> DayAgenda.Input {
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)
+        let items = await calendarSource.items(from: start, to: end)
+        let letters = unresolved.filter { $0.kind == .mail }
+        return DayAgenda.input(dayItems: items, letters: letters, isImportant: isImportantLetter)
+    }
+
+    /// Тестовый режим: заметки рабочих дней месяца — для снимка итогов.
+    func seedDemoNotes() {
+        guard options.demo else { return }
+        for (key, text) in Demo.dayNotes(around: now, calendar: calendar) where store.note(for: key).isEmpty {
+            try? store.setNote(text, for: key, now: now)
+            noteDays.insert(key)
+        }
+    }
+
+    /// Важное письмо — высокий приоритет или метка «Важное».
+    func isImportantLetter(_ item: TimelineItem) -> Bool {
+        priority(of: item) == .high || label(of: item) == .important
     }
 
     /// Заметка дня по ключу `ГГГГ-ММ-ДД`: текст и когда правили.
@@ -1316,7 +1404,7 @@ final class AppModel: ObservableObject {
             case let .failed(code, message):
                 DebugLog.write("Trunook: пересказа нет — \(code)")
                 summaries[item.id] = .failed(code: code, message: message)
-            case .labels:
+            case .labels, .agenda, .text:
                 summaries[item.id] = .failed(code: "unreadable", message: String(localized: "Ответ Trunook не разобрался."))
             }
         }
@@ -1364,7 +1452,7 @@ final class AppModel: ObservableObject {
                     DebugLog.write("Trunook: разметка прервана — \(code)")
                     labeling = .failed(message)
                     return
-                case .summary:
+                case .summary, .agenda, .text:
                     break
                 }
                 done += batch.count

@@ -699,61 +699,16 @@ private struct ComposerView: View {
         appliedSignature = signature
     }
 
-    /// Кнопки оформления. У жирного, курсива и подчёркивания — привычные ⌘B, ⌘I, ⌘U.
+    /// Кнопки оформления, вложения и ссылка.
     private var formatBar: some View {
         HStack(spacing: 2) {
-            formatButton("bold", help: String(localized: "Жирный (⌘B)"), key: "b") { editor.toggleBold() }
-            formatButton("italic", help: String(localized: "Курсив (⌘I)"), key: "i") { editor.toggleItalic() }
-            formatButton("underline", help: String(localized: "Подчёркнутый (⌘U)"), key: "u") { editor.toggleUnderline() }
+            RichFormatControls(editor: editor)
             Divider().frame(height: 16).padding(.horizontal, 4)
-            formatButton("list.bullet", help: String(localized: "Маркированный список")) { editor.toggleList(numbered: false) }
-            formatButton("list.number", help: String(localized: "Нумерованный список")) { editor.toggleList(numbered: true) }
-            Divider().frame(height: 16).padding(.horizontal, 4)
-            // Цвет текста, выделение маркером, таблица.
-            Menu {
-                ForEach(TextPalette.text, id: \.name) { choice in
-                    Button { editor.setTextColor(choice.color) } label: {
-                        Label { Text(choice.name) } icon: { ColorDot.image(choice.rgb) }
-                    }
-                }
-                Divider()
-                Button("Обычный цвет") { editor.setTextColor(nil) }
-            } label: {
-                Image(systemName: "character.textbox").frame(width: 26, height: 22)
-            }
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Цвет текста")
-            Menu {
-                ForEach(TextPalette.highlight, id: \.name) { choice in
-                    Button { editor.setHighlight(choice.color) } label: {
-                        Label { Text(choice.name) } icon: { ColorDot.image(choice.rgb) }
-                    }
-                }
-                Divider()
-                Button("Без выделения") { editor.setHighlight(nil) }
-            } label: {
-                Image(systemName: "highlighter").frame(width: 26, height: 22)
-            }
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Выделить цветом")
-            Menu {
-                ForEach(TextPalette.tableSizes, id: \.self) { size in
-                    Button("\(size.columns) × \(size.rows)") { editor.insertTable(rows: size.rows, columns: size.columns) }
-                }
-            } label: {
-                Image(systemName: "tablecells").frame(width: 26, height: 22)
-            }
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Вставить таблицу (столбцы × строки)")
-            Divider().frame(height: 16).padding(.horizontal, 4)
-            formatButton("paperclip", help: String(localized: "Прикрепить файлы (или перетащите их сюда)")) {
+            RichFormatButton(symbol: "paperclip", help: String(localized: "Прикрепить файлы (или перетащите их сюда)")) {
                 addAttachments(AttachmentFiles.choose())
             }
             Divider().frame(height: 16).padding(.horizontal, 4)
-            formatButton("link", help: String(localized: "Ссылка на выделенном тексте")) {
+            RichFormatButton(symbol: "link", help: String(localized: "Ссылка на выделенном тексте")) {
                 linkAddress = ""
                 showLink = true
             }
@@ -770,22 +725,6 @@ private struct ComposerView: View {
             Spacer()
         }
         .buttonStyle(.borderless)
-    }
-
-    private func formatButton(_ symbol: String, help: String, key: KeyEquivalent? = nil, action: @escaping () -> Void) -> some View {
-        let button = Button(action: action) {
-            Image(systemName: symbol)
-                .frame(width: 26, height: 22)
-                .contentShape(Rectangle())
-        }
-        .help(help)
-        return Group {
-            if let key {
-                button.keyboardShortcut(key, modifiers: .command)
-            } else {
-                button
-            }
-        }
     }
 
     private func applyLink() {

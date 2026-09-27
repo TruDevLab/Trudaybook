@@ -1,5 +1,5 @@
 APP      := Trudaybook
-VERSION  := 0.2.0
+VERSION  := 0.3.0
 # Номер сборки растёт со временем: так две сборки одной версии различимы.
 BUILDNO  := $(shell date +%y%m%d%H%M)
 # В macOS лежит GNU Make 3.81: `.SHELLFLAGS` он молча игнорирует, поэтому

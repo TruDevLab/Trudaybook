@@ -84,13 +84,16 @@ the count of unhandled emails. Meetings you haven't answered, or answered
 - New meeting: drag “+” to the right time or press and hold on an empty
   spot. An editor with repeat, attendees, location and a free/busy planner.
 - macOS reminders on the timeline, checked off with one click.
-- A note for every day under the month calendar.
+- A note for every day under the month calendar, and in its own window (⌘J)
+  with formatting, lists and checklists; notes for the week and the month.
 
 **Notifications** — for new emails in macOS Notification Center; “Reply”
 right in the notification sends the answer without opening the window.
 
 **Look** — Liquid Glass on macOS 26, light and dark, calm gradients and
-texture backgrounds, your own picture as a background. Russian, English
+texture backgrounds, your own picture as a background. The Sky theme follows
+the time of day and the weather: the moon in its phase and stars at night,
+the sun, clouds, rain, snow, fog and storms by day. Russian, English
 and Chinese interface.
 
 **Together with [Trunook](https://github.com/TruDevLab/Trunook)** — a MacBook
@@ -106,8 +109,12 @@ notch app by the same author (optional, all off by default):
   model summarizes the email; “To handle” gets labels — Important,
   Conversation, Notifications, Newsletters — with a filter. Newsletters and
   notifications show up even without Trunook, from the email's headers;
+- “Daily Agenda” in the note window: key items for the day from Trunook's
+  model, meetings with a Minutes section and emails from attendees,
+  reminders, important emails;
+- week and month summaries from your daily notes;
 - a shared day note;
-- weather in the calendar comes from Trunook.
+- weather in the calendar and for the Sky theme comes from Trunook.
 
 ---
 
@@ -121,6 +128,7 @@ notch app by the same author (optional, all off by default):
 | ⌘D | Decline a meeting |
 | ⌘1 ⌘2 ⌘3 / ⌘0 | High, medium, low priority / clear |
 | ⌘T | Today |
+| ⌘J | Note in a window |
 | ⌘[ / ⌘] | Previous / next day (week in week view) |
 | ⌘= / ⌘− | Zoom in / out |
 | ⌥⌘1 / ⌥⌘2 | Day / week |
@@ -142,8 +150,9 @@ notch app by the same author (optional, all off by default):
   is always off.
 - **Passwords** — in the macOS Keychain, never written to the log.
 - **Weather** isn't requested by the app: Trunook sends it, if installed.
-- **Summaries and labels** come only from a model on this Mac: if Trunook uses
-  a cloud model, it refuses, and the email text goes nowhere.
+- **Summaries, labels, agendas and week summaries** come only from a model on
+  this Mac: if Trunook uses a cloud model, it refuses, and neither emails nor
+  notes go anywhere.
 - Trudaybook talks to Trunook only through files in `~/Library/Application Support`
   on the same Mac.
 

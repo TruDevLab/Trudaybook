@@ -79,7 +79,7 @@ macOS решает, рисовать ли системные элементы в
 | `~/Library/Application Support/Trudaybook/accounts.json` | Ящики — без паролей |
 | Связка ключей | Пароли ящиков |
 | `~/Library/Application Support/Trudaybook/mail.sqlite` | Кэш заголовков и тел писем |
-| `~/Library/Application Support/Trudaybook/state.sqlite` | Отметки, приоритеты, заметки дня |
+| `~/Library/Application Support/Trudaybook/state.sqlite` | Отметки, приоритеты, заметки дней, недель и месяцев (текст и RTF) |
 | `~/Library/Application Support/Trudaybook/Update/` | Скачанное и проверенное обновление, `staged.json` |
 | `~/Library/Logs/Trudaybook.log` | Журнал: без паролей и текста писем |
 
@@ -206,9 +206,10 @@ MacBook того же автора. Связь — только файлами, 
 | `~/Library/Application Support/Trunook/focus.json` | Trunook | «Фокус до…», пока идёт рабочая фаза таймера |
 | `~/Library/Application Support/Trudaybook/commands/*.json` | Trunook | Команды помощника |
 | `~/Library/Application Support/Trudaybook/trunook/notes/ГГГГ-ММ-ДД.txt` | оба | Общая заметка дня |
-| `~/Library/Application Support/Trunook/weather-week.json` | Trunook | Прогноз на неделю по дням и часам |
-| `~/Library/Application Support/Trunook/mail-requests/<UUID>.json` | Trudaybook | Просьба к модели: пересказать письмо или разметить до 25 писем |
-| `~/Library/Application Support/Trudaybook/trunook-answers/<UUID>.json` | Trunook | Пересказ, метки или отказ (`cloud`, `noModel`, `busy`) |
+| `~/Library/Application Support/Trunook/weather-week.json` | Trunook | Прогноз на неделю по дням и часам, восход и закат (тема «Небо») |
+| `~/Library/Application Support/Trunook/mail-requests/<UUID>.json` | Trudaybook | Просьба к модели: пересказать письмо, разметить до 25 писем, повестка дня, итоги недели или месяца |
+| `~/Library/Application Support/Trunook/mail-requests/.kinds.json` | Trunook | Какие просьбы он понимает — прежнему не шлём то, на что он не ответит |
+| `~/Library/Application Support/Trudaybook/trunook-answers/<UUID>.json` | Trunook | Пересказ, метки, повестка, итоги или отказ (`cloud`, `noModel`, `busy`, `unsupported`) |
 
 **Пересказ и метки.** Над письмом — свёрнутая плашка «Кратко»; раскрыли —
 текст письма (без HTML, до 12 000 знаков) уходит просьбой в Trunook,
@@ -221,6 +222,28 @@ MacBook того же автора. Связь — только файлами, 
 человека ни Trunook, ни помощник не переписывают. Пересказы живут только
 в памяти. **Отвечает только местная модель**: облачной Trunook откажет,
 и письмо с Mac не уйдёт.
+
+**Тема «Небо».** Фон меняется со временем суток и погодой: `SkyRules`
+(ядро) по восходу и закату из прогноза Trunook (без него — приблизительно,
+по времени года) и коду WMO этого часа считает цвета неба, положение
+солнца и луны, фазу луны, облачность и осадки; окно тёмное ночью и
+в грозу. Рисует `SkyBackground` слоями Core Animation с ограниченной
+частотой кадров (облака 10, снег 20, дождь 24): приложение — 0 % ядра,
+WindowServer в дождь — около 6 % против 4 % у «сияния». Выключенная
+анимация или «Уменьшить движение» — неподвижный кадр. Снимки:
+`--background sky --now "… 22:00" --sky-weather rain|snow|thunder|…`.
+
+**Заметки, повестка и итоги.** Заметка бывает на день (`2026-09-27`),
+неделю (`2026-W39`, ISO) и месяц (`2026-09`) — `NoteKeys`, одна таблица
+`day_notes`: простой текст (по нему отметки в календаре и файл для Trunook)
+и оформление RTF в колонке `rich`. Системный цвет текста в RTF не пишется:
+он запомнился бы белым из тёмной темы. Окно заметки — `Notes/NoteWindow`
+(⌘J), поле под календарём и окно правят одну заметку через `NoteSession`
+и уведомление `noteEdited`. Повестку раскладывает само приложение
+(`DayAgenda`): встречи с разделом «Протокол», письма от участников,
+напоминания галочками, важные письма; от модели — только «Главное».
+Итоги — заметки дней периода (до 12 000 знаков) и ответ модели облегчённым
+Markdown (`NoteMarkdown`). Всё — той же местной моделью Trunook.
 
 **Чужое слово — не команда.** Ответ на плашку исполняется, только если это
 одна из кнопок этой же плашки. Команды помощника — закрытый список

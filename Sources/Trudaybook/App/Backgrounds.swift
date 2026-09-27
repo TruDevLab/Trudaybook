@@ -7,13 +7,14 @@ import TrudaybookCore
 /// или своя картинка. Под стеклянными панелями (Liquid Glass) фон и есть
 /// то, что делает окно «своим».
 enum AppBackground: String, CaseIterable, Identifiable {
-    case system, aurora, color, gradient, image
+    case system, sky, aurora, color, gradient, image
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .system: String(localized: "Системный")
+        case .sky: String(localized: "Небо: время суток и погода")
         case .aurora: String(localized: "Сияние, как в Trunook")
         case .color: String(localized: "Цвет")
         case .gradient: String(localized: "Градиент")
@@ -21,10 +22,11 @@ enum AppBackground: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Для переключателя: пять длинных подписей в ряд не помещаются.
+    /// Для переключателя: шесть длинных подписей в ряд не помещаются.
     var shortTitle: String {
         switch self {
         case .system: String(localized: "Система")
+        case .sky: String(localized: "Небо")
         case .aurora: String(localized: "Сияние")
         case .color: String(localized: "Цвет")
         case .gradient: String(localized: "Градиент")
@@ -230,6 +232,8 @@ struct AppBackgroundView: View {
         switch model.background {
         case .system:
             Color(nsColor: .windowBackgroundColor)
+        case .sky:
+            SkyBackground(scene: model.skyScene, animated: model.themeAnimated)
         case .aurora:
             AuroraBackground(intensity: 0.55, animated: model.themeAnimated)
         case .color:

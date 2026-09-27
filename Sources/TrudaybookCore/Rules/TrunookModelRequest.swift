@@ -1,6 +1,7 @@
 import Foundation
 
-/// Просьба к модели Trunook: пересказать письмо или разметить список.
+/// Просьба к модели Trunook: пересказать письмо, разметить список,
+/// подготовить повестку дня или итоги недели и месяца по заметкам.
 ///
 /// Файлом, как и всё между Trudaybook и Trunook: просьба — в папку
 /// Trunook `mail-requests`, ответ — в нашу `trunook-answers`, под тем же
@@ -62,6 +63,53 @@ public enum TrunookModelRequest {
         ]
     }
 
+    /// Повестка дня. Времена — строкой «10:00» в поясе человека: модели
+    /// пояса ни к чему, а ошибиться на час с ними легко.
+    public static func agenda(id: String, language: String, day: String, weekday: String,
+                              input: DayAgenda.Input, time: (Date) -> String) -> [String: Any] {
+        [
+            "version": version, "id": id, "kind": "agenda", "language": language,
+            "day": day, "weekday": weekday,
+            "meetings": input.meetings.map { meeting in
+                [
+                    "key": meeting.key,
+                    "title": String(meeting.title.prefix(200)),
+                    "start": meeting.isAllDay ? "" : time(meeting.start),
+                    "end": meeting.isAllDay ? "" : meeting.end.map(time) ?? "",
+                    "allDay": meeting.isAllDay,
+                    "location": String((meeting.location ?? "").prefix(200)),
+                    "people": meeting.people.map { String($0.prefix(100)) },
+                ] as [String: Any]
+            },
+            "reminders": input.reminders.map { reminder in
+                [
+                    "title": String(reminder.title.prefix(200)),
+                    "time": reminder.due.map(time) ?? "",
+                    "done": reminder.done,
+                ] as [String: Any]
+            },
+            "letters": input.letters.map { letter in
+                [
+                    "key": letter.key,
+                    "subject": String(letter.subject.prefix(200)),
+                    "from": String(letter.from.prefix(200)),
+                    "snippet": String(letter.snippet.prefix(200)),
+                    "important": letter.important,
+                ] as [String: Any]
+            },
+        ]
+    }
+
+    /// Итоги недели или месяца по заметкам дней.
+    public static func digest(id: String, language: String, period: NotePeriod, title: String,
+                              notes: [NoteDigest.Note]) -> [String: Any] {
+        [
+            "version": version, "id": id, "kind": "digest", "language": language,
+            "period": period.rawValue, "title": String(title.prefix(200)),
+            "notes": notes.map { ["day": $0.day, "text": $0.text] },
+        ]
+    }
+
     /// Письма для просьбы о метках. Ярлык — «m1», «m2»…: номер письма
     /// у нас длинный и с адресом ящика, модели его знать незачем.
     public static func letters(_ items: [TimelineItem]) -> (letters: [Letter], ids: [String: String]) {
@@ -82,8 +130,15 @@ public enum TrunookModelRequest {
     public enum Answer: Equatable, Sendable {
         case summary(String)
         case labels([String: MailLabel])
+        case agenda(DayAgenda.Answer)
+        /// Итоги периода — облегчённым Markdown.
+        case text(String)
         case failed(code: String, message: String)
     }
+
+    /// Пунктов «главного» в повестке — не больше: список на десять пунктов
+    /// уже не главное.
+    public static let maxFocus = 7
 
     /// Потолок файла ответа: пересказ — абзац, метки — строка на письмо.
     public static let maxAnswerSize = 128 * 1024
@@ -102,6 +157,26 @@ public enum TrunookModelRequest {
             let text = summary.trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? .failed(code: "empty", message: String(localized: "Модель вернула пустой пересказ."))
                                 : .summary(String(text.prefix(4000)))
+        }
+        if let agenda = json["agenda"] as? [String: Any] {
+            let focus = ((agenda["focus"] as? [Any]) ?? [])
+                .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .prefix(maxFocus)
+                .map { String($0.prefix(300)) }
+            var meetings: [String: String] = [:]
+            for (key, value) in (agenda["meetings"] as? [String: Any]) ?? [:] {
+                guard key.range(of: "^e[0-9]{1,2}$", options: .regularExpression) != nil,
+                      let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !text.isEmpty else { continue }
+                meetings[key] = String(text.prefix(300))
+            }
+            return .agenda(DayAgenda.Answer(focus: Array(focus), meetings: meetings))
+        }
+        if let text = json["text"] as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? .failed(code: "empty", message: String(localized: "Модель вернула пустой ответ."))
+                                   : .text(String(trimmed.prefix(8000)))
         }
         if let raw = json["labels"] as? [String: Any] {
             var labels: [String: MailLabel] = [:]
