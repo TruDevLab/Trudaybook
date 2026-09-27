@@ -39,7 +39,9 @@ enum CachedItem {
                 hasAttachments: type?.type == "multipart/mixed",
                 senderPriority: header.priority,
                 isInvitation: header.isInvitation,
-                movedAway: flags.contains(MailCache.movedFlag.lowercased())
+                movedAway: flags.contains(MailCache.movedFlag.lowercased()),
+                isBulk: header.isBulk,
+                isAutomatic: header.isAutomatic
             ))
         )
     }

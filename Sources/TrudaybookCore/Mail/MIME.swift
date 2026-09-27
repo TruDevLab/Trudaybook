@@ -479,6 +479,10 @@ public struct ParsedMessage: Sendable {
     /// Приглашение на встречу — по заголовкам: `Content-Class` у Outlook
     /// и Exchange, `text/calendar` в типе у остальных.
     public var isInvitation: Bool
+    /// Рассылка по заголовкам списка или массовой отправки.
+    public var isBulk: Bool
+    /// Отправлено роботом (RFC 3834).
+    public var isAutomatic: Bool
 
     public init(headerData: Data) {
         let headers = MIME.parseHeaders(MIME.split(headerData).header)
@@ -497,6 +501,11 @@ public struct ParsedMessage: Sendable {
         let contentClass = headers["Content-Class"]?.lowercased() ?? ""
         let contentType = headers["Content-Type"]?.lowercased() ?? ""
         isInvitation = contentClass.contains("calendarmessage") || contentType.contains("text/calendar")
+        let precedence = headers["Precedence"]?.lowercased().trimmingCharacters(in: .whitespaces) ?? ""
+        isBulk = headers["List-Unsubscribe"] != nil || headers["List-Id"] != nil
+            || ["bulk", "list", "junk"].contains(precedence)
+        let submitted = headers["Auto-Submitted"]?.lowercased().trimmingCharacters(in: .whitespaces)
+        isAutomatic = submitted.map { !$0.isEmpty && $0 != "no" } ?? false
     }
 
     /// Тело письма для показа: HTML и текст, вложения, картинки внутри письма.

@@ -211,6 +211,12 @@ private struct MailDetail: View {
                     .padding(8)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
                 }
+
+                // Пересказ — только когда есть кому пересказывать.
+                if TrunookLink.appURL != nil || model.options.demo {
+                    SummaryPlaque(item: item)
+                        .id(item.id)
+                }
             }
             .padding(16)
 

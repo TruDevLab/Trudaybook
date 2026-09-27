@@ -99,10 +99,11 @@ final class TrunookCommandInbox {
         }
 
         switch command {
-        case let .list(from, importantOnly, limit):
+        case let .list(from, importantOnly, limit, label):
             let letters = model.unresolved.filter { $0.kind == .mail }
             let listed = TrunookCommand.listing(letters, from: from, importantOnly: importantOnly, limit: limit,
-                                                priority: model.priority(of:))
+                                                label: label, priority: model.priority(of:),
+                                                labelOf: model.label(of:))
             DebugLog.write("Trunook: команда — список писем (\(listed.count))")
             return ["ok": true, "total": letters.count, "letters": listed]
         case .open(let query):
@@ -129,6 +130,16 @@ final class TrunookCommandInbox {
             return withLetter(query) { item in
                 model.markDone(item.id)
                 return String(localized: "Отмечено разобранным: «\(item.title)»")
+            }
+        case let .label(query, label):
+            return withLetter(query) { item in
+                // Метку человека помощник не переписывает — её выбрали руками.
+                guard MailLabelRules.trunookMayWrite(over: model.labels[item.id]) else {
+                    return String(localized: "Метку этому письму поставил человек — оставлена как есть: «\(item.title)»")
+                }
+                model.setLabel(label, for: item.id, source: .trunook)
+                return label.map { String(localized: "Метка «\($0.singular)»: «\(item.title)»") }
+                    ?? String(localized: "Метка снята: «\(item.title)»")
             }
         case let .draft(query, text):
             return withLetter(query) { item in

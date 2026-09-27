@@ -61,6 +61,16 @@ struct LaunchOptions {
     var weekMode: String?
     /// Готовый текст ответа (как от помощника Trunook): `--reply --prefill "…"`.
     var prefill: String?
+    /// Настоящая проверка обновлений в тестовом режиме, сразу после запуска:
+    /// `--update-probe`, с подменённой своей версией — `--pretend-version 0.0.9`.
+    var updateProbe = false
+    var pretendVersion: String?
+    /// Готовое обновление без сети — для снимка: `--update-preview 0.2.0`.
+    var updatePreview: String?
+    /// Раскрыть пересказ выбранного письма перед снимком: `--summary`.
+    var summary = false
+    /// Разметить «Не разобрано» моделью Trunook сразу после запуска: `--label-mail`.
+    var labelMail = false
 
     static func parse(_ arguments: [String]) -> LaunchOptions {
         var options = LaunchOptions()
@@ -84,6 +94,11 @@ struct LaunchOptions {
             case "--week-mode": options.weekMode = iterator.next()
             case "--real-weather": options.realWeather = true
             case "--showcase": options.showcase = true
+            case "--update-probe": options.updateProbe = true
+            case "--pretend-version": options.pretendVersion = iterator.next()
+            case "--update-preview": options.updatePreview = iterator.next()
+            case "--summary": options.summary = true
+            case "--label-mail": options.labelMail = true
             case "--background": options.backgroundKind = iterator.next()
             case "--hover": options.hoverAction = iterator.next()
             case "--size":
@@ -136,6 +151,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var noteRevision = 0
     /// Приоритеты, выбранные человеком (см. `Priority`).
     @Published private(set) var priorities: [String: Priority] = [:]
+    /// Метки для разбора: от человека и от Trunook. Метки по правилу
+    /// не хранятся — они выводятся из заголовков при каждом показе.
+    @Published private(set) var labels: [String: StoredLabel] = [:]
+    /// Фильтр «Не разобрано» по метке; `nil` — все.
+    @Published var labelFilter: MailLabel?
+    /// Пересказы писем моделью Trunook — только в памяти: это производное
+    /// от письма, и хранить его на диске незачем.
+    @Published private(set) var summaries: [String: SummaryState] = [:]
+    @Published private(set) var labeling: LabelingState = .idle
+    let trunookModel = TrunookModel()
+    private var lastAutoLabel: Date?
     /// «Не разобрано» — раскрывающимися разделами по датам.
     @Published var groupByDate = UserDefaults.standard.object(forKey: "groupByDate") as? Bool ?? true {
         didSet { if !options.demo { UserDefaults.standard.set(groupByDate, forKey: "groupByDate") } }
@@ -392,6 +418,8 @@ final class AppModel: ObservableObject {
     let notifier = MailNotifier()
     /// Плашки в вырезе Trunook сверх писем: приглашения, встречи, отложенное.
     let trunook = TrunookBridge()
+    /// Проверка и установка новых версий с GitHub.
+    private(set) var updates = UpdateService()
     /// Письма, о которых уже известно, — новые сверх них и есть «пришло письмо».
     private var knownMailIDs: Set<String>?
     /// Тело выбранного письма.
@@ -489,6 +517,7 @@ final class AppModel: ObservableObject {
         mailCutoff = store.mailCutoff(now: now)
         states = store.allStates()
         priorities = store.allPriorities()
+        labels = store.allLabels()
         noteDays = store.daysWithNotes()
         if options.demo {
             sortByPriority = options.sortByPriority
@@ -510,12 +539,20 @@ final class AppModel: ObservableObject {
 
         notifier.persists = !options.demo
         trunook.persists = !options.demo
+        if options.demo {
+            // Своя полка настроек: тестовый запуск не сдвигает срок проверки
+            // настоящего приложения.
+            updates = UpdateService(defaults: UserDefaults(suiteName: "com.trudaybook.Trudaybook.demo-updates") ?? .standard,
+                                    pretendVersion: options.pretendVersion, firstCheckDelay: 1)
+        }
         trunook.model = self
         if options.demo {
             // Проверки в тестовом режиме не показываются в настоящем вырезе.
             TrunookLink.shared.inbox = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Caches/TrudaybookDemo/trunook-inbox", isDirectory: true)
-            trunook.isEnabled = options.trunookProbe
+            // Пересказ и разметка по флагу — настоящая просьба к Trunook
+            // (тестовые письма вымышленные); сводка и заметки остаются в кэше.
+            let asksModel = options.summary || options.labelMail
             // `--trunook-real-folders`: сводка и команды — в настоящих папках,
             // чтобы живой Trunook увидел тестовую почту (проверка помощника).
             if !options.trunookRealFolders {
@@ -526,6 +563,18 @@ final class AppModel: ObservableObject {
             }
             trunook.acceptCommands = options.trunookProbe
             trunook.shareDayNotes = options.trunookProbe
+            if !options.trunookRealFolders && !asksModel {
+                let cache = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent("Library/Caches/TrudaybookDemo", isDirectory: true)
+                trunookModel.requests = cache.appendingPathComponent("trunook-model-requests", isDirectory: true)
+                trunookModel.answers = cache.appendingPathComponent("trunook-model-answers", isDirectory: true)
+            }
+            trunook.modelHelp = true
+            trunook.autoLabel = false
+            // Включается последним: включение сразу пишет сводку, и до смены
+            // папок она легла бы в настоящую папку Trudaybook поверх сводки
+            // живой почты — так и случилось 27 сентября.
+            trunook.isEnabled = options.trunookProbe || asksModel
         }
         notifier.onOpen = { [weak self] id in self?.open(itemID: id) }
         notifier.onReplyInApp = { [weak self] id in self?.open(itemID: id, reply: true) }
@@ -1132,7 +1181,10 @@ final class AppModel: ObservableObject {
 
     private var filteredListItems: [TimelineItem] {
         if let searchResults { return searchResults }
-        let base = listMode == .unresolved ? unresolved : folderItems
+        var base = listMode == .unresolved ? unresolved : folderItems
+        if listMode == .unresolved, let labelFilter {
+            base = base.filter { label(of: $0) == labelFilter }
+        }
         let needle = searchText.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty else { return base }
         return base.filter { item in
@@ -1202,6 +1254,134 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = String(localized: "Приоритет не сохранился: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Метки и пересказ (модель Trunook)
+
+    /// Метка письма: поставленная человеком или Trunook, иначе — по правилу.
+    func label(of item: TimelineItem) -> MailLabel? {
+        guard item.kind == .mail else { return nil }
+        return MailLabelRules.effective(stored: labels[item.id], mail: item.mail)
+    }
+
+    func labelSource(of item: TimelineItem) -> MailLabelSource? {
+        labels[item.id]?.source ?? (item.mail.flatMap(MailLabelRules.guess) == nil ? nil : .rule)
+    }
+
+    /// Сколько неразобранных писем с такой меткой — для фильтра.
+    func unresolvedCount(label: MailLabel) -> Int {
+        unresolved.filter { self.label(of: $0) == label }.count
+    }
+
+    func setLabel(_ label: MailLabel?, for id: String, source: MailLabelSource = .user) {
+        let stored = label.map { StoredLabel(label: $0, source: source) }
+        do {
+            try store.setLabel(stored, for: id, now: now)
+            labels[id] = stored
+        } catch {
+            errorMessage = String(localized: "Метка не сохранилась: \(error.localizedDescription)")
+        }
+    }
+
+    /// Можно ли просить модель Trunook: связь включена и разрешена помощь модели.
+    var trunookModelAllowed: Bool { trunook.isEnabled && trunook.modelHelp }
+
+    /// Пересказ открытого письма моделью Trunook.
+    func summarize(_ item: TimelineItem, again: Bool = false) {
+        guard item.kind == .mail, let body, selectedID == item.id else { return }
+        // Готовый или идущий пересказ не просим заново; неудавшийся — можно.
+        if !again, let state = summaries[item.id] {
+            if case .failed = state {} else { return }
+        }
+        guard trunookModelAllowed else {
+            summaries[item.id] = .failed(code: "disabled", message: String(localized: "Включите в настройках Trudaybook → Trunook связь и помощь модели."))
+            return
+        }
+        let text = TrunookModelRequest.plainText(body)
+        guard !text.isEmpty else {
+            summaries[item.id] = .failed(code: "empty", message: String(localized: "В письме нет текста для пересказа."))
+            return
+        }
+        summaries[item.id] = .loading
+        let id = UUID().uuidString
+        let payload = TrunookModelRequest.summary(
+            id: id, language: AppLanguage.code, subject: item.title,
+            from: item.mail?.from.display ?? "", date: item.time, text: text)
+        DebugLog.write("Trunook: просим пересказ письма (\(text.count) знаков)")
+        Task {
+            let answer = await trunookModel.ask(payload, id: id, timeout: 240)
+            switch answer {
+            case .summary(let summary):
+                summaries[item.id] = .ready(summary)
+            case let .failed(code, message):
+                DebugLog.write("Trunook: пересказа нет — \(code)")
+                summaries[item.id] = .failed(code: code, message: message)
+            case .labels:
+                summaries[item.id] = .failed(code: "unreadable", message: String(localized: "Ответ Trunook не разобрался."))
+            }
+        }
+    }
+
+    /// Разметить неразобранные письма моделью Trunook.
+    ///
+    /// Берутся письма без метки от человека или Trunook и без метки по
+    /// правилу: рассылку по `List-Unsubscribe` модель не угадает лучше
+    /// заголовка. Пачками по 25, по очереди — местная модель одна.
+    func labelUnresolved(manual: Bool) {
+        if case .running = labeling { return }
+        guard trunookModelAllowed else {
+            if manual { labeling = .failed(String(localized: "Включите в настройках Trudaybook → Trunook связь и помощь модели.")) }
+            return
+        }
+        let pending = unresolved.filter { item in
+            guard item.kind == .mail, let mail = item.mail else { return false }
+            return labels[item.id] == nil && MailLabelRules.guess(mail) == nil
+        }
+        guard !pending.isEmpty else {
+            if manual { labeling = .finished(count: 0) }
+            return
+        }
+        labeling = .running(done: 0, total: pending.count)
+        DebugLog.write("Trunook: разметка — писем \(pending.count)")
+        Task {
+            var done = 0
+            var labelled = 0
+            for start in stride(from: 0, to: pending.count, by: TrunookModelRequest.batchSize) {
+                let batch = Array(pending[start ..< min(start + TrunookModelRequest.batchSize, pending.count)])
+                let (letters, ids) = TrunookModelRequest.letters(batch)
+                let id = UUID().uuidString
+                let answer = await trunookModel.ask(
+                    TrunookModelRequest.labels(id: id, language: AppLanguage.code, letters: letters),
+                    id: id, timeout: 300)
+                switch answer {
+                case .labels(let found):
+                    for (key, label) in found {
+                        guard let itemID = ids[key], MailLabelRules.trunookMayWrite(over: labels[itemID]) else { continue }
+                        setLabel(label, for: itemID, source: .trunook)
+                        labelled += 1
+                    }
+                case let .failed(code, message):
+                    DebugLog.write("Trunook: разметка прервана — \(code)")
+                    labeling = .failed(message)
+                    return
+                case .summary:
+                    break
+                }
+                done += batch.count
+                labeling = .running(done: done, total: pending.count)
+            }
+            DebugLog.write("Trunook: разметка готова — метки у \(labelled)")
+            labeling = .finished(count: labelled)
+        }
+    }
+
+    /// Сама — не чаще раза в десять минут и только если это разрешено.
+    private func autoLabel() {
+        guard trunookModelAllowed, trunook.autoLabel, !options.demo || options.labelMail else { return }
+        if let lastAutoLabel, now.timeIntervalSince(lastAutoLabel) < 600 { return }
+        guard trunookModel.isTrunookRunning else { return }
+        lastAutoLabel = now
+        labelUnresolved(manual: false)
     }
 
     /// Поиск по тексту писем на сервере — в текущей папке или, из
@@ -1802,6 +1982,7 @@ final class AppModel: ObservableObject {
     /// Новые письма с прошлой загрузки: непрочитанные, не свои и свежие —
     /// дозагрузка старых дней при листании назад уведомлять не должна.
     private func noticeNewMail() {
+        autoLabel()
         let ids = Set(allMail.map(\.id))
         defer { knownMailIDs = (knownMailIDs ?? []).union(ids) }
         guard let known = knownMailIDs, !options.demo else { return }

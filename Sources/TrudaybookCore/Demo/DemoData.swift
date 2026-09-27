@@ -318,7 +318,11 @@ public actor DemoMailProvider: MailProvider {
                     isAnsweredOnServer: answeredOnServer,
                     hasAttachments: index % 4 == 1,
                     // Отправитель отметил важность — в списке значок высокого приоритета.
-                    senderPriority: index % 5 == 2 ? .high : nil
+                    senderPriority: index % 5 == 2 ? .high : nil,
+                    // Метки по правилу: у поддержки — заголовки рассылки,
+                    // Jira — робот.
+                    isBulk: sender.address == "support@service.test",
+                    isAutomatic: sender.address == "jira@company.test"
                 ))
             )
         }

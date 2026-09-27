@@ -101,7 +101,11 @@ notch app by the same author (optional, all off by default):
 - while a Trunook timer runs, Trudaybook stays quiet and then sends one
   summary notification;
 - the Trunook assistant reads unhandled mail, snoozes emails, sets priority
-  and drafts replies — **you send them yourself**;
+  and labels and drafts replies — **you send them yourself**;
+- above each email there's a collapsed “Summary” bar: expand it and Trunook's
+  model summarizes the email; “To handle” gets labels — Important,
+  Conversation, Notifications, Newsletters — with a filter. Newsletters and
+  notifications show up even without Trunook, from the email's headers;
 - a shared day note;
 - weather in the calendar comes from Trunook.
 
@@ -128,13 +132,18 @@ notch app by the same author (optional, all off by default):
 ## What leaves your Mac
 
 - **Your mail servers** — only the ones you add: IMAP and SMTP (ports 993,
-  465/587) or Exchange EWS (HTTPS). The app connects nowhere else on its own:
-  no analytics, no server of its own, no update checks.
+  465/587) or Exchange EWS (HTTPS).
+- **Update check** — once a day, a request to `api.github.com` for the latest
+  version, with the app's name and version in the header; a new version is
+  downloaded from GitHub. Turn it off in Settings → Updates. The app connects
+  nowhere else on its own: no analytics, no server of its own.
 - **Remote images in emails** don't load until you click “Load” above the email —
   otherwise the sender would learn you opened the email. JavaScript in emails
   is always off.
 - **Passwords** — in the macOS Keychain, never written to the log.
 - **Weather** isn't requested by the app: Trunook sends it, if installed.
+- **Summaries and labels** come only from a model on this Mac: if Trunook uses
+  a cloud model, it refuses, and the email text goes nowhere.
 - Trudaybook talks to Trunook only through files in `~/Library/Application Support`
   on the same Mac.
 
@@ -166,6 +175,13 @@ sudo xattr -r -c /Applications/Trudaybook.app
 
 The image carries the same instructions in “Как установить.txt”. To check
 the signature: `codesign --verify --deep --strict /Applications/Trudaybook.app`.
+
+**Updates** arrive by themselves: once a day Trudaybook asks GitHub, downloads
+a new version in the background and checks its signature — only a build
+signed with the same certificate is installed. An “Update to …” button
+appears in the window: click it and the app restarts as the new version,
+with calendar and password access still granted. A build you signed with
+your own certificate can't update this way — use `git pull` and `make install`.
 
 With no mailbox connected, Trudaybook opens with sample emails and meetings,
 so you can see how it works. Add mail in Settings → Mail.

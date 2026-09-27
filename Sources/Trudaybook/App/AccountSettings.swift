@@ -10,7 +10,7 @@ import TrudaybookMail
 @MainActor
 enum SettingsWindow {
     enum Tab: String, CaseIterable, Identifiable {
-        case mail, calendars, notifications, trunook, appearance
+        case mail, calendars, notifications, trunook, appearance, updates
         var id: String { rawValue }
 
         var title: String {
@@ -20,6 +20,7 @@ enum SettingsWindow {
             case .notifications: String(localized: "Уведомления")
             case .trunook: "Trunook"
             case .appearance: String(localized: "Оформление")
+            case .updates: String(localized: "Обновления")
             }
         }
 
@@ -30,6 +31,7 @@ enum SettingsWindow {
             case .notifications: "bell.badge.fill"
             case .trunook: "rectangle.topthird.inset.filled"
             case .appearance: "paintpalette.fill"
+            case .updates: "arrow.down.circle.fill"
             }
         }
 
@@ -40,6 +42,7 @@ enum SettingsWindow {
             case .notifications: Palette.amber
             case .trunook: Palette.mint
             case .appearance: Palette.violet
+            case .updates: Palette.cyan
             }
         }
     }
@@ -102,6 +105,7 @@ struct SettingsView: View {
                     case .notifications: NotificationSettingsView(notifier: model.notifier)
                     case .trunook: TrunookSettingsView(bridge: model.trunook)
                     case .appearance: AppearanceSettingsView()
+                    case .updates: UpdateSettingsView(updates: model.updates)
                     }
                 }
                 .padding(.horizontal, 24)

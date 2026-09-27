@@ -26,6 +26,12 @@ final class TrunookBridge: ObservableObject {
     /// приоритет, отмечать разобранным и готовить черновик ответа.
     @Published var acceptCommands: Bool { didSet { save(acceptCommands, "trunookCommands"); syncCommands(); publishState() } }
 
+    /// Пересказ писем и метки для разбора — местной моделью Trunook.
+    /// Облачной Trunook откажет сам: письма с Mac не уходят.
+    @Published var modelHelp: Bool { didSet { save(modelHelp, "trunookModelHelp") } }
+    /// Размечать новые неразобранные письма без нажатия.
+    @Published var autoLabel: Bool { didSet { save(autoLabel, "trunookAutoLabel") } }
+
     let commands = TrunookCommandInbox()
     /// Заметка дня — общая с заметками Trunook. Выключено по умолчанию:
     /// заметки личные, а в Trunook они могут уйти и в Obsidian.
@@ -56,6 +62,8 @@ final class TrunookBridge: ObservableObject {
         quietDuringFocus = flag("trunookFocusQuiet", true)
         acceptCommands = flag("trunookCommands", false)
         shareDayNotes = flag("trunookDayNotes", false)
+        modelHelp = flag("trunookModelHelp", true)
+        autoLabel = flag("trunookAutoLabel", true)
     }
 
     /// Запустить то, что работает само по себе: приём команд.

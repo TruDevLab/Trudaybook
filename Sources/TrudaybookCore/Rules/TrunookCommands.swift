@@ -7,19 +7,23 @@ import Foundation
 /// Отправить письмо, переслать, удалить — таких команд нет вовсе: ответ
 /// помощник только кладёт черновиком, а отправляет человек.
 public enum TrunookCommand: Equatable, Sendable {
-    /// Неразобранные письма: от кого (слова), только важные, сколько.
-    case list(from: String?, importantOnly: Bool, limit: Int)
+    /// Неразобранные письма: от кого (слова), только важные, сколько,
+    /// только с такой меткой.
+    case list(from: String?, importantOnly: Bool, limit: Int, label: MailLabel? = nil)
     case open(letter: String)
     case snooze(letter: String, until: Date)
     case priority(letter: String, level: Priority)
     case done(letter: String)
     case draft(letter: String, text: String)
+    /// Метка для разбора; `nil` — снять.
+    case label(letter: String, label: MailLabel?)
 
     public enum ParseError: Error, Equatable, Sendable {
         case unknownAction(String)
         case missing(String)
         case badDate
         case badLevel(String)
+        case badLabel(String)
     }
 
     /// Потолок файла команды: это строка-другая и короткий текст ответа.
@@ -38,9 +42,14 @@ public enum TrunookCommand: Equatable, Sendable {
         switch action {
         case "list":
             let limit = (json["limit"] as? NSNumber)?.intValue ?? 10
+            var label: MailLabel?
+            if let raw = text("label") {
+                guard let parsed = MailLabel(loose: raw) else { return .failure(.badLabel(String(raw.prefix(40)))) }
+                label = parsed
+            }
             return .success(.list(from: text("from"),
                                   importantOnly: (json["important_only"] as? NSNumber)?.boolValue ?? false,
-                                  limit: min(max(limit, 1), 30)))
+                                  limit: min(max(limit, 1), 30), label: label))
         case "open":
             return letter().map { .open(letter: $0) }
         case "done":
@@ -54,6 +63,11 @@ public enum TrunookCommand: Equatable, Sendable {
             let levels: [String: Priority] = ["high": .high, "medium": .medium, "low": .low, "none": .none]
             guard let level = levels[raw] else { return .failure(.badLevel(raw)) }
             return letter().map { .priority(letter: $0, level: level) }
+        case "label":
+            let raw = text("label") ?? "none"
+            if raw.lowercased() == "none" { return letter().map { .label(letter: $0, label: nil) } }
+            guard let label = MailLabel(loose: raw) else { return .failure(.badLabel(String(raw.prefix(40)))) }
+            return letter().map { .label(letter: $0, label: label) }
         case "draft":
             guard let body = text("text") else { return .failure(.missing("text")) }
             return letter().map { .draft(letter: $0, text: String(body.prefix(maxDraftLength))) }
@@ -95,7 +109,9 @@ public enum TrunookCommand: Equatable, Sendable {
     /// Неразобранные письма для ответа на `list`: свежие сверху,
     /// с началом текста — по нему помощник и пересказывает.
     public static func listing(_ letters: [TimelineItem], from: String?, importantOnly: Bool, limit: Int,
-                               priority: (TimelineItem) -> Priority) -> [[String: Any]] {
+                               label: MailLabel? = nil,
+                               priority: (TimelineItem) -> Priority,
+                               labelOf: (TimelineItem) -> MailLabel? = { _ in nil }) -> [[String: Any]] {
         let words = from?.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { $0.count >= 2 } ?? []
@@ -104,13 +120,14 @@ public enum TrunookCommand: Equatable, Sendable {
             .filter { item in
                 guard let mail = item.mail else { return false }
                 if importantOnly, priority(item) != .high { return false }
+                if let label, labelOf(item) != label { return false }
                 let sender = (mail.from.display + " " + (mail.from.address ?? "")).lowercased()
                 return words.allSatisfy { sender.contains($0) }
             }
             .sorted { $0.time > $1.time }
             .prefix(limit)
             .map { item in
-                [
+                var entry: [String: Any] = [
                     "id": item.id,
                     "from": item.mail?.from.display ?? "",
                     "title": String(item.title.prefix(160)),
@@ -118,6 +135,8 @@ public enum TrunookCommand: Equatable, Sendable {
                     "important": priority(item) == .high,
                     "snippet": String((item.mail?.snippet ?? "").prefix(240)),
                 ]
+                if let label = labelOf(item) { entry["label"] = label.rawValue }
+                return entry
             }
     }
 }

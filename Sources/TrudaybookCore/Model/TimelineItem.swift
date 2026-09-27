@@ -116,6 +116,10 @@ public struct MailInfo: Hashable, Sendable {
     /// Письмо ушло из Входящих нашим действием (в архив, ответ на
     /// приглашение). На таймлайне оно остаётся — разобранным, с галочкой.
     public var movedAway: Bool
+    /// Рассылка: `List-Unsubscribe`, `List-Id` или `Precedence: bulk|list`.
+    public var isBulk: Bool
+    /// Письмо робота: `Auto-Submitted` не `no`.
+    public var isAutomatic: Bool
 
     public init(
         accountID: String,
@@ -131,7 +135,9 @@ public struct MailInfo: Hashable, Sendable {
         hasAttachments: Bool = false,
         senderPriority: Priority? = nil,
         isInvitation: Bool = false,
-        movedAway: Bool = false
+        movedAway: Bool = false,
+        isBulk: Bool = false,
+        isAutomatic: Bool = false
     ) {
         self.accountID = accountID
         self.from = from
@@ -147,6 +153,8 @@ public struct MailInfo: Hashable, Sendable {
         self.senderPriority = senderPriority
         self.isInvitation = isInvitation
         self.movedAway = movedAway
+        self.isBulk = isBulk
+        self.isAutomatic = isAutomatic
     }
 }
 

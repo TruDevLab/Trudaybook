@@ -59,9 +59,20 @@ struct TrunookSettingsView: View {
             .toggleStyle(.checkbox)
             .disabled(!bridge.isEnabled)
 
+            SettingsCard(title: String(localized: "Модель Trunook: пересказ и метки"), icon: "text.badge.star") {
+                Toggle("Пересказ писем и метки для разбора", isOn: $bridge.modelHelp)
+                Toggle("Размечать новые письма сами", isOn: $bridge.autoLabel)
+                    .padding(.leading, 20)
+                    .disabled(!bridge.modelHelp)
+                SettingsHint(String(localized: "Над письмом — плашка «Кратко»: раскройте, и Trunook перескажет письмо. В «Не разобрано» — метки: важное, переписка, уведомления, рассылки."))
+                SettingsHint(String(localized: "Отвечает только модель на этом Mac. Если в Trunook выбрана облачная, он откажет — письма в интернет не уходят."))
+            }
+            .toggleStyle(.checkbox)
+            .disabled(!bridge.isEnabled)
+
             SettingsCard(title: String(localized: "Помощник Trunook"), icon: "sparkles") {
                 Toggle("Разрешить помощнику работать с почтой", isOn: $bridge.acceptCommands)
-                SettingsHint(String(localized: "Читать неразобранное, откладывать, ставить приоритет, отмечать разобранным и готовить черновик ответа. Отправляете письма только вы."))
+                SettingsHint(String(localized: "Читать неразобранное, откладывать, ставить приоритет и метки, отмечать разобранным и готовить черновик ответа. Отправляете письма только вы."))
             }
             .toggleStyle(.checkbox)
             .disabled(!bridge.isEnabled)

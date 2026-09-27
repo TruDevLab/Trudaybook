@@ -68,13 +68,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         DebugLog.write("запуск: демо=\(model.options.demo)")
+        // Обновления — у настоящего приложения; в тестовом режиме только
+        // по `--update-probe`, чтобы снимки не ходили в сеть.
+        if !model.options.demo || model.options.updateProbe { model.updates.start() }
+        // Проба — как по кнопке: мимо суточного срока.
+        if model.options.updateProbe { model.updates.check(manual: true) }
+        if let version = model.options.updatePreview { model.updates.preview(version: version) }
         Task {
             await model.start()
             DebugLog.write("данные: на дне \(model.dayItems.count), не разобрано \(model.unresolved.count)")
+            if model.options.labelMail { model.labelUnresolved(manual: true) }
             if let path = model.options.snapshotPath {
                 model.applyDebugSelection()
                 // Дать окну дорисоваться: тело письма и раскладка приходят асинхронно.
                 try? await Task.sleep(for: .seconds(2.5))
+                // Пересказ и разметка — ждём ответа Trunook, а не снимаем «читает…».
+                if model.options.summary || model.options.labelMail {
+                    let deadline = Date().addingTimeInterval(300)
+                    while Date() < deadline {
+                        let summaryBusy = model.options.summary
+                            && model.selectedID.map { model.summaries[$0] == .loading } == true
+                        var labelBusy = false
+                        if case .running = model.labeling { labelBusy = true }
+                        if !summaryBusy && !labelBusy { break }
+                        try? await Task.sleep(for: .seconds(1))
+                    }
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
                 if let tab = model.options.settings {
                     SettingsWindow.show(model: model, tab: SettingsWindow.Tab(rawValue: tab) ?? .mail)
                     try? await Task.sleep(for: .seconds(1))
@@ -98,6 +118,7 @@ enum MainMenu {
 
         main.addItem(submenu("Trudaybook", [
             item(String(localized: "О программе Trudaybook"), #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            ClosureItem(String(localized: "Проверить обновления…"), key: "") { UpdateActions.checkFromMenu(model: model) },
             .separator(),
             ClosureItem(String(localized: "Настройки…"), key: ",") { SettingsWindow.show(model: model) },
             .separator(),

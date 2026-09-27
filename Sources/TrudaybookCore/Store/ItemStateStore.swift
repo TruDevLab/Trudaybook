@@ -43,6 +43,12 @@ public final class ItemStateStore {
                 id TEXT PRIMARY KEY,
                 priority INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS item_label (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                source TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -164,6 +170,34 @@ public final class ItemStateStore {
             INSERT INTO item_priority (id, priority) VALUES (?, ?)
             ON CONFLICT(id) DO UPDATE SET priority = excluded.priority
             """, [.text(id), .integer(Int64(priority.rawValue))])
+    }
+
+    // MARK: - Метки
+
+    /// Метки писем: от человека, от Trunook или по правилу. Неизвестные
+    /// значения (метку однажды переименуют) пропускаются, а не падают.
+    public func allLabels() -> [String: StoredLabel] {
+        var result: [String: StoredLabel] = [:]
+        db.query("SELECT id, label, source FROM item_label") { row in
+            guard let id = row.text(0), let label = row.text(1).flatMap(MailLabel.init(rawValue:)),
+                  let source = row.text(2).flatMap(MailLabelSource.init(rawValue:)) else { return }
+            result[id] = StoredLabel(label: label, source: source)
+        }
+        return result
+    }
+
+    /// `nil` — снять метку.
+    public func setLabel(_ label: StoredLabel?, for id: String, now: Date = Date()) throws {
+        guard let label else {
+            try db.run("DELETE FROM item_label WHERE id = ?", [.text(id)])
+            return
+        }
+        try db.run("""
+            INSERT INTO item_label (id, label, source, updated_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET label = excluded.label, source = excluded.source,
+                updated_at = excluded.updated_at
+            """, [.text(id), .text(label.label.rawValue), .text(label.source.rawValue),
+                   .real(now.timeIntervalSince1970)])
     }
 
     // MARK: - Служебные значения

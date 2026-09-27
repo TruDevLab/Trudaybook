@@ -27,6 +27,9 @@ struct ItemRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
+            if let label = model.label(of: item) {
+                LabelChip(label: label, source: model.labelSource(of: item))
+            }
             // Приоритет — справа, в одном столбце у всех строк: так его видно,
             // пробегая список глазами, и тема не сдвигается.
             PriorityMark(priority: priority)
@@ -60,9 +63,10 @@ struct ItemRow: View {
             model.selectedID = item.id
             onSelect?()
         }
-        .draggable(item.id) { DragPreview(item: item) }
+        .itemDraggable(item)
         .contextMenu {
             PriorityPicker(id: item.id, current: priority)
+            LabelPicker(item: item)
         }
     }
 }
@@ -207,6 +211,10 @@ struct MailListPanel: View {
                 .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.06)))
                 .frame(minWidth: 80, maxWidth: 210)
                 .help("Набор ищет по теме и людям, Return — ещё и в тексте писем на сервере")
+            }
+
+            if model.listMode == .unresolved, model.searchResults == nil, !model.unresolved.isEmpty {
+                LabelFilterBar()
             }
 
             if let results = model.searchResults {

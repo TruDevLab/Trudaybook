@@ -265,6 +265,7 @@ struct ActionBar: View {
                     .foregroundStyle(.orange)
                     .help("Разрешите доступ в Системных настройках → Конфиденциальность и безопасность")
             }
+            UpdateCapsule(updates: model.updates)
             MailStatus()
                 .glassCapsule()
         }
@@ -455,7 +456,10 @@ struct DayHeader: View {
                     .fixedSize()
                 if !week { WeatherChip(day: model.day) }
             }
+            // Своя ширина снаружи рамки: `frame(minWidth:)` сам по себе даёт
+            // шапке сжать заголовок до 210, и погода наезжала на «›» и «Сегодня».
             .frame(minWidth: 210, alignment: .leading)
+            .fixedSize(horizontal: true, vertical: false)
             Button { model.shiftDay(1) } label: { Image(systemName: "chevron.right") }
                 .help(week ? String(localized: "Следующая неделя (⌘])") : String(localized: "Следующий день (⌘])"))
             Button("Сегодня") { model.showToday() }
