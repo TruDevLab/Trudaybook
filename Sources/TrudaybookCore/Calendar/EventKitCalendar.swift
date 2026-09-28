@@ -539,7 +539,9 @@ public final class EventKitCalendar: CalendarProvider {
                 recurrenceSummary: event.recurrenceRules?.first.flatMap(rule(from:))?.summary(start: start),
                 calendarID: event.calendar?.calendarIdentifier,
                 canEdit: event.calendar?.allowsContentModifications == true,
-                canDecline: event.calendar?.allowsContentModifications == true
+                canDecline: event.calendar?.allowsContentModifications == true,
+                uid: event.calendarItemExternalIdentifier,
+                isCancelled: event.status == .canceled
             ))
         )
     }

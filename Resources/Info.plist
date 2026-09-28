@@ -4,14 +4,24 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ru</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>ru</string>
-		<string>en</string>
-		<string>zh-Hans</string>
-	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Trudaybook</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>iCalendar</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.apple.ical.ics</string>
+				<string>public.calendar-event</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>Trudaybook</string>
 	<key>CFBundleIconFile</key>
@@ -20,12 +30,41 @@
 	<string>com.trudaybook.Trudaybook</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ru</string>
+		<string>en</string>
+		<string>zh-Hans</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>Trudaybook</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.trudaybook.mailto</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mailto</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.trudaybook.open</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>trudaybook</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
@@ -38,6 +77,10 @@
 	<string>Trudaybook подставляет ваш адрес iCloud из карточки «Я» в Контактах, чтобы не вводить его при подключении почты.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSLocationUsageDescription</key>
+	<string>Trudaybook узнаёт, где вы, только чтобы показать погоду, если её не присылает Trunook. Координаты округляются примерно до 10 км.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Trudaybook узнаёт, где вы, только чтобы показать погоду, если её не присылает Trunook. Координаты округляются примерно до 10 км.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSRemindersFullAccessUsageDescription</key>

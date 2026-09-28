@@ -37,7 +37,9 @@ struct InvitationCard: View {
             }
             .font(.callout)
 
-            if invitation.method != .cancel {
+            if invitation.method == .cancel {
+                CancellationActions(item: item, invitation: invitation)
+            } else {
                 availability(conflicts)
                 InvitationDayStrip(invitation: invitation, events: model.invitationDayEvents, conflicts: conflicts)
                     .frame(height: 70)
@@ -189,5 +191,61 @@ private struct InvitationDayStrip: View {
             }
         }
         .help("Ваш календарь в этот день; снизу — приглашение")
+    }
+}
+
+/// Письмо об отмене: где эта встреча в календаре и кнопка убрать её оттуда
+/// (письмо при этом уходит в архив).
+private struct CancellationActions: View {
+    @EnvironmentObject private var model: AppModel
+    let item: TimelineItem
+    let invitation: Invitation
+    @ViewState private var target: TimelineItem?
+    @ViewState private var lookedUp = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !lookedUp {
+                ProgressView().controlSize(.small)
+            } else if let target {
+                Label(String(localized: "В календаре: \(target.title), \(Format.dayTitle(target.time)) \(Format.range(target.time, target.end))"),
+                      systemImage: "calendar")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if invitation.isSeriesCancellation, target.event?.isRecurring == true {
+                    Label("Отменена вся серия — удалятся все её встречи", systemImage: "repeat")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                button(String(localized: "Удалить из календаря"), systemImage: "trash")
+            } else {
+                Label("В календаре этой встречи уже нет", systemImage: "checkmark.circle")
+                    .font(.callout).foregroundStyle(.secondary)
+                button(String(localized: "В архив"), systemImage: "archivebox")
+            }
+        }
+        .task(id: item.id) {
+            lookedUp = false
+            target = await model.cancelledEvent(for: invitation)
+            lookedUp = true
+        }
+    }
+
+    private func button(_ title: String, systemImage: String) -> some View {
+        HStack {
+            Button {
+                model.removeCancelledMeeting(letterID: item.id, cancellation: invitation)
+            } label: {
+                if model.removingCancelled == item.id {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Label(title, systemImage: systemImage)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .disabled(model.removingCancelled != nil)
+            Text("Письмо уйдёт в архив").font(.caption).foregroundStyle(.secondary)
+        }
     }
 }

@@ -1,3 +1,5 @@
 "NSCalendarsFullAccessUsageDescription" = "Trudaybook shows meetings on the day timeline next to mail and moves them at your command.";
 "NSContactsUsageDescription" = "Trudaybook fills in your iCloud address from your “Me” card in Contacts so you don't have to type it when connecting mail.";
 "NSRemindersFullAccessUsageDescription" = "Trudaybook shows reminders on the day timeline, marks them done and moves them at your command.";
+"NSLocationUsageDescription" = "Trudaybook uses your location only to show the weather when Trunook doesn't provide it. Coordinates are rounded to about 10 km.";
+"NSLocationWhenInUseUsageDescription" = "Trudaybook uses your location only to show the weather when Trunook doesn't provide it. Coordinates are rounded to about 10 km.";

@@ -79,6 +79,8 @@ macOS решает, рисовать ли системные элементы в
 | `~/Library/Application Support/Trudaybook/accounts.json` | Ящики — без паролей |
 | Связка ключей | Пароли ящиков |
 | `~/Library/Application Support/Trudaybook/mail.sqlite` | Кэш заголовков и тел писем |
+| `~/Library/Application Support/Trudaybook/weather-week.json` | Своя погода от Open-Meteo (если включена и Trunook молчит) — того же вида, что у Trunook |
+| `~/Library/Application Support/Trudaybook/widget/snapshot.json` | Сводка для виджетов: встречи на два дня, неразобранное, погода |
 | `~/Library/Application Support/Trudaybook/state.sqlite` | Отметки, приоритеты, заметки дней, недель и месяцев (текст и RTF) |
 | `~/Library/Application Support/Trudaybook/Update/` | Скачанное и проверенное обновление, `staged.json` |
 | `~/Library/Logs/Trudaybook.log` | Журнал: без паролей и текста писем |
@@ -222,6 +224,45 @@ MacBook того же автора. Связь — только файлами, 
 человека ни Trunook, ни помощник не переписывают. Пересказы живут только
 в памяти. **Отвечает только местная модель**: облачной Trunook откажет,
 и письмо с Mac не уйдёт.
+
+**Отмена встречи.** Письмо об отмене (iCalendar `METHOD:CANCEL`) находит
+свою встречу по UID (Exchange — `calendar:UID`, macOS — внешний
+идентификатор события), а без UID — по названию без «Отменено:» и времени
+(`MeetingCancellation`). Такая встреча, как и отменённая самим календарём
+(`IsCancelled` у Exchange, `.canceled` у EventKit), зачёркнута и
+заштрихована, пока её не уберут кнопкой «Удалить из календаря» — в письме
+или в карточке встречи: встреча удаляется без рассылки (серия — целиком,
+если отменили серию), письмо уходит в архив. Отменённые встречи не
+считаются занятостью и о них не напоминают.
+
+**Виджеты на рабочем столе.** Вид — библиотека `TrudaybookWidgetUI`; расширение
+WidgetKit — тонкий таргет `TrudaybookWidgets` с `@main` у набора и точкой
+входа `_NSExtensionMain` (флаг линковщика, как у Xcode: с обычным `main`
+`ExtensionFoundation` роняет расширение при запуске). Makefile кладёт его в `Contents/PlugIns/TrudaybookWidgets.appex`
+(`Widgets/Info.plist`) и подписывает раньше приложения. Расширение обязано
+жить в песочнице, а общую группу приложений без Team ID не завести, поэтому
+Trudaybook пишет сводку (`WidgetSnapshot`) в
+`~/Library/Application Support/Trudaybook/widget/snapshot.json`, а виджету
+подписью разрешено только читать эту папку
+(`temporary-exception.files.home-relative-path.read-only`,
+`Widgets/TrudaybookWidgets.entitlements`). Сводка пишется при изменении
+(`WidgetFeed`) и будит виджеты через `WidgetCenter`. Нажатие — ссылка
+`trudaybook://today|unresolved|item?id=…`: только показать, ничего не менять.
+Вид без установки: `$(swift build --show-bin-path)/TrudaybookWidgetPreview <папка>`.
+Копия для снимков расширения не несёт.
+
+**Почта и календарь по умолчанию.** `Info.plist` объявляет схему `mailto`
+и файлы `com.apple.ical.ics` / `public.calendar-event`; назначает macOS
+(`NSWorkspace.setDefaultApplication`, `DefaultApps`), спрашивая человека.
+Ссылка — `MailtoLink` (только адреса, тема, текст; скрытую копию в «Копию»
+не переносим), файл — `CalendarFile` (окно новой встречи, без участников:
+Exchange разослал бы приглашения). Ссылки, пришедшие до конца запуска,
+ждут в очереди `AppDelegate`.
+
+**Погода без Trunook** (`DirectWeather`, `OpenMeteo`): выключена по умолчанию;
+включённая, спрашивает Open-Meteo раз в час, только если прогноз Trunook
+старше трёх часов. Координаты округляются до 0,1°, геолокация — по
+разрешению macOS, обратного геокодинга нет; сессия без куки и кэша.
 
 **Тема «Небо».** Фон меняется со временем суток и погодой: `SkyRules`
 (ядро) по восходу и закату из прогноза Trunook (без него — приблизительно,

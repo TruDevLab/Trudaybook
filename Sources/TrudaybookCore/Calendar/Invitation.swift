@@ -22,10 +22,17 @@ public struct Invitation: Hashable, Sendable {
     public var notes: String?
     /// Повторяющаяся встреча (есть `RRULE`) — отвечают сразу за всю серию.
     public var isRecurring: Bool
+    /// `RECURRENCE-ID`: письмо об одном вхождении серии, а не о всей серии.
+    public var recurrenceID: Date?
+
+    /// Отменена вся серия, а не одно вхождение.
+    public var isSeriesCancellation: Bool { method == .cancel && isRecurring && recurrenceID == nil }
 
     public init(method: Method, uid: String, sequence: Int = 0, summary: String, start: Date, end: Date,
                 isAllDay: Bool = false, location: String? = nil, organizer: Person? = nil,
-                attendees: [Person] = [], notes: String? = nil, isRecurring: Bool = false) {
+                attendees: [Person] = [], notes: String? = nil, isRecurring: Bool = false,
+                recurrenceID: Date? = nil) {
+        self.recurrenceID = recurrenceID
         self.method = method
         self.uid = uid
         self.sequence = sequence
@@ -45,7 +52,8 @@ public struct Invitation: Hashable, Sendable {
     public func conflicts(in events: [TimelineItem]) -> [TimelineItem] {
         guard !isAllDay else { return [] }
         return events.filter { item in
-            guard item.kind == .event, !item.isAllDay else { return false }
+            // Отменённая встреча время не занимает.
+            guard item.kind == .event, !item.isAllDay, item.event?.isCancelled != true else { return false }
             let itemEnd = item.end ?? item.time.addingTimeInterval(1800)
             let overlaps = item.time < end && itemEnd > start
             let isSame = item.title == summary && abs(item.time.timeIntervalSince(start)) < 60
@@ -141,7 +149,8 @@ public enum ICalendar {
             organizer: first("ORGANIZER").map(person),
             attendees: event.filter { $0.name == "ATTENDEE" }.map(person),
             notes: first("DESCRIPTION").map { unescape($0.value) }.flatMap { $0.isEmpty ? nil : $0 },
-            isRecurring: first("RRULE") != nil
+            isRecurring: first("RRULE") != nil,
+            recurrenceID: first("RECURRENCE-ID").flatMap { date($0, zone: zone(_:)) }
         )
     }
 

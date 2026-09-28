@@ -136,6 +136,7 @@ public actor DemoMailProvider: MailProvider {
 
     public func body(of itemID: String) -> MailBody {
         if itemID.hasSuffix("-invite") { return invitationBody() }
+        if itemID.hasSuffix("-cancel") { return cancellationBody() }
         let seed = itemID.unicodeScalars.reduce(7) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF_FFFF }
         var random = SeededGenerator(seed: seed)
         let paragraphs = [
@@ -267,6 +268,30 @@ public actor DemoMailProvider: MailProvider {
                         calendar: ics)
     }
 
+    /// Отмена сегодняшнего «Созвона с подрядчиком» (11:30) — видно, как
+    /// отменённая встреча зачёркнута и как её убрать из календаря.
+    private func cancellationBody() -> MailBody {
+        let today = calendar.startOfDay(for: clock())
+        let start = today.addingTimeInterval(11.5 * 3600)
+        let stamp = { (date: Date) -> String in
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+            return formatter.string(from: date)
+        }
+        let ics = [
+            "BEGIN:VCALENDAR", "METHOD:CANCEL", "BEGIN:VEVENT",
+            "UID:demo-vendor-call", "SEQUENCE:1", "STATUS:CANCELLED",
+            "DTSTART:\(stamp(start))", "DTEND:\(stamp(start.addingTimeInterval(45 * 60)))",
+            String(localized: "SUMMARY:Созвон с подрядчиком"),
+            "ORGANIZER;CN=\"\(Demo.people[3].name ?? "")\":mailto:\(Demo.people[3].address ?? "")",
+            "END:VEVENT", "END:VCALENDAR",
+        ].joined(separator: "\r\n")
+        return MailBody(text: String(localized: "Коллеги, созвон переносится на следующую неделю — эту встречу отменяю."),
+                        calendar: ics)
+    }
+
     public func setChangeHandler(_ handler: @escaping @Sendable () -> Void) {}
 
     private func generate(day: Date, today: Date) -> [TimelineItem] {
@@ -291,7 +316,18 @@ public actor DemoMailProvider: MailProvider {
                                    isRead: false, isInvitation: true))
         )] : []
 
-        return invitation + slots.enumerated().map { index, slot in
+        // И отмена сегодняшнего созвона с подрядчиком.
+        let cancellation: [TimelineItem] = isToday && variant == 0 && !calendar.isDateInWeekend(day) ? [TimelineItem(
+            id: "mail:\(accountID):\(key)-cancel",
+            title: String(localized: "Отменено: Созвон с подрядчиком"),
+            time: Demo.at(day, 9, 20, calendar: calendar),
+            detail: .mail(MailInfo(accountID: accountID, from: Demo.people[3], to: [me],
+                                   messageID: "\(key)-cancel@company.test",
+                                   snippet: String(localized: "Созвон переносится на следующую неделю"),
+                                   isRead: false, isInvitation: true))
+        )] : []
+
+        return invitation + cancellation + slots.enumerated().map { index, slot in
             let sender = Demo.people[Int.random(in: 0..<Demo.people.count, using: &random)]
             let subject = Demo.subjects[Int.random(in: 0..<Demo.subjects.count, using: &random)]
             // Старые письма в основном уже отвечены — с телефона или из другого
@@ -802,5 +838,48 @@ extension Demo {
                 texts[abs(key) % texts.count]
         }
         return notes
+    }
+}
+
+extension Demo {
+    /// Сводка для виджетов — для предпросмотра без приложения и для галереи
+    /// виджетов, пока Trudaybook ещё ни разу её не записал.
+    public static func widgetSnapshot(now: Date, calendar: Calendar = .current) -> WidgetSnapshot {
+        let day = calendar.startOfDay(for: now)
+        // От «сейчас», а не от часов дня: в галерее вечером пример не должен
+        // быть пустым. Первая встреча — через 45 минут с ближайшей четверти.
+        let base = Date(timeIntervalSinceReferenceDate: (now.timeIntervalSinceReferenceDate / 900).rounded(.up) * 900)
+        func at(_ hour: Int, _ minute: Int = 0) -> Date {
+            base.addingTimeInterval(Double(hour * 60 + minute) * 60 - 11 * 3600 + 45 * 60)
+        }
+        return WidgetSnapshot(
+            updated: now,
+            events: [
+                .init(id: "demo-e0", title: String(localized: "День рождения Марины"), start: day, end: day.addingTimeInterval(86_400),
+                      isAllDay: true, location: nil, color: "#34C759"),
+                .init(id: "demo-e1", title: String(localized: "Обзор квартального плана"), start: at(11), end: at(12),
+                      isAllDay: false, location: String(localized: "Переговорная 3"), color: "#3B82F6"),
+                .init(id: "demo-e2", title: String(localized: "Созвон с подрядчиком"), start: at(13, 30), end: at(14, 15),
+                      isAllDay: false, location: nil, color: "#3B82F6"),
+                .init(id: "demo-e3", title: String(localized: "1:1 с Андреем"), start: at(15), end: at(16),
+                      isAllDay: false, location: nil, color: "#AF52DE"),
+                .init(id: "demo-e4", title: String(localized: "Ревью дизайна"), start: at(17, 30), end: at(18),
+                      isAllDay: false, location: String(localized: "Онлайн"), color: "#FF9500"),
+            ],
+            reminders: [
+                .init(id: "demo-r1", title: String(localized: "Отправить отчёт в бухгалтерию"), due: at(12), done: false),
+                .init(id: "demo-r2", title: String(localized: "Позвонить в банк"), due: at(15), done: false),
+                .init(id: "demo-r3", title: String(localized: "Купить продукты"), due: nil, done: false),
+            ],
+            unresolved: 12, important: 3,
+            letters: [
+                .init(id: "demo-m1", from: String(localized: "Ольга Смирнова"), subject: String(localized: "Согласование бюджета на IV квартал"),
+                      time: at(9, 4), important: true),
+                .init(id: "demo-m2", from: String(localized: "Андрей Козлов"), subject: String(localized: "Re: Макеты главной страницы"),
+                      time: at(9, 2), important: true),
+                .init(id: "demo-m3", from: String(localized: "Игорь Петров"), subject: String(localized: "Вопрос по интеграции API"),
+                      time: at(9, 1), important: false),
+            ],
+            weather: .init(code: 2, temperature: 14, max: 17, min: 9))
     }
 }

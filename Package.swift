@@ -55,6 +55,28 @@ let package = Package(
             dependencies: ["TrudaybookCore", "TrudaybookMail"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // Виджеты на рабочем столе — расширение WidgetKit (`.appex` в
+        // `Contents/PlugIns`). Отдельный процесс в песочнице; данные читает
+        // из сводки, которую пишет приложение (`WidgetSnapshot`).
+        .target(
+            name: "TrudaybookWidgetUI",
+            dependencies: ["TrudaybookCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Точка входа расширения — `_NSExtensionMain`, как у Xcode: она
+        // поднимает среду расширения; с обычным `main` система его роняет.
+        .executableTarget(
+            name: "TrudaybookWidgets",
+            dependencies: ["TrudaybookWidgetUI"],
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]
+        ),
+        // Виджеты в PNG без установки — для проверки вида.
+        .executableTarget(
+            name: "TrudaybookWidgetPreview",
+            dependencies: ["TrudaybookWidgetUI"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .testTarget(
             name: "TrudaybookTests",
             dependencies: ["TrudaybookCore", "TrudaybookMail"],

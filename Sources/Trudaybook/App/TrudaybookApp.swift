@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var keyMonitor: Any?
     private var model: AppModel?
+    private var pendingURLs: [URL] = []
 
     static func main() {
         let app = NSApplication.shared
@@ -76,6 +77,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let version = model.options.updatePreview { model.updates.preview(version: version) }
         Task {
             await model.start()
+            if !pendingURLs.isEmpty {
+                model.open(urls: pendingURLs)
+                pendingURLs = []
+            }
             DebugLog.write("данные: на дне \(model.dayItems.count), не разобрано \(model.unresolved.count)")
             if model.options.labelMail { model.labelUnresolved(manual: true) }
             if let path = model.options.snapshotPath {
@@ -96,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     try? await Task.sleep(for: .seconds(0.5))
                 }
                 if let tab = model.options.settings {
-                    SettingsWindow.show(model: model, tab: SettingsWindow.Tab(rawValue: tab) ?? .mail)
+                    SettingsWindow.show(model: model, tab: SettingsWindow.Tab(rawValue: tab.replacingOccurrences(of: "-bottom", with: "")) ?? .mail)
                     try? await Task.sleep(for: .seconds(1))
                 }
                 if let period = model.options.note {
@@ -128,6 +133,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? await Task.sleep(for: .seconds(1))
         }
         try? await Task.sleep(for: .seconds(0.8))
+    }
+
+    /// Ссылки `mailto:` и файлы `.ics` — когда Trudaybook почта или календарь
+    /// по умолчанию. Приходят и при запуске ими, уже после `didFinishLaunching`.
+    ///
+    /// Запуск ради ссылки: macOS присылает её раньше `didFinishLaunching`,
+    /// когда модели ещё нет, — такие ждут в очереди, иначе письмо по ссылке
+    /// «написать» при закрытом Trudaybook терялось бы.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let model else {
+            pendingURLs += urls
+            return
+        }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        model.open(urls: urls)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

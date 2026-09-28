@@ -35,6 +35,7 @@
 "Exchange через macOS" = "Exchange via macOS";
 "Gmail не узнал пароль приложения. Создайте новый на myaccount.google.com/apppasswords и вставьте его целиком — пробелы можно не убирать" = "Gmail didn't recognize the app password. Create a new one at myaccount.google.com/apppasswords and paste it whole — no need to remove the spaces";
 "Gmail: слишком много открытых подключений к ящику (не больше 15). Закройте почту на других устройствах или подождите 10–15 минут и повторите" = "Gmail: too many open connections to the mailbox (15 at most). Close mail on other devices or wait 10–15 minutes and try again";
+"Open-Meteo ответил непонятно." = "Open-Meteo sent an unreadable answer.";
 "TLS сразу" = "TLS right away";
 "Trudaybook закроется и откроется новой версией." = "Trudaybook will quit and reopen as the new version.";
 "Trudaybook на связи" = "Trudaybook is connected";
@@ -47,6 +48,7 @@
 "Trunook не смог ответить." = "Trunook couldn't answer.";
 "Trunook не установлен — скачайте его кнопкой выше и перенесите в «Программы»" = "Trunook isn't installed — download it with the button above and move it to Applications";
 "Trunook не установлен." = "Trunook isn't installed.";
+"Trunook погоду не присылает." = "Trunook doesn't provide the weather.";
 "Trunook подведёт итоги месяца по заметкам дней" = "Trunook will summarize the month from your daily notes";
 "Trunook подведёт итоги недели по заметкам дней" = "Trunook will summarize the week from your daily notes";
 "Trunook подводит итоги месяца…" = "Trunook is summarizing the month…";
@@ -62,6 +64,7 @@
 "«%@» через %lld мин" = "“%@” in %lld min";
 "«Напрямую» — ящик Exchange, подключённый в Trudaybook. «Через macOS» — учётные записи из Системных настроек → Учётные записи интернета. Новые календари, добавленные в системе, появятся сами." = "“Direct” is an Exchange mailbox connected in Trudaybook. “Via macOS” are accounts from System Settings → Internet Accounts. New calendars added in the system appear automatically.";
 "«Ответить» в уведомлении macOS отправляет ответ, не открывая окна." = "“Reply” in a macOS notification sends the reply without opening the window.";
+"«Сегодня» — ближайшие встречи, напоминания и погода; «Не разобрано» — сколько писем ждёт разбора. Добавить: правой кнопкой по рабочему столу → «Изменить виджеты…» → Trudaybook. Темы писем на рабочем столе видны всем, кто смотрит на экран." = "“Today” shows upcoming meetings, reminders and weather; “To Handle” shows how many emails are waiting. To add: right-click the desktop → “Edit Widgets…” → Trudaybook. Email subjects on the desktop are visible to anyone looking at your screen.";
 "Автоматически" = "Automatic";
 "Адрес" = "Address";
 "Адрес взят из вашей карточки в Контактах — поправьте, если нужен другой" = "The address comes from your card in Contacts — change it if you need another";
@@ -75,6 +78,7 @@
 "Без названия" = "Untitled";
 "Без приоритета" = "No priority";
 "Ближайшее свободное время" = "Next free time";
+"Ближайшие встречи, напоминания и погода." = "Upcoming meetings, reminders and weather.";
 "Бумага" = "Paper";
 "В Trunook выключен приём уведомлений от программ" = "Trunook doesn't accept notifications from apps";
 "В Trunook не выбрана модель: настройки Trunook → Помощник." = "No model is selected in Trunook: Trunook Settings → Assistant.";
@@ -84,11 +88,15 @@
 "В архив" = "Archive";
 "В архиве" = "Archived";
 "В вырезе Trunook" = "In the Trunook notch";
+"В календаре этой встречи уже нет" = "This meeting is no longer in your calendar";
+"В календаре: %@, %@ %@" = "In calendar: %@, %@ %@";
 "В папку…" = "To folder…";
 "В письме нет текста для пересказа." = "The email has no text to summarize.";
 "В понедельник" = "On Monday";
 "В приглашении нет адреса организатора — ответить некому" = "The invitation has no organizer address — there's no one to reply to";
+"В ссылке была скрытая копия — её в окне письма нет, добавьте адреса сами." = "The link had a Bcc — the message window has no Bcc field, add those addresses yourself.";
 "В тексте писем найдено: %lld" = "Found in email text: %lld";
+"В файле нет встречи, которую можно открыть." = "The file has no event that can be opened.";
 "Важное" = "Important";
 "Важность указал отправитель" = "Importance set by the sender";
 "Важные письма" = "Important emails";
@@ -104,6 +112,7 @@
 "Вертикальный таймлайн" = "Vertical timeline";
 "Весь день" = "All day";
 "Вид" = "Style";
+"Виджеты на рабочем столе" = "Desktop Widgets";
 "Включите в настройках Trudaybook → Trunook связь и помощь модели." = "Turn on the link and model help in Trudaybook Settings → Trunook.";
 "Включите: Trunook → Настройки → Уведомления → «Разрешить программам спрашивать через вырез»." = "Turn it on: Trunook → Settings → Notifications → “Allow apps to ask via the notch”.";
 "Вложение" = "Attachment";
@@ -121,6 +130,7 @@
 "Вставить без Trunook" = "Insert without Trunook";
 "Вставить таблицу (столбцы × строки)" = "Insert table (columns × rows)";
 "Вставляется в конец нового письма (и ответа, если включено ниже). Меняется ящик «от» — меняется и подпись." = "Added to the end of a new email (and a reply, if enabled below). Changing the “from” mailbox changes the signature too.";
+"Встреч больше нет" = "No more meetings";
 "Встреч нет" = "No meetings";
 "Встреча" = "Meeting";
 "Встреча  ⇧⌘N" = "Meeting  ⇧⌘N";
@@ -129,6 +139,7 @@
 "Встреча не сохранилась: %@" = "The meeting wasn't saved: %@";
 "Встреча не удалилась: %@" = "The meeting wasn't deleted: %@";
 "Встреча отменена" = "Meeting canceled";
+"Встреча отменена — удалите её из календаря" = "Meeting canceled — remove it from your calendar";
 "Встреча удалится только из вашего календаря." = "The meeting will be removed only from your calendar.";
 "Встреча уже прошла" = "The meeting has already passed";
 "Встреча уже разобрана" = "The meeting is already handled";
@@ -147,6 +158,7 @@
 "Входящие" = "Inbox";
 "Вчера" = "Yesterday";
 "Вы" = "You";
+"Выберите город." = "Choose a city.";
 "Выберите письмо или событие на таймлайне" = "Select an email or event on the timeline";
 "Выделить всё" = "Select All";
 "Выделить цветом" = "Highlight";
@@ -155,9 +167,11 @@
 "Вырезать" = "Cut";
 "Высокий" = "High";
 "Высокий приоритет" = "High priority";
+"Где я сейчас" = "My location";
 "Главное" = "Key items";
 "Глубина" = "Depth";
 "Голубой" = "Light blue";
+"Город" = "City";
 "Готова к установке версия %@" = "Version %@ is ready to install";
 "Готово" = "Done";
 "Градиент" = "Gradient";
@@ -176,6 +190,7 @@
 "Другая своя картинка…" = "Another custom picture…";
 "Другое" = "Other";
 "Другой" = "Other";
+"Другой город" = "Another city";
 "Дюны" = "Dunes";
 "Если вы собирали Trudaybook сами, обновляйтесь так же: git pull и make install." = "If you built Trudaybook yourself, update the same way: git pull and make install.";
 "Ещё" = "More";
@@ -234,6 +249,7 @@
 "Календарь «%@» не разрешает правку" = "The “%@” calendar doesn't allow editing";
 "Календарь «%@» не разрешает удаление" = "The “%@” calendar doesn't allow deleting";
 "Календарь «%@» только для чтения" = "The “%@” calendar is read-only";
+"Календарь по умолчанию" = "Default Calendar";
 "Картинка" = "Picture";
 "Картинка копируется в папку Trudaybook (уменьшенной); исходный файл можно удалить или переместить. Доступа к нему приложение не сохраняет." = "The picture is copied to the Trudaybook folder (downscaled); you can delete or move the original. The app keeps no access to it.";
 "Картинка не подошла: %@" = "The picture didn't work: %@";
@@ -264,6 +280,7 @@
 "Мельче" = "Zoom Out";
 "Мельче (⌘−)" = "Zoom out (⌘−)";
 "Место" = "Location";
+"Место не определилось: %@" = "Couldn't get the location: %@";
 "Месяц" = "Month";
 "Метка" = "Label";
 "Метка «%@»: «%@»" = "Label “%1$@”: “%2$@”";
@@ -288,12 +305,14 @@
 "Набор ищет по теме и людям, Return — ещё и в тексте писем на сервере" = "Typing searches subjects and people; Return also searches email text on the server";
 "Над письмом — плашка «Кратко»: раскройте, и Trunook перескажет письмо. В «Не разобрано» — метки: важное, переписка, уведомления, рассылки." = "Above each email there's a “Summary” bar: expand it and Trunook summarizes the email. In “To handle” — labels: important, conversation, notifications, newsletters.";
 "Назначить встречу с участниками письма" = "Schedule a meeting with the email's participants";
+"Найти город" = "Find a city";
 "Напоминание" = "Reminder";
 "Напоминание  ⌥⌘N" = "Reminder  ⌥⌘N";
 "Напоминание · %@\n%@" = "Reminder · %@\n%@";
 "Напоминание не отметилось: %@" = "The reminder wasn't marked: %@";
 "Напоминание не сохранилось: %@" = "The reminder wasn't saved: %@";
 "Напоминание уже выполнено" = "The reminder is already done";
+"Напоминаний: %lld" = "Reminders: %lld";
 "Напоминания" = "Reminders";
 "Напоминания на таймлайне" = "Reminders on the timeline";
 "Напоминания хранятся в «Напоминаниях» macOS" = "Reminders are stored in macOS Reminders";
@@ -302,12 +321,14 @@
 "Настройки" = "Settings";
 "Настройки…" = "Settings…";
 "Не вышло передать просьбу в Trunook." = "Couldn't pass the request to Trunook.";
+"Не назначено: %@" = "Not set: %@";
 "Не ответили на приглашение" = "You haven't answered the invitation";
 "Не повторять" = "Doesn't repeat";
 "Не получилось" = "Something went wrong";
 "Не получилось: %@" = "Something went wrong: %@";
 "Не разобрано" = "To handle";
 "Не разобрано · %@" = "To handle · %@";
+"Не разобрано: %lld" = "To handle: %lld";
 "Не сохранилось: %@" = "Not saved: %@";
 "Не удалось войти: %@" = "Couldn't sign in: %@";
 "Не удалось войти: проверьте логин и пароль" = "Couldn't sign in: check your login and password";
@@ -329,6 +350,7 @@
 "Нет доступа к Календарю" = "No access to Calendar";
 "Нет доступа к Календарю и Напоминаниям" = "No access to Calendar and Reminders";
 "Нет доступа к Напоминаниям" = "No access to Reminders";
+"Нет доступа к геолокации — выберите город или разрешите в Системных настройках → Конфиденциальность → Службы геолокации." = "No access to location — choose a city or allow it in System Settings → Privacy → Location Services.";
 "Нет доступных" = "None available";
 "Нет календаря для новой встречи" = "No calendar for the new meeting";
 "Нет календаря для новых событий" = "No calendar for new events";
@@ -376,6 +398,7 @@
 "Оно удалится и из «Напоминаний»." = "It will also be removed from Reminders.";
 "Описание" = "Description";
 "Оранжевый" = "Orange";
+"Организатор её отменил — в календаре она осталась." = "The organizer canceled it — it's still in your calendar.";
 "Организатор получит отказ, встреча уйдёт из календаря." = "The organizer will get a decline, and the meeting will be removed from the calendar.";
 "Организатор: %@" = "Organizer: %@";
 "Организатору" = "To the organizer";
@@ -413,6 +436,7 @@
 "Отложить на час" = "Snooze for an hour";
 "Отложить письмо" = "Snooze email";
 "Отмена" = "Cancel";
+"Отменена вся серия — удалятся все её встречи" = "The whole series is canceled — all its meetings will be removed";
 "Отменить" = "Cancel";
 "Отменить встречу" = "Cancel meeting";
 "Отменить встречу «%@»?" = "Cancel the meeting “%@”?";
@@ -463,6 +487,7 @@
 "Письмо не удалось переложить в архив: %@" = "Couldn't move the email to the archive: %@";
 "Письмо отклонить нельзя — его можно убрать в архив" = "An email can't be declined — you can archive it";
 "Письмо уже в архиве" = "The email is already archived";
+"Письмо уйдёт в архив" = "The email will be archived";
 "Письмо уйдёт с глаз и вернётся на таймлайн в выбранное время." = "The email goes out of sight and comes back to the timeline at the chosen time.";
 "Письмо участникам" = "Email to attendees";
 "Письмо.eml" = "Email.eml";
@@ -481,7 +506,9 @@
 "Повторяется" = "Repeats";
 "Повторяющаяся встреча" = "Recurring meeting";
 "Погода" = "Weather";
+"Погода не получена: %@" = "Weather not received: %@";
 "Погоду присылает Trunook — включите в нём погоду" = "Weather comes from Trunook — turn weather on there";
+"Погоду присылает Trunook." = "Trunook provides the weather.";
 "Под вопросом" = "Tentative";
 "Под вопросом — вы ещё не подтвердили" = "Tentative — you haven't confirmed yet";
 "Подключить" = "Connect";
@@ -504,7 +531,10 @@
 "Показать номера недель" = "Show week numbers";
 "Показывать вкладкой; остальные — в меню «Ещё»" = "Show as a tab; the rest go to the “More” menu";
 "Показывать отправителя и тему" = "Show sender and subject";
+"Показывать темы писем" = "Show email subjects";
 "Полночь" = "Midnight";
+"Получать погоду напрямую, если Trunook её не прислал" = "Get the weather directly when Trunook doesn't provide it";
+"Получаю прогноз…" = "Getting the forecast…";
 "Помощник Trunook" = "Trunook assistant";
 "Понятно" = "OK";
 "Попробовать снова" = "Try Again";
@@ -514,6 +544,7 @@
 "Почта" = "Mail";
 "Почта · %lld из %lld" = "Mail · %lld of %lld";
 "Почта не загрузилась: %@" = "Mail didn't load: %@";
+"Почта по умолчанию" = "Default Mail";
 "Почта: открытых из всех писем за день" = "Mail: open out of all emails of the day";
 "Почтовые ящики" = "Mailboxes";
 "Правка" = "Edit";
@@ -547,7 +578,9 @@
 "Проверяем…" = "Checking…";
 "Проверять обновления" = "Check for updates";
 "Проверяю вход…" = "Checking sign-in…";
+"Прогноз получен в %@" = "Forecast received at %@";
 "Прогноз — от Trunook" = "Forecast from Trunook";
+"Прогноз — у Open-Meteo (open-meteo.com): бесплатно, без ключей и учётных записей. Наружу уходят только координаты, округлённые примерно до 10 км, или название города при поиске." = "The forecast comes from Open-Meteo (open-meteo.com): free, no keys or accounts. Only coordinates rounded to about 10 km leave your Mac — or a city name when you search.";
 "Протокол" = "Minutes";
 "Прошло" = "Passed";
 "Пт" = "Fr";
@@ -581,10 +614,14 @@
 "Своё время" = "Custom time";
 "Связка ключей: %@" = "Keychain: %@";
 "Связь" = "Connection";
+"Сделать календарём по умолчанию" = "Make Default Calendar";
+"Сделать почтой по умолчанию" = "Make Default Mail App";
 "Сделать фоном" = "Set as Background";
 "Сегодня" = "Today";
 "Сегодня вечером" = "This evening";
+"Сейчас письма пишет: %@" = "Emails are written in: %@";
 "Сейчас сначала важное. Нажмите — по времени" = "Important first now. Click — sort by time";
+"Сейчас файлы календаря открывает: %@" = "Calendar files open in: %@";
 "Сейчас: %@, %@" = "Now: %@, %@";
 "Сейчас: %@. Длительность сохранится.%@" = "Now: %@. The duration is kept.%@";
 "Сервер" = "Server";
@@ -609,6 +646,7 @@
 "Скачанное приложение не подписано" = "The downloaded app isn't signed";
 "Скачанное приложение повреждено" = "The downloaded app is damaged";
 "Скачать Trunook" = "Download Trunook";
+"Сколько писем ждёт разбора и какие из них важные." = "How many emails are waiting and which ones matter.";
 "Скопировать адрес %@" = "Copy address %@";
 "Скорую встречу" = "Upcoming meeting";
 "Скрыть Trudaybook" = "Hide Trudaybook";
@@ -654,6 +692,7 @@
 "Срок напоминания изменится в «Напоминаниях»." = "The reminder's due date will change in Reminders.";
 "Ссылка" = "Link";
 "Ссылка на выделенном тексте" = "Link on the selected text";
+"Ссылки «написать письмо» на сайтах и в документах откроют новое письмо в Trudaybook. Скрытую копию из ссылки добавьте сами — её нет в окне письма." = "“Send email” links on websites and in documents will open a new message in Trudaybook. Add a Bcc from the link yourself — the message window has no Bcc field.";
 "Старше 30 дней" = "Older than 30 days";
 "Старше 7 дней" = "Older than 7 days";
 "Сумерки" = "Dusk";
@@ -683,6 +722,7 @@
 "Удалить" = "Delete";
 "Удалить встречу «%@»?" = "Delete the meeting “%@”?";
 "Удалить встречу?" = "Delete the meeting?";
+"Удалить из календаря" = "Remove from Calendar";
 "Удалить напоминание «%@»?" = "Delete the reminder “%@”?";
 "Удалить повторяющуюся встречу" = "Delete recurring meeting";
 "Удалить…" = "Delete…";
@@ -694,6 +734,7 @@
 "Участники получат отмену, встреча уйдёт из календаря." = "Attendees will get a cancellation, and the meeting will be removed from the calendar.";
 "Участников можно пригласить только во встречу календаря Exchange — выберите его у темы" = "Attendees can be invited only to an Exchange calendar meeting — choose it next to the subject";
 "Файл больше 60 МБ" = "The file is larger than 60 MB";
+"Файлы .ics — приглашения и встречи из писем, сайтов и других программ — откроются окном новой встречи. Участники из файла не переносятся: приглашения от вашего имени не уйдут." = ".ics files — invitations and events from emails, websites and other apps — will open as a new event. Attendees aren't copied from the file, so no invitations go out in your name.";
 "Файлы прикрепляются только ко встречам календаря Exchange." = "Files can be attached only to Exchange calendar meetings.";
 "Файлы прикрепляются только ко встречам календаря Exchange: календарь macOS вложений не хранит" = "Files can be attached only to Exchange calendar meetings: the macOS calendar doesn't store attachments";
 "Фиолетовый" = "Purple";
@@ -737,6 +778,7 @@
 "в день" = "per day";
 "в ответе нет ResponseMessages" = "the response has no ResponseMessages";
 "в ответе нет тела" = "the response has no body";
+"важных: %lld" = "important: %lld";
 "весь день" = "all day";
 "вс" = "Su";
 "вт" = "Tu";
@@ -756,6 +798,7 @@
 "завтра, %@" = "tomorrow, %@";
 "занят" = "busy";
 "занятость недоступна" = "availability unavailable";
+"идёт до %@" = "until %@";
 "имя входа" = "login name";
 "имя или адрес" = "name or address";
 "как адрес или ДОМЕН\\имя" = "as an address or DOMAIN\\name";
@@ -768,8 +811,10 @@
 "месяца" = "months";
 "месяцев" = "months";
 "на сервере нет папки «Архив»" = "there's no “Archive” folder on the server";
+"не выбрано" = "none";
 "не найден в адресной книге компании" = "not found in the company address book";
 "не открылась база: %@" = "the database didn't open: %@";
+"не разобрано" = "to handle";
 "не удалось создать папку «Архив»" = "couldn't create the “Archive” folder";
 "не указан сервер Exchange" = "the Exchange server isn't specified";
 "недели" = "weeks";
@@ -825,6 +870,7 @@
 "сумерки" = "dusk";
 "у учётной записи нет почтового ящика на этом сервере" = "the account has no mailbox on this server";
 "учётная запись" = "account";
+"через %@" = "in %@";
 "через macOS" = "via macOS";
 "чт" = "th";
 "чужое письмо" = "someone else's email";

@@ -1,5 +1,5 @@
 APP      := Trudaybook
-VERSION  := 0.3.0
+VERSION  := 0.4.0
 # Номер сборки растёт со временем: так две сборки одной версии различимы.
 BUILDNO  := $(shell date +%y%m%d%H%M)
 # В macOS лежит GNU Make 3.81: `.SHELLFLAGS` он молча игнорирует, поэтому
@@ -23,6 +23,8 @@ DEST     ?= /Applications
 # синхронизации iCloud Drive.
 BUILDDIR := $(HOME)/Library/Caches/TrudaybookBuild
 BUNDLE   := $(BUILDDIR)/$(APP).app
+# Виджеты на рабочем столе — расширение WidgetKit внутри приложения.
+APPEX    := $(BUNDLE)/Contents/PlugIns/TrudaybookWidgets.appex
 SPMDIR   := $(HOME)/Library/Caches/TrudaybookSPM
 TESTDIR  := $(HOME)/Library/Caches/TrudaybookTests
 BIN       = $(shell swift build -c $(CONF) --scratch-path $(SPMDIR) --show-bin-path 2>/dev/null)
@@ -62,7 +64,17 @@ bundle: check-identity build
 	@/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" $(BUNDLE)/Contents/Info.plist
 	@/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(BUILDNO)" $(BUNDLE)/Contents/Info.plist
 	@printf 'APPL????' > $(BUNDLE)/Contents/PkgInfo
+	@# Расширение виджетов: свой Info.plist, переводы и песочница (без неё
+	@# WidgetKit расширение не загрузит). Подписывается раньше приложения.
+	@mkdir -p $(APPEX)/Contents/MacOS $(APPEX)/Contents/Resources
+	@cp "$(BIN)/TrudaybookWidgets" $(APPEX)/Contents/MacOS/TrudaybookWidgets
+	@cp Widgets/Info.plist $(APPEX)/Contents/Info.plist
+	@for lang in Resources/*.lproj; do cp -R $$lang $(APPEX)/Contents/Resources/; done
+	@/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" -c "Set :CFBundleVersion $(BUILDNO)" \
+		$(APPEX)/Contents/Info.plist
 	@xattr -cr $(BUNDLE)
+	@codesign --force --sign "$(IDENTITY)" --timestamp=none \
+		--entitlements Widgets/TrudaybookWidgets.entitlements $(APPEX)
 	@codesign --force --sign "$(IDENTITY)" --timestamp=none \
 		--entitlements Resources/Trudaybook.entitlements $(BUNDLE)
 	@codesign --verify --deep --strict $(BUNDLE) && echo "подписано: $(BUNDLE)"
@@ -93,8 +105,13 @@ snapshot-app: bundle
 	@rm -rf "$(SNAPAPP)"
 	@mkdir -p "$(SNAPDIR)"
 	@cp -R $(BUNDLE) "$(SNAPAPP)"
+	@# Без виджетов: вторая копия расширения завела бы в галерее второй набор.
+	@rm -rf "$(SNAPAPP)/Contents/PlugIns"
+	@# Почтой и календарём копия не объявляется: иначе «Trudaybook Demo»
+	@# попадал бы в системный выбор программ для ссылок mailto: и файлов .ics.
 	@/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.trudaybook.Trudaybook.demo" \
-		-c "Set :CFBundleName Trudaybook Demo" "$(SNAPAPP)/Contents/Info.plist"
+		-c "Set :CFBundleName Trudaybook Demo" \
+		-c "Delete :CFBundleURLTypes" -c "Delete :CFBundleDocumentTypes" "$(SNAPAPP)/Contents/Info.plist"
 	@codesign --force --sign "$(IDENTITY)" --timestamp=none \
 		--entitlements Resources/Trudaybook.entitlements "$(SNAPAPP)"
 	@$(LSREGISTER) -u $(BUNDLE) 2>/dev/null || true

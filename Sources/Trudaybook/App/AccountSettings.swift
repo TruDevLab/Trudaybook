@@ -117,7 +117,8 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             // Снимок нижних карточек: `--settings folders`.
             .task {
-                guard model.options.settings == "folders" else { return }
+                // `--settings folders` или `--settings <вкладка>-bottom` — прокрутить к концу.
+                guard model.options.settings == "folders" || model.options.settings?.hasSuffix("-bottom") == true else { return }
                 try? await Task.sleep(for: .milliseconds(300))
                 proxy.scrollTo("settings-bottom", anchor: .bottom)
             }
@@ -241,6 +242,9 @@ struct AccountSettingsView: View {
                     SettingsHint(String(localized: "Куда переносить письмо кнопкой «В архив» (E) и перетаскиванием. Эта же папка открывается вкладкой «Архив». «Автоматически» — папка с отметкой архива на сервере или «Архив» / «Archive»."))
                 }
                 FolderOrderCard()
+            }
+            SettingsCard(title: String(localized: "Почта по умолчанию"), icon: "envelope.open") {
+                DefaultAppRow(role: .mail)
             }
             SettingsCard(title: String(localized: "Список «Не разобрано»"), icon: "tray.full") {
                 Toggle("Разделы по датам: Сегодня, Вчера, дни недели, старше 7 и 30 дней", isOn: $model.groupByDate)
@@ -402,6 +406,10 @@ struct CalendarSettingsView: View {
                 }
                 SettingsHint(String(localized: "Подставляются первыми, когда создаёте встречу или напоминание; в самом окне создания можно выбрать другой. Встречу можно создать и на самом календаре: перетащите «+» на нужное время или зажмите мышь на пустом месте."))
             }
+            SettingsCard(title: String(localized: "Календарь по умолчанию"), icon: "calendar.badge.checkmark") {
+                DefaultAppRow(role: .calendar)
+            }
+            WeatherSettingsCard(weather: model.directWeather)
             SettingsHint(String(localized: "«Напрямую» — ящик Exchange, подключённый в Trudaybook. «Через macOS» — учётные записи из Системных настроек → Учётные записи интернета. Новые календари, добавленные в системе, появятся сами."))
         }
         .onAppear { model.loadCalendarSources() }
@@ -489,6 +497,7 @@ struct AppearanceSettingsView: View {
                 details
                 SettingsHint(String(localized: "Панели — стекло (Liquid Glass): фон просвечивает сквозь них. Окно само становится светлым или тёмным — по яркости фона."))
             }
+            WidgetSettingsCard()
             if model.background == .aurora || model.background == .sky {
                 SettingsCard(title: String(localized: "Анимация"), icon: "wind") {
                     Toggle(model.background == .sky ? String(localized: "Облака плывут, идёт дождь и снег") : String(localized: "Пятна света плывут"),
@@ -1100,5 +1109,105 @@ private struct SignatureEditor: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+/// Погода: от Trunook или сама, от Open-Meteo.
+struct WeatherSettingsCard: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var weather: DirectWeather
+    @ViewState private var query = ""
+
+    var body: some View {
+        SettingsCard(title: String(localized: "Погода"), icon: "cloud.sun") {
+            Label(model.trunookWeatherFresh ? String(localized: "Погоду присылает Trunook.")
+                                            : String(localized: "Trunook погоду не присылает."),
+                  systemImage: model.trunookWeatherFresh ? "checkmark.circle.fill" : "info.circle")
+                .foregroundStyle(model.trunookWeatherFresh ? Color.green : Color.secondary)
+            Toggle("Получать погоду напрямую, если Trunook её не прислал", isOn: $weather.enabled)
+                .toggleStyle(.switch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if weather.enabled {
+                Picker("Место", selection: $weather.source) {
+                    Text("Город").tag(DirectWeather.Source.city)
+                    Text("Где я сейчас").tag(DirectWeather.Source.location)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 320)
+                if weather.source == .city { cityPicker }
+                status
+            }
+            SettingsHint(String(localized: "Прогноз — у Open-Meteo (open-meteo.com): бесплатно, без ключей и учётных записей. Наружу уходят только координаты, округлённые примерно до 10 км, или название города при поиске."))
+        }
+    }
+
+    private var cityPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                if let place = weather.place {
+                    Label(place.title, systemImage: "mappin.and.ellipse")
+                }
+                Spacer(minLength: 8)
+                TextField(weather.place == nil ? String(localized: "Найти город") : String(localized: "Другой город"), text: $query)
+                    .textFieldStyle(.plain)
+                    .editorField()
+                    .frame(maxWidth: 220)
+                    .onChange(of: query) { _, value in weather.search(value) }
+                if weather.searching { ProgressView().controlSize(.small) }
+            }
+            if !query.isEmpty {
+                ForEach(weather.results) { place in
+                    Button {
+                        weather.place = place
+                        query = ""
+                    } label: {
+                        HStack {
+                            Text(place.title)
+                            if let country = place.country { Text(country).foregroundStyle(.secondary) }
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch weather.status {
+        case .off, .waiting:
+            EmptyView()
+        case .loading:
+            Label("Получаю прогноз…", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(.secondary)
+        case .ready(let date):
+            Label(String(localized: "Прогноз получен в \(Format.time(date))"), systemImage: "checkmark.circle")
+                .foregroundStyle(.secondary)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Виджеты на рабочем столе: как добавить и что в них видно.
+struct WidgetSettingsCard: View {
+    @EnvironmentObject private var model: AppModel
+    @ViewState private var subjects = true
+
+    var body: some View {
+        SettingsCard(title: String(localized: "Виджеты на рабочем столе"), icon: "square.grid.2x2") {
+            Toggle("Показывать темы писем", isOn: $subjects)
+                .toggleStyle(.switch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onChange(of: subjects) { _, value in
+                    model.widgets.showSubjects = value
+                    model.publishWidgets()
+                }
+            SettingsHint(String(localized: "«Сегодня» — ближайшие встречи, напоминания и погода; «Не разобрано» — сколько писем ждёт разбора. Добавить: правой кнопкой по рабочему столу → «Изменить виджеты…» → Trudaybook. Темы писем на рабочем столе видны всем, кто смотрит на экран."))
+        }
+        .onAppear { subjects = model.widgets.showSubjects }
     }
 }

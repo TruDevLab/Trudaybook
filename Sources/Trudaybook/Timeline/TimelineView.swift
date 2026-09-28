@@ -621,16 +621,20 @@ struct EventBlock: View {
         let status = model.status(of: item)
         let selected = model.selectedID == item.id
         let color = item.swiftUIColor
-        let unconfirmed = item.event?.isUnconfirmed == true
+        let cancelled = item.event?.isCancelled == true
+        // Отменённая — как неподтверждённая (штриховка, пунктир), но зачёркнута:
+        // в календаре она до нажатия «Удалить из календаря» в письме об отмене.
+        let unconfirmed = item.event?.isUnconfirmed == true || cancelled
 
         HStack(spacing: 0) {
             Rectangle().fill(color.opacity(unconfirmed ? 0.5 : 1)).frame(width: 3)
             if compact {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     if unconfirmed {
-                        Image(systemName: "questionmark.circle").foregroundStyle(color)
+                        Image(systemName: cancelled ? "xmark.circle" : "questionmark.circle").foregroundStyle(color)
                     }
                     Text(item.title)
+                        .strikethrough(cancelled)
                         .lineLimit(3)
                         .minimumScaleFactor(0.8)
                 }
@@ -642,11 +646,12 @@ struct EventBlock: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         if unconfirmed {
-                            Image(systemName: "questionmark.circle")
+                            Image(systemName: cancelled ? "xmark.circle" : "questionmark.circle")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(color)
                         }
                         Text(item.title)
+                            .strikethrough(cancelled)
                             .font(.system(size: 12, weight: .semibold))
                             .lineLimit(2)
                         Spacer(minLength: 0)
@@ -688,7 +693,10 @@ struct EventBlock: View {
 
 extension EventBlock {
     static func answerNote(_ item: TimelineItem) -> String {
-        item.event?.myResponse == .tentative
+        if item.event?.isCancelled == true {
+            return String(localized: "Встреча отменена — удалите её из календаря")
+        }
+        return item.event?.myResponse == .tentative
             ? String(localized: "Под вопросом — вы ещё не подтвердили")
             : String(localized: "Не ответили на приглашение")
     }

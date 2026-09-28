@@ -181,3 +181,64 @@ struct RichTextColorTests {
         #expect(html.hasSuffix("<div>После таблицы</div>"))
     }
 }
+
+@Suite("Отмена встречи")
+struct MeetingCancellationTests {
+    private let start = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func event(_ title: String, at time: Date, uid: String? = nil, recurring: Bool = false) -> TimelineItem {
+        TimelineItem(id: "e", title: title, time: time, end: time.addingTimeInterval(1800),
+                     detail: .event(EventInfo(calendarTitle: "Работа", isRecurring: recurring, uid: uid)))
+    }
+
+    private func cancel(uid: String = "U1", summary: String = "Созвон", recurring: Bool = false, occurrence: Date? = nil) -> Invitation {
+        Invitation(method: .cancel, uid: uid, summary: summary, start: occurrence ?? start,
+                   end: (occurrence ?? start).addingTimeInterval(1800), isRecurring: recurring, recurrenceID: occurrence)
+    }
+
+    @Test("По UID и времени; без UID — по названию без «Отменено:» и времени")
+    func совпадение() {
+        #expect(MeetingCancellation.matches(event("Созвон", at: start, uid: "u1"), cancel()))
+        #expect(!MeetingCancellation.matches(event("Созвон", at: start.addingTimeInterval(86_400), uid: "U1"), cancel()))
+        #expect(MeetingCancellation.matches(event("Отменено: Созвон", at: start), cancel()))
+        #expect(MeetingCancellation.matches(event("Canceled: Созвон", at: start), cancel()))
+        #expect(!MeetingCancellation.matches(event("Созвон", at: start.addingTimeInterval(3600)), cancel()))
+        #expect(!MeetingCancellation.matches(event("Другое", at: start), cancel()))
+        let request = Invitation(method: .request, uid: "U1", summary: "Созвон", start: start, end: start)
+        #expect(!MeetingCancellation.matches(event("Созвон", at: start, uid: "U1"), request))
+    }
+
+    @Test("Отменена серия — удаляется вся; одно вхождение — только оно")
+    func серия() {
+        let series = cancel(recurring: true)
+        let later = event("Созвон", at: start.addingTimeInterval(7 * 86_400), uid: "U1", recurring: true)
+        #expect(series.isSeriesCancellation)
+        #expect(MeetingCancellation.matches(later, series))
+        #expect(MeetingCancellation.scope(for: series, event: later) == .all)
+        let one = cancel(recurring: true, occurrence: start)
+        #expect(!one.isSeriesCancellation)
+        #expect(!MeetingCancellation.matches(later, one))
+        #expect(MeetingCancellation.scope(for: one, event: event("Созвон", at: start, uid: "U1", recurring: true)) == .thisEvent)
+    }
+
+    @Test("RECURRENCE-ID разбирается")
+    func вхождение() throws {
+        let ics = """
+        BEGIN:VCALENDAR
+        METHOD:CANCEL
+        BEGIN:VEVENT
+        UID:U1
+        RECURRENCE-ID:20260928T070000Z
+        DTSTART:20260928T070000Z
+        DTEND:20260928T073000Z
+        RRULE:FREQ=WEEKLY
+        SUMMARY:Созвон
+        END:VEVENT
+        END:VCALENDAR
+        """
+        let invitation = try #require(ICalendar.invitation(from: ics))
+        #expect(invitation.method == .cancel)
+        #expect(invitation.recurrenceID == ISO8601DateFormatter().date(from: "2026-09-28T07:00:00Z"))
+        #expect(!invitation.isSeriesCancellation)
+    }
+}

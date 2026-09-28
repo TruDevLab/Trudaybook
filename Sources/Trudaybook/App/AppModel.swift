@@ -274,22 +274,42 @@ final class AppModel: ObservableObject {
         didSet { if !options.demo { UserDefaults.standard.set(weekMode.rawValue, forKey: "weekMode") } }
     }
 
-    /// Погода недели от Trunook (`nil` — Trunook её не прислал).
+    /// Погода недели: от Trunook, а без него — своя, от Open-Meteo, если это
+    /// разрешено в настройках (`DirectWeather`). `nil` — погоды нет.
     @Published private(set) var weekWeather: WeekWeather?
-    private var weatherModified: Date?
+    private var trunookWeather: WeekWeather?
+    private var trunookWeatherModified: Date?
+    private var ownWeather: WeekWeather?
+    private var ownWeatherModified: Date?
+    let directWeather = DirectWeather()
+    let widgets = WidgetFeed()
 
-    /// Перечитать погоду, если файл менялся. В тестовом режиме — своя,
+    /// Trunook обновляет прогноз раз в час, пока запущен; старше трёх
+    /// часов — значит, он закрыт или его нет, и пора своей погоде.
+    var trunookWeatherFresh: Bool {
+        trunookWeather.map { now.timeIntervalSince($0.updated) < 3 * 3600 } ?? false
+    }
+
+    /// Перечитать погоду, если файлы менялись. В тестовом режиме — своя,
     /// выдуманная: снимкам нужна погода, а настоящий файл не наш.
     func loadWeather() {
         if options.demo, !options.realWeather {
             if weekWeather == nil { weekWeather = Demo.weather(around: now, calendar: calendar) }
             return
         }
-        let file = WeekWeather.defaultFile
-        let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
-        guard modified != weatherModified else { return }
-        weatherModified = modified
-        weekWeather = (try? Data(contentsOf: file)).flatMap(WeekWeather.decode)
+        Self.reload(WeekWeather.defaultFile, into: &trunookWeather, modified: &trunookWeatherModified)
+        directWeather.refresh()
+        Self.reload(directWeather.file, into: &ownWeather, modified: &ownWeatherModified)
+        let chosen = trunookWeatherFresh || !directWeather.enabled ? trunookWeather : (ownWeather ?? trunookWeather)
+        if chosen != weekWeather { weekWeather = chosen }
+    }
+
+    /// Файл прогноза — заново, только если он менялся; пропал — погоды нет.
+    private static func reload(_ file: URL, into weather: inout WeekWeather?, modified: inout Date?) {
+        let changed = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
+        guard changed != modified else { return }
+        modified = changed
+        weather = changed == nil ? nil : (try? Data(contentsOf: file)).flatMap(WeekWeather.decode)
     }
 
     /// Тема «Небо»: время суток — по восходу и закату из прогноза Trunook
@@ -585,6 +605,14 @@ final class AppModel: ObservableObject {
                                     pretendVersion: options.pretendVersion, firstCheckDelay: 1)
         }
         trunook.model = self
+        directWeather.trunookFresh = { [weak self] in self?.trunookWeatherFresh ?? false }
+        directWeather.onUpdate = { [weak self] in self?.loadWeather() }
+        if options.demo {
+            // Тестовый режим в сеть за погодой не ходит и настроек не пишет.
+            directWeather.persists = false
+            directWeather.file = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Caches/TrudaybookDemo/weather-week.json")
+        }
         if options.demo {
             // Проверки в тестовом режиме не показываются в настоящем вырезе.
             TrunookLink.shared.inbox = FileManager.default.homeDirectoryForCurrentUser
@@ -627,6 +655,7 @@ final class AppModel: ObservableObject {
         calendarSource.onChange = { [weak self] in
             Task {
                 self?.loadCalendarSources()
+                self?.publishWidgets(forceCalendar: true)
                 await self?.reload()
             }
         }
@@ -752,6 +781,8 @@ final class AppModel: ObservableObject {
             events = await calendarSource.items(from: day, to: dayEnd)
         }
         overdue = await calendarSource.overdueReminders(before: now)
+        weekItems = markCancelled(weekItems)
+        events = markCancelled(events)
         recompute()
     }
 
@@ -787,6 +818,8 @@ final class AppModel: ObservableObject {
         let listed = folderItems + (searchResults ?? [])
         byID = Dictionary((allMail + events + weekItems + overdue + listed).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         trunook.publishState()
+        publishWidgets()
+        refreshCancellations()
     }
 
     /// Письма Входящих за день, на который приходится `date`, — по времени
@@ -1298,6 +1331,33 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Виджеты
+
+    /// Сводка для виджетов: встречи сегодня и завтра (из всех календарей, не
+    /// только показанного дня), неразобранное, погода этого часа.
+    func publishWidgets(forceCalendar: Bool = false) {
+        guard !options.demo else { return }
+        if widgets.calendarIsStale(now: now, force: forceCalendar) {
+            let start = calendar.startOfDay(for: now)
+            let end = calendar.date(byAdding: .day, value: 2, to: start) ?? start.addingTimeInterval(2 * 86_400)
+            // Отметка — сразу, чтобы полминутный такт не просил снова, пока грузится.
+            widgets.setCalendar([], at: now)
+            Task {
+                let items = await calendarSource.items(from: start, to: end)
+                widgets.setCalendar(items, at: now)
+                publishWidgets()
+            }
+            return
+        }
+        var weather: WidgetSnapshot.Weather?
+        if let forecast = weekWeather, forecast.isFresh(at: now), let code = forecast.code(at: now, calendar: calendar) {
+            let hour = forecast.hours.filter { $0.time <= now }.max { $0.time < $1.time }
+            let day = forecast.day(now, calendar: calendar)
+            weather = WidgetSnapshot.Weather(code: code, temperature: hour?.temperature, max: day?.max, min: day?.min)
+        }
+        widgets.publish(now: now, unresolved: unresolved, isImportant: isImportantLetter, weather: weather)
+    }
+
     /// Важное письмо — высокий приоритет или метка «Важное».
     func isImportantLetter(_ item: TimelineItem) -> Bool {
         priority(of: item) == .high || label(of: item) == .important
@@ -1527,6 +1587,116 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Отмены встреч
+
+    /// Письма об отмене встреч среди неразобранных: номер письма → отмена.
+    /// Встреча, к которой относится такое письмо, в календаре зачёркнута,
+    /// пока её не удалят кнопкой (или письмо не разберут иначе).
+    @Published private(set) var cancellations: [String: Invitation] = [:]
+    /// Что удаляется сейчас — письмо или встреча.
+    @Published private(set) var removingCancelled: String?
+    /// Приглашения, уже проверенные на отмену: тело каждого — один раз.
+    private var checkedInvitations: Set<String> = []
+    private var checkingCancellations = false
+
+    /// Найти отмены среди неразобранных приглашений. Тело письма берётся из
+    /// кэша, а нет его — с сервера; по одному письму, без спешки.
+    private func refreshCancellations() {
+        let open = Set(unresolved.map(\.id))
+        let gone = cancellations.keys.filter { !open.contains($0) }
+        if !gone.isEmpty {
+            for id in gone { cancellations[id] = nil }
+        }
+        let pending = unresolved.filter { $0.kind == .mail && isInvitation($0) && !checkedInvitations.contains($0.id) }
+        guard !checkingCancellations, !pending.isEmpty else { return }
+        checkingCancellations = true
+        Task {
+            var found = false
+            for letter in pending.prefix(20) {
+                checkedInvitations.insert(letter.id)
+                guard let invitation = await invitation(in: letter.id), invitation.method == .cancel else { continue }
+                cancellations[letter.id] = invitation
+                found = true
+            }
+            checkingCancellations = false
+            if found {
+                DebugLog.write("отмены встреч: писем об отмене \(cancellations.count)")
+                weekItems = markCancelled(weekItems)
+                events = markCancelled(events)
+                recompute()
+            }
+        }
+    }
+
+    /// Встречи, к которым есть письмо об отмене, — зачёркнутыми.
+    private func markCancelled(_ items: [TimelineItem]) -> [TimelineItem] {
+        guard !cancellations.isEmpty else { return items }
+        return items.map { item in
+            guard item.kind == .event, item.event?.isCancelled != true, case .event(var info) = item.detail,
+                  cancellations.values.contains(where: { MeetingCancellation.matches(item, $0) }) else { return item }
+            var marked = item
+            info.isCancelled = true
+            marked.detail = .event(info)
+            return marked
+        }
+    }
+
+    /// Встреча в календаре, которую отменяет письмо; `nil` — её там уже нет.
+    func cancelledEvent(for cancellation: Invitation) async -> TimelineItem? {
+        await events(onDayOf: cancellation.recurrenceID ?? cancellation.start)
+            .first { MeetingCancellation.matches($0, cancellation) }
+    }
+
+    /// «Удалить из календаря» в письме об отмене: встреча — из календаря
+    /// (без рассылки: встреча чужая и уже отменена), письмо — в архив.
+    /// Встречи в календаре уже нет — письмо просто уходит в архив.
+    func removeCancelledMeeting(letterID: String, cancellation given: Invitation? = nil) {
+        guard let cancellation = given ?? cancellations[letterID], removingCancelled == nil else { return }
+        removingCancelled = letterID
+        Task {
+            defer { removingCancelled = nil }
+            if let event = await cancelledEvent(for: cancellation) {
+                do {
+                    try await calendarSource.delete(event, scope: MeetingCancellation.scope(for: cancellation, event: event))
+                    DebugLog.write("отмена встречи: встреча удалена из календаря")
+                } catch {
+                    errorMessage = String(localized: "Встреча не удалилась: \(MailAccounts.describe(error))")
+                    return
+                }
+            }
+            cancellations[letterID] = nil
+            perform(.archive, on: letterID)
+            if selectedID == letterID { selectedID = nil }
+            await reload()
+            await loadBusyDays()
+        }
+    }
+
+    /// То же из карточки самой отменённой встречи: письма об отмене, если
+    /// они есть, уходят в архив.
+    func removeCancelledEvent(_ item: TimelineItem) {
+        guard removingCancelled == nil else { return }
+        let letters = cancellations.filter { MeetingCancellation.matches(item, $0.value) }
+        let scope = letters.first.map { MeetingCancellation.scope(for: $0.value, event: item) } ?? .thisEvent
+        removingCancelled = item.id
+        Task {
+            defer { removingCancelled = nil }
+            do {
+                try await calendarSource.delete(item, scope: scope)
+            } catch {
+                errorMessage = String(localized: "Встреча не удалилась: \(MailAccounts.describe(error))")
+                return
+            }
+            for id in letters.keys {
+                cancellations[id] = nil
+                perform(.archive, on: id)
+            }
+            if selectedID == item.id { selectedID = nil }
+            await reload()
+            await loadBusyDays()
+        }
+    }
+
     // MARK: - Приглашения
 
     /// Приглашение из выбранного письма и встречи того дня — для карточки
@@ -1608,8 +1778,10 @@ final class AppModel: ObservableObject {
     }
 
     /// Встречи, начинающиеся с этой минуты до `until`.
+    /// Отменённые — нет: о них не напоминают.
     func upcomingEvents(until: Date) async -> [TimelineItem] {
-        await calendarSource.items(from: now.addingTimeInterval(-60), to: until).filter { $0.kind == .event }
+        await calendarSource.items(from: now.addingTimeInterval(-60), to: until)
+            .filter { $0.kind == .event && $0.event?.isCancelled != true }
     }
 
     /// Приглашение из письма, не открывая его: тело загружается отдельно.
@@ -1854,6 +2026,65 @@ final class AppModel: ObservableObject {
     /// вниз до четверти часа, затем окно редактирования.
     func startNewEvent(dropped date: Date) {
         startNewEvent(at: Self.snapToQuarter(date))
+    }
+
+    // MARK: - Почта и календарь по умолчанию
+
+    /// Ссылка `mailto:` или файл `.ics` от macOS — Trudaybook назначен
+    /// почтой или календарём по умолчанию (или файл открыли в нём).
+    func open(urls: [URL]) {
+        for url in urls {
+            if url.scheme == "trudaybook" {
+                openFromWidget(url)
+            } else if let link = MailtoLink.parse(url) {
+                startNewMail(to: link.to)
+                draft?.cc = link.cc
+                draft?.subject = link.subject
+                draft?.text = link.body
+                if !link.bcc.isEmpty {
+                    errorMessage = String(localized: "В ссылке была скрытая копия — её в окне письма нет, добавьте адреса сами.")
+                }
+                DebugLog.write("открыта ссылка mailto: адресатов \(link.to.count + link.cc.count)")
+            } else if url.isFileURL {
+                openCalendarFile(url)
+            }
+        }
+    }
+
+    /// Нажатие по виджету: `trudaybook://today`, `…/unresolved`,
+    /// `…/item?id=…`. Схему может позвать и сайт — поэтому только показать,
+    /// ничего не менять.
+    private func openFromWidget(_ url: URL) {
+        switch url.host {
+        case "today":
+            showToday()
+        case "unresolved":
+            showToday()
+            show(list: .unresolved)
+        case "item":
+            guard let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "id" })?.value, id.count < 2000 else { return }
+            open(itemID: id)
+        default:
+            break
+        }
+    }
+
+    /// Встреча из файла `.ics` — окном новой встречи. Текст файла в журнал
+    /// не пишется; большой файл (выгрузка календаря) не читается.
+    private func openCalendarFile(_ url: URL) {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        guard size <= CalendarFile.maxSize, let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1),
+              let draft = CalendarFile.draft(fromICS: text, calendarID: newEventCalendarID, timeZone: MailTimeZones.zone(named:))
+        else {
+            errorMessage = String(localized: "В файле нет встречи, которую можно открыть.")
+            return
+        }
+        DebugLog.write("открыт файл календаря")
+        show(day: draft.start)
+        eventEditor = EventEditorRequest(draft: draft, editing: nil)
+        eventEditor?.reminderListID = newReminderListID
     }
 
     /// `--drop-preview`: время заготовки на шкале этого дня (только в тестовом режиме).

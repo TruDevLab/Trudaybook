@@ -87,6 +87,15 @@ the count of unhandled emails. Meetings you haven't answered, or answered
 - A note for every day under the month calendar, and in its own window (⌘J)
   with formatting, lists and checklists; notes for the week and the month.
 
+**Desktop widgets** — “Today” (upcoming meetings with a countdown, reminders,
+weather) and “To Handle” (how many emails are waiting and which matter):
+right-click the desktop → “Edit Widgets…”.
+
+**Defaults** — make Trudaybook your default mail app (“send email” links open
+a new message) and default calendar (`.ics` files open as a new event):
+Settings → Mail and → Calendars. Weather without Trunook comes straight from
+Open-Meteo, by city or by location.
+
 **Notifications** — for new emails in macOS Notification Center; “Reply”
 right in the notification sends the answer without opening the window.
 
@@ -149,7 +158,9 @@ notch app by the same author (optional, all off by default):
   otherwise the sender would learn you opened the email. JavaScript in emails
   is always off.
 - **Passwords** — in the macOS Keychain, never written to the log.
-- **Weather** isn't requested by the app: Trunook sends it, if installed.
+- **Weather** comes from Trunook, if installed. Without it — only if you turn it
+  on in Settings → Calendars → Weather: then the forecast is requested from
+  Open-Meteo with coordinates rounded to about 10 km, or by city name.
 - **Summaries, labels, agendas and week summaries** come only from a model on
   this Mac: if Trunook uses a cloud model, it refuses, and neither emails nor
   notes go anywhere.

@@ -27,6 +27,8 @@ struct EWSCalendarItem: Sendable, Equatable {
     var myResponse: Response = .unknown
     var isCancelled = false
     var isMeeting = false
+    /// UID из iCalendar — тот же, что в письме об отмене.
+    var uid: String?
     var required: [Guest] = []
     var optional: [Guest] = []
     var body: String?
@@ -76,7 +78,7 @@ enum EWSCalendarRequest {
     static let listFields = [
         "item:Subject", "calendar:Start", "calendar:End", "calendar:IsAllDayEvent", "calendar:Location",
         "calendar:Organizer", "calendar:IsRecurring", "calendar:CalendarItemType", "calendar:MyResponseType",
-        "calendar:IsCancelled", "calendar:IsMeeting",
+        "calendar:IsCancelled", "calendar:IsMeeting", "calendar:UID",
     ]
 
     static func fields(_ uris: [String]) -> String {
@@ -375,6 +377,7 @@ enum EWSCalendarRequest {
         item.myResponse = node.child("MyResponseType").flatMap { EWSCalendarItem.Response(rawValue: $0.text) } ?? .unknown
         item.isCancelled = node.child("IsCancelled")?.text == "true"
         item.isMeeting = node.child("IsMeeting")?.text == "true"
+        item.uid = node.child("UID")?.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if item.type == "Occurrence" || item.type == "Exception" { item.isRecurring = true }
         if detailed {
             item.hasDetails = true

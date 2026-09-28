@@ -189,7 +189,7 @@ public enum DayAgenda {
     public static func input(dayItems: [TimelineItem], letters: [TimelineItem],
                              isImportant: (TimelineItem) -> Bool) -> Input {
         let events = dayItems
-            .filter { $0.kind == .event && $0.event?.myResponse != .declined }
+            .filter { $0.kind == .event && $0.event?.myResponse != .declined && $0.event?.isCancelled != true }
             .sorted { ($0.isAllDay ? 0 : 1, $0.time) < ($1.isAllDay ? 0 : 1, $1.time) }
             .prefix(maxMeetings)
         let mail = letters.filter { $0.kind == .mail }

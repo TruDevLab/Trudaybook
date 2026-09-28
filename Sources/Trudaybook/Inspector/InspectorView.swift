@@ -384,6 +384,33 @@ private struct EventDetail: View {
     let item: TimelineItem
     @ViewState private var askDelete = false
 
+    /// Встреча отменена организатором — убрать её из календаря одной кнопкой
+    /// (письмо об отмене, если оно есть, уйдёт в архив).
+    private var cancelledBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "calendar.badge.minus").foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Встреча отменена").font(.callout.weight(.semibold))
+                Text("Организатор её отменил — в календаре она осталась.").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button {
+                model.removeCancelledEvent(item)
+            } label: {
+                if model.removingCancelled == item.id {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Label("Удалить из календаря", systemImage: "trash")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .disabled(model.removingCancelled != nil || !canDelete)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.red.opacity(0.08)))
+    }
+
     /// Удалить можно из календаря, который разрешает правку, — и чужую
     /// встречу тоже: она уйдёт только из своего календаря.
     private var canDelete: Bool {
@@ -398,8 +425,11 @@ private struct EventDetail: View {
             VStack(alignment: .leading, spacing: 14) {
                 InspectorHeader(item: item)
 
+                if info.isCancelled { cancelledBanner }
+
                 Field(title: String(localized: "Тема")) {
                     Text(item.title).font(.title2.weight(.semibold)).textSelection(.enabled)
+                        .strikethrough(info.isCancelled)
                 }
 
                 Field(title: String(localized: "Время")) {

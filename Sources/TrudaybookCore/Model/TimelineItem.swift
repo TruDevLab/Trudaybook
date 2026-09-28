@@ -179,6 +179,11 @@ public struct EventInfo: Hashable, Sendable {
     /// Можно отклонить: отказ организатору (Exchange), отмена своей
     /// или удаление из календаря macOS. Нельзя — в календаре только для чтения.
     public var canDecline: Bool
+    /// UID встречи в iCalendar — по нему письмо об отмене находит её в календаре.
+    public var uid: String?
+    /// Встреча отменена: организатор прислал отмену (или календарь сам её
+    /// так пометил), а из календаря её ещё не убрали.
+    public var isCancelled: Bool
 
     /// Мой ответ на чужую встречу; `nil` — встреча своя (я организатор)
     /// или меня нет среди участников.
@@ -205,8 +210,12 @@ public struct EventInfo: Hashable, Sendable {
         recurrenceSummary: String? = nil,
         calendarID: String? = nil,
         canEdit: Bool = true,
-        canDecline: Bool = true
+        canDecline: Bool = true,
+        uid: String? = nil,
+        isCancelled: Bool = false
     ) {
+        self.uid = uid
+        self.isCancelled = isCancelled
         self.canDecline = canDecline
         self.recurrenceSummary = recurrenceSummary
         self.calendarID = calendarID

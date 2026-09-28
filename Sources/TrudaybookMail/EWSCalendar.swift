@@ -290,7 +290,9 @@ public final class ExchangeCalendar: CalendarProvider {
         do {
             let items = try await service.items(from: from, to: to)
             lastProblem = nil
-            return items.filter { !$0.isCancelled }.compactMap(item)
+            // Отменённые не прячем: Exchange держит их в календаре, пока их
+            // не уберут, — на таймлайне они зачёркнуты, убираются кнопкой.
+            return items.compactMap(item)
         } catch {
             lastProblem = MailAccounts.describe(error)
             return []
@@ -410,7 +412,9 @@ public final class ExchangeCalendar: CalendarProvider {
                 canReschedule: event.isMine,
                 isRecurring: event.isRecurring,
                 calendarID: calendarID,
-                canEdit: event.isMine
+                canEdit: event.isMine,
+                uid: event.uid,
+                isCancelled: event.isCancelled
             ))
         )
     }

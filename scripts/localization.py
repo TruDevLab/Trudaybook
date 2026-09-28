@@ -117,6 +117,9 @@ EXCLUDE = {
     ('MailLabel.swift', '"рассыл"'),
     ('MailLabel.swift', '"реклам"'),
     ('MailLabel.swift', '"новост"'),
+    ('MeetingCancellation.swift', '"отменено:"'),
+    ('MeetingCancellation.swift', '"отменена:"'),
+    ('MeetingCancellation.swift', '"отмена:"'),
     ('MeetingLink.swift', '"Встреча"'),
     ('MeetingLink.swift', '"Телемост"'),
 }
