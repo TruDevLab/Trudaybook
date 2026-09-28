@@ -218,7 +218,10 @@ public enum AccountStore {
     public static func save(_ accounts: [MailAccount]) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(accounts).write(to: try url(), options: .atomic)
+        let file = try url()
+        try encoder.encode(accounts).write(to: file, options: .atomic)
+        // Адреса, серверы, имена входа — только владельцу.
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
     }
 }
 
@@ -305,6 +308,33 @@ public enum Keychain {
         add[kSecAttrLabel as String] = "Trudaybook — \(label)"
         let status = SecItemAdd(add as CFDictionary, nil)
         guard status == errSecSuccess else { throw Failure.status(status) }
+    }
+
+    /// Ключ шифрования кэша писем: берётся из Связки ключей, а нет его —
+    /// создаётся. `nil` — Связка не дала (человек отказал в доступе): кэш
+    /// тогда живёт с временным ключом и после перезапуска скачается заново.
+    public static func cacheKey() -> Data? {
+        let account = "mail-cache-key"
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecSuccess, let data = result as? Data, data.count == 32 { return data }
+        guard status == errSecItemNotFound else { return nil }
+        let key = DataSealer.newKeyData()
+        let add: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrLabel as String: String(localized: "Trudaybook — ключ кэша писем"),
+            kSecValueData as String: key,
+        ]
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess ? key : nil
     }
 
     public static func deletePassword(for accountID: String) {

@@ -18,7 +18,7 @@ final class EWSClient: @unchecked Sendable {
          log: @escaping @Sendable (String) -> Void = { _ in }) {
         self.url = url
         self.log = log
-        auth = AuthDelegate(user: user, password: password)
+        auth = AuthDelegate(user: user, password: password, host: url.host?.lowercased() ?? "")
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = timeout
         configuration.httpShouldSetCookies = true
@@ -31,10 +31,15 @@ final class EWSClient: @unchecked Sendable {
 
     /// Адрес EWS по имени сервера: `post.company.ru` → `https://post.company.ru/EWS/Exchange.asmx`.
     /// Полный адрес оставляется как есть.
+    ///
+    /// Только HTTPS: по `http://` вход NTLM или Basic шёл бы открытым текстом.
     static func endpoint(for server: String) -> URL? {
         let trimmed = server.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        if trimmed.lowercased().hasPrefix("http") { return URL(string: trimmed) }
+        if trimmed.lowercased().hasPrefix("http") {
+            guard let url = URL(string: trimmed), url.scheme?.lowercased() == "https", url.host != nil else { return nil }
+            return url
+        }
         let host = trimmed.split(separator: "/").first.map(String.init) ?? trimmed
         return URL(string: "https://\(host)/EWS/Exchange.asmx")
     }
@@ -85,9 +90,23 @@ final class EWSClient: @unchecked Sendable {
         let user: String
         let password: String
 
-        init(user: String, password: String) {
+        /// Сервер ящика: пароль — только ему.
+        let host: String
+
+        init(user: String, password: String, host: String) {
             self.user = user
             self.password = password
+            self.host = host
+        }
+
+        /// Перенаправление — только на тот же сервер по HTTPS: иначе
+        /// подменённый ответ увёл бы запрос (а с ним и вход) на чужой адрес.
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest) async -> URLRequest? {
+            guard let url = request.url, url.scheme?.lowercased() == "https", url.host?.lowercased() == host else {
+                return nil
+            }
+            return request
         }
 
         func urlSession(_ session: URLSession, task: URLSessionTask,
@@ -95,6 +114,11 @@ final class EWSClient: @unchecked Sendable {
             -> (URLSession.AuthChallengeDisposition, URLCredential?) {
             switch challenge.protectionSpace.authenticationMethod {
             case NSURLAuthenticationMethodNTLM, NSURLAuthenticationMethodHTTPBasic:
+                // Пароль — только своему серверу и только по защищённому каналу.
+                let space = challenge.protectionSpace
+                guard space.host.lowercased() == host, space.receivesCredentialSecurely else {
+                    return (.rejectProtectionSpace, nil)
+                }
                 // Второй запрос пароля — значит, первый не подошёл. Повторять
                 // тот же бессмысленно: пусть сервер вернёт 401.
                 guard challenge.previousFailureCount == 0 else { return (.rejectProtectionSpace, nil) }

@@ -143,6 +143,13 @@ enum UpdateInstaller {
             DebugLog.write("обновление: заготовка не легла рядом с целью — \(error.localizedDescription)")
             return .notWritable
         }
+        // Ещё раз — у той самой копии, что встанет в «Программы»: между
+        // проверкой заготовки и копированием её мог подменить чужой процесс.
+        if case let .rejected(reason) = CodeSignatureCheck.matchesSelf(prepared) {
+            DebugLog.write("обновление: подпись копии не сошлась — не ставим")
+            try? FileManager.default.removeItem(at: prepared)
+            return reason
+        }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")

@@ -293,19 +293,38 @@ extension WindowSnapshot {
 }
 
 /// Журнал для отладки: stderr и `~/Library/Logs/Trudaybook.log`.
+///
+/// Паролей и текста писем в нём нет, но есть адреса ящиков и ответы
+/// серверов — поэтому файл только для владельца (0600), а больше 5 МБ он
+/// уезжает в `Trudaybook.1.log` (прежний такой — удаляется).
 enum DebugLog {
+    static let maxSize = 5 * 1024 * 1024
+
     static func write(_ message: String) {
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
         FileHandle.standardError.write(line.data(using: .utf8)!)
         let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Trudaybook.log")
+        let manager = FileManager.default
+        if let size = (try? manager.attributesOfItem(atPath: url.path))?[.size] as? Int, size > maxSize {
+            let old = url.deletingPathExtension().appendingPathExtension("1.log")
+            try? manager.removeItem(at: old)
+            try? manager.moveItem(at: url, to: old)
+        }
         if let handle = try? FileHandle(forWritingTo: url) {
             handle.seekToEndOfFile()
             handle.write(line.data(using: .utf8)!)
             try? handle.close()
         } else {
-            try? line.data(using: .utf8)?.write(to: url)
+            manager.createFile(atPath: url.path, contents: line.data(using: .utf8), attributes: [.posixPermissions: 0o600])
+        }
+        // Журнал мог остаться от прежних версий открытым на чтение всем.
+        if !checkedPermissions {
+            checkedPermissions = true
+            try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         }
     }
+
+    nonisolated(unsafe) private static var checkedPermissions = false
 }
 
 /// Снимок окна в PNG — чтобы вёрстку можно было проверить без человека.

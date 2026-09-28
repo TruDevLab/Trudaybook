@@ -68,6 +68,10 @@ public final class SQLiteDatabase {
         )
         let folder = support.appendingPathComponent("Trudaybook", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // Только владельцу: почта, заметки, ящики. Раньше папка была 0755,
+        // и другой пользователь этого Mac мог дойти до файлов, если открыт
+        // путь к ним.
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
         return folder.appendingPathComponent(name)
     }
 

@@ -42,6 +42,7 @@
 "Trudaybook не готов" = "Trudaybook is not ready";
 "Trudaybook перезапустится новой версией. Доступы сохранятся." = "Trudaybook restarts as the new version. Permissions stay granted.";
 "Trudaybook перезапустится, и начатый ответ пропадёт." = "Trudaybook will restart, and the reply you started will be lost.";
+"Trudaybook — ключ кэша писем" = "Trudaybook — mail cache key";
 "Trunook готовит повестку…" = "Trunook is preparing the agenda…";
 "Trunook не запущен." = "Trunook isn't running.";
 "Trunook не ответил вовремя." = "Trunook didn't answer in time.";
@@ -323,6 +324,7 @@
 "Не вышло передать просьбу в Trunook." = "Couldn't pass the request to Trunook.";
 "Не назначено: %@" = "Not set: %@";
 "Не ответили на приглашение" = "You haven't answered the invitation";
+"Не открывать" = "Don't Open";
 "Не повторять" = "Doesn't repeat";
 "Не получилось" = "Something went wrong";
 "Не получилось: %@" = "Something went wrong: %@";
@@ -426,8 +428,10 @@
 "Открыто в Trudaybook: «%@»" = "Opened in Trudaybook: “%@”";
 "Открыть" = "Open";
 "Открыть Trunook" = "Open Trunook";
+"Открыть «%@»?" = "Open “%@”?";
 "Открыть заметку в окне: оформление, списки, повестка дня" = "Open the note in a window: formatting, lists, daily agenda";
 "Открыть настройки" = "Open Settings";
+"Открыть ссылку не из интернета?" = "Open a link that isn't a website?";
 "Отложенное" = "Snoozed";
 "Отложено до %@" = "Snoozed until %@";
 "Отложено до %@: «%@»" = "Snoozed until %1$@: “%2$@”";
@@ -691,6 +695,7 @@
 "Срок" = "Due";
 "Срок напоминания изменится в «Напоминаниях»." = "The reminder's due date will change in Reminders.";
 "Ссылка" = "Link";
+"Ссылка из письма ведёт не на сайт, а к файлу или другой программе. Открывайте, только если уверены в отправителе." = "This link from an email leads not to a website but to a file or another app. Open it only if you trust the sender.";
 "Ссылка на выделенном тексте" = "Link on the selected text";
 "Ссылки «написать письмо» на сайтах и в документах откроют новое письмо в Trudaybook. Скрытую копию из ссылки добавьте сами — её нет в окне письма." = "“Send email” links on websites and in documents will open a new message in Trudaybook. Add a Bcc from the link yourself — the message window has no Bcc field.";
 "Старше 30 дней" = "Older than 30 days";
@@ -763,6 +768,7 @@
 "Элемент не найден в календаре — возможно, его уже удалили" = "The item wasn't found in the calendar — it may have been deleted already";
 "Это время уже прошло." = "That time has already passed.";
 "Это и все следующие" = "This and all following";
+"Это не документ, а файл, который запускает программу или команды. Открывайте, только если ждали его от этого отправителя." = "This isn't a document but a file that runs an app or commands. Open it only if you expected it from this sender.";
 "Это не картинка, которую умеет macOS" = "This isn't an image macOS can read";
 "Это не похоже на пароль приложения (вида abcd-efgh-ijkl-mnop). Обычный пароль Apple ID iCloud по почте не примет." = "This doesn't look like an app password (like abcd-efgh-ijkl-mnop). iCloud won't accept a regular Apple ID password for mail.";
 "Этот Trunook не умеет повестку и итоги — обновите Trunook." = "This Trunook can't prepare agendas or summaries — please update Trunook.";

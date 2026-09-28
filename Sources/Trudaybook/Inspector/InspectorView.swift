@@ -297,6 +297,9 @@ struct MailBodyView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        // Без памяти между письмами: куки и кэш удалённых картинок иначе
+        // связывали бы одно письмо с другим (трекинг рассылок).
+        configuration.websiteDataStore = .nonPersistent()
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         view.setValue(false, forKey: "drawsBackground")
@@ -341,14 +344,26 @@ struct MailBodyView: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var loadedKey: String?
 
+        /// Письмо — чужой документ. Разрешено только показать его самого:
+        /// переходы (в том числе `<meta refresh>`) и отправка форм — нет,
+        /// иначе фишинговая форма «введите пароль» работала бы прямо здесь.
+        /// Ссылку, по которой щёлкнули, открывает система — см. `MailLinks`.
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
-            if action.navigationType == .linkActivated, let url = action.request.url {
-                NSWorkspace.shared.open(url)
+            let url = action.request.url
+            switch action.navigationType {
+            case .linkActivated:
+                if let url { MailLinks.open(url) }
                 decisionHandler(.cancel)
-                return
+            case .formSubmitted, .formResubmitted:
+                DebugLog.write("письмо: отправка формы из письма заблокирована")
+                decisionHandler(.cancel)
+            default:
+                // Своя загрузка (`loadHTMLString`) — это about:blank; картинки
+                // `cid:` и `data:` — не переходы. Всё прочее — мимо.
+                let scheme = url?.scheme?.lowercased() ?? "about"
+                decisionHandler(scheme == "about" || scheme == "data" ? .allow : .cancel)
             }
-            decisionHandler(.allow)
         }
     }
 }
@@ -875,7 +890,8 @@ private struct LetterFileChip: View {
         let url = folder.appendingPathComponent(MessageBuilder.exportFileName(item.title))
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try data.write(to: url, options: .atomic)
+            // С карантинной меткой: внутри — вложения чужого человека.
+            try AttachmentSaver.write(data, to: url)
             return url
         } catch {
             return nil

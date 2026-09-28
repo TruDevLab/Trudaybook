@@ -79,6 +79,20 @@ struct AttachmentChips: View {
 /// Вложения полученного письма: открыть, сохранить, вытащить мышью.
 @MainActor
 enum AttachmentSaver {
+    /// Запись вложения с карантинной меткой, как у скачанного браузером или
+    /// Mail: без неё Gatekeeper не проверит скачанное из письма, и `.command`
+    /// или `.pkg` откроются без единого вопроса.
+    static func write(_ data: Data, to url: URL) throws {
+        try data.write(to: url, options: .atomic)
+        var values = URLResourceValues()
+        values.quarantineProperties = [
+            kLSQuarantineAgentNameKey as String: "Trudaybook",
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeEmailAttachment as String,
+        ]
+        var marked = url
+        try? marked.setResourceValues(values)
+    }
+
     /// Временная копия — для «Открыть» и перетаскивания в Finder.
     /// Своя папка на каждый файл: у двух вложений бывает одно имя.
     static func temporaryCopy(of file: MailBody.Attachment) -> URL? {
@@ -89,14 +103,25 @@ enum AttachmentSaver {
         let url = folder.appendingPathComponent(safeName(file.name))
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try data.write(to: url)
+            try write(data, to: url)
             return url
         } catch {
             return nil
         }
     }
 
+    /// Открыть вложение. Исполняемое — скрипт, установщик, программу —
+    /// только после вопроса: вложение прислал чужой человек.
     static func open(_ file: MailBody.Attachment) {
+        if AttachmentRisk.isExecutable(name: file.name) {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = String(localized: "Открыть «\(safeName(file.name))»?")
+            alert.informativeText = String(localized: "Это не документ, а файл, который запускает программу или команды. Открывайте, только если ждали его от этого отправителя.")
+            alert.addButton(withTitle: String(localized: "Не открывать"))
+            alert.addButton(withTitle: String(localized: "Открыть"))
+            guard alert.runModal() == .alertSecondButtonReturn else { return }
+        }
         guard let url = temporaryCopy(of: file) else { return }
         NSWorkspace.shared.open(url)
     }
@@ -109,7 +134,7 @@ enum AttachmentSaver {
         return try files.compactMap { file in
             guard let data = file.data else { return nil }
             let url = freeURL(in: folder, name: safeName(file.name))
-            try data.write(to: url)
+            try write(data, to: url)
             return url
         }
     }
@@ -121,7 +146,7 @@ enum AttachmentSaver {
         panel.nameFieldStringValue = safeName(file.name)
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
-        try data.write(to: url)
+        try write(data, to: url)
         return url
     }
 
@@ -136,7 +161,7 @@ enum AttachmentSaver {
         return try files.compactMap { file in
             guard let data = file.data else { return nil }
             let url = freeURL(in: folder, name: safeName(file.name))
-            try data.write(to: url)
+            try write(data, to: url)
             return url
         }
     }
@@ -145,12 +170,9 @@ enum AttachmentSaver {
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
-    /// Имя из письма — без «/» и «:» и без пути наверх: имя задаёт отправитель.
+    /// Имя из письма — его задаёт отправитель. Очистка — `AttachmentRisk.safeName`.
     static func safeName(_ name: String) -> String {
-        var cleaned = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-        while cleaned.hasPrefix(".") { cleaned.removeFirst() }
-        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty ? String(localized: "Вложение") : cleaned
+        AttachmentRisk.safeName(name) ?? String(localized: "Вложение")
     }
 
     static func freeURL(in folder: URL, name: String) -> URL {

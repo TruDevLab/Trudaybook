@@ -196,7 +196,10 @@ extension MessageBuilder {
             .joined(separator: " ")
             .split(separator: " ", omittingEmptySubsequences: true)
             .joined(separator: " ")
-        return String((cleaned.isEmpty ? String(localized: "Письмо") : cleaned).prefix(80)) + ".eml"
+        // Тему задаёт отправитель: без символов направления письма и прочего
+        // невидимого, чтобы имя не притворялось другим расширением.
+        let safe = AttachmentRisk.safeName(cleaned) ?? String(localized: "Письмо")
+        return String(safe.prefix(80)) + ".eml"
     }
 }
 

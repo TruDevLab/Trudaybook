@@ -157,7 +157,8 @@ notch app by the same author (optional, all off by default):
 - **Remote images in emails** don't load until you click “Load” above the email —
   otherwise the sender would learn you opened the email. JavaScript in emails
   is always off.
-- **Passwords** — in the macOS Keychain, never written to the log.
+- **Passwords** — in the macOS Keychain, never written to the log. The mail
+  cache on disk is encrypted with a key kept in the Keychain.
 - **Weather** comes from Trunook, if installed. Without it — only if you turn it
   on in Settings → Calendars → Weather: then the forecast is requested from
   Open-Meteo with coordinates rounded to about 10 km, or by city name.

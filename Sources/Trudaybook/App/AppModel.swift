@@ -903,7 +903,13 @@ final class AppModel: ObservableObject {
     private func makeProvider(for account: MailAccount) -> (any AccountMailProvider)? {
         if mailCache == nil {
             do {
-                mailCache = try MailCache.open()
+                // Ключ — из Связки; не дала — временный: письма тогда не
+                // лягут на диск читаемыми, а после перезапуска скачаются заново.
+                let key = Keychain.cacheKey() ?? {
+                    DebugLog.write("почта: ключ кэша недоступен — кэш на время запуска")
+                    return DataSealer.newKeyData()
+                }()
+                mailCache = try MailCache.open(sealer: DataSealer(keyData: key))
             } catch {
                 errorMessage = String(localized: "Кэш почты не открылся: \(error)")
                 return nil
@@ -1049,7 +1055,7 @@ final class AppModel: ObservableObject {
         if let provider = providers[accountID] { await provider.stop() }
         Keychain.deletePassword(for: accountID)
         passwords.forget(accountID)
-        try? (mailCache ?? MailCache.open()).forget(account: accountID)
+        try? mailCache?.forget(account: accountID)
         let remaining = accounts.filter { $0.id != accountID }
         try? AccountStore.save(remaining)
         DebugLog.write("почта: ящик \(account.email) отключён")

@@ -25,20 +25,27 @@ public struct CachedMessage: Sendable, Equatable {
 /// Таймлайн открывается из кэша мгновенно, а сервер спрашивается только
 /// о новом. Письма хранятся сырыми: разбирает их MIME-разборщик, и если он
 /// станет умнее, перекачивать ничего не придётся.
+///
+/// Заголовки и тела на диске зашифрованы (`DataSealer`, ключ в Связке
+/// ключей): скопированный файл без ключа почту не отдаст. Удалённое
+/// затирается (`secure_delete`), а не остаётся в свободных страницах.
 public final class MailCache: @unchecked Sendable {
     private let db: SQLiteDatabase
     private let lock = NSLock()
+    private let sealer: DataSealer?
 
-    public static func open() throws -> MailCache {
-        try MailCache(path: SQLiteDatabase.applicationSupportURL("mail.sqlite").path)
+    public static func open(sealer: DataSealer? = nil) throws -> MailCache {
+        try MailCache(path: SQLiteDatabase.applicationSupportURL("mail.sqlite").path, sealer: sealer)
     }
 
-    public static func inMemory() throws -> MailCache {
-        try MailCache(path: ":memory:")
+    public static func inMemory(sealer: DataSealer? = nil) throws -> MailCache {
+        try MailCache(path: ":memory:", sealer: sealer)
     }
 
-    private init(path: String) throws {
+    private init(path: String, sealer: DataSealer?) throws {
+        self.sealer = sealer
         db = try SQLiteDatabase(path: path)
+        try db.execute("PRAGMA secure_delete = ON")
         try db.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 account TEXT NOT NULL,
@@ -78,6 +85,68 @@ public final class MailCache: @unchecked Sendable {
             );
             """)
         try migrate()
+        try sealExisting()
+    }
+
+    // MARK: - Шифрование
+
+    private func seal(_ data: Data) throws -> Data {
+        try sealer?.seal(data) ?? data
+    }
+
+    /// Расшифровать; `nil` — запись зашифрована другим ключом (ключ пропал
+    /// из Связки): такое письмо скачается заново.
+    private func unseal(_ data: Data?) -> Data? {
+        guard let data else { return nil }
+        guard let sealer else { return DataSealer.isSealed(data) ? nil : data }
+        return sealer.open(data)
+    }
+
+    /// Записи открытым текстом (до шифрования) — зашифровать и вычистить
+    /// файл (`VACUUM`), чтобы прежний текст не остался в свободных страницах.
+    /// Раз — при первом запуске с ключом.
+    private func sealExisting() throws {
+        guard let sealer else { return }
+        let marker = [SQLiteDatabase.Value.blob(DataSealer.marker)]
+        // Зашифровано другим ключом (прежний пропал из Связки) — кэш не
+        // прочесть. Сбросить целиком: иначе номера писем остались бы, а
+        // сами письма — нет, и синхронизация сочла бы их скачанными.
+        var sample: Data?
+        db.query("SELECT header FROM messages WHERE substr(header, 1, 4) = ?1 LIMIT 1", marker) { row in sample = row.blob(0) }
+        if let sample, sealer.open(sample) == nil {
+            try db.transaction {
+                for table in ["messages", "bodies", "mailbox_state"] { try db.run("DELETE FROM \(table)") }
+            }
+            try db.execute("VACUUM")
+        }
+        var plain = 0
+        db.query("SELECT (SELECT COUNT(*) FROM messages WHERE substr(header, 1, 4) <> ?1) + (SELECT COUNT(*) FROM bodies WHERE substr(raw, 1, 4) <> ?1)",
+                 marker) { row in plain = Int(row.integer(0) ?? 0) }
+        guard plain > 0 else { return }
+        try db.transaction {
+            var headers: [(String, String, Int64, Data)] = []
+            db.query("SELECT account, mailbox, uid, header FROM messages WHERE substr(header, 1, 4) <> ?1", marker) { row in
+                if let account = row.text(0), let mailbox = row.text(1), let uid = row.integer(2), let header = row.blob(3) {
+                    headers.append((account, mailbox, uid, header))
+                }
+            }
+            for (account, mailbox, uid, header) in headers {
+                try db.run("UPDATE messages SET header = ? WHERE account = ? AND mailbox = ? AND uid = ?",
+                           [.blob(try sealer.seal(header)), .text(account), .text(mailbox), .integer(uid)])
+            }
+            var bodies: [(String, String, Int64, Data)] = []
+            db.query("SELECT account, mailbox, uid, raw FROM bodies WHERE substr(raw, 1, 4) <> ?1", marker) { row in
+                if let account = row.text(0), let mailbox = row.text(1), let uid = row.integer(2), let raw = row.blob(3) {
+                    bodies.append((account, mailbox, uid, raw))
+                }
+            }
+            for (account, mailbox, uid, raw) in bodies {
+                try db.run("UPDATE bodies SET raw = ? WHERE account = ? AND mailbox = ? AND uid = ?",
+                           [.blob(try sealer.seal(raw)), .text(account), .text(mailbox), .integer(uid)])
+            }
+        }
+        try db.execute("VACUUM")
+        try? db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     }
 
     private func migrate() throws {
@@ -122,7 +191,7 @@ public final class MailCache: @unchecked Sendable {
                             header = excluded.header, size = excluded.size
                         """, [.text(account), .text(message.mailbox), .integer(Int64(message.uid)),
                               .date(message.internalDate), .text(message.flags.joined(separator: " ")),
-                              .blob(message.header), .integer(Int64(message.size))])
+                              .blob(try seal(message.header)), .integer(Int64(message.size))])
                 }
             }
         }
@@ -228,13 +297,14 @@ public final class MailCache: @unchecked Sendable {
     private func read(_ sql: String, _ values: [SQLiteDatabase.Value]) -> [CachedMessage] {
         var result: [CachedMessage] = []
         db.query(sql, values) { row in
-            guard let mailbox = row.text(0), let uid = row.integer(1), let date = row.date(2) else { return }
+            guard let mailbox = row.text(0), let uid = row.integer(1), let date = row.date(2),
+                  let header = unseal(row.blob(4)) else { return }
             result.append(CachedMessage(
                 mailbox: mailbox,
                 uid: UInt32(truncatingIfNeeded: uid),
                 internalDate: date,
                 flags: (row.text(3) ?? "").split(separator: " ").map(String.init),
-                header: row.blob(4) ?? Data(),
+                header: header,
                 size: Int(row.integer(5) ?? 0)
             ))
         }
@@ -248,7 +318,7 @@ public final class MailCache: @unchecked Sendable {
             var raw: Data?
             db.query("SELECT raw FROM bodies WHERE account = ? AND mailbox = ? AND uid = ?",
                      [.text(account), .text(mailbox), .integer(Int64(uid))]) { row in raw = row.blob(0) }
-            return raw
+            return unseal(raw)
         }
     }
 
@@ -256,7 +326,7 @@ public final class MailCache: @unchecked Sendable {
         try locked {
             try db.run("""
                 INSERT OR REPLACE INTO bodies (account, mailbox, uid, raw, fetched_at) VALUES (?, ?, ?, ?, ?)
-                """, [.text(account), .text(mailbox), .integer(Int64(uid)), .blob(raw), .date(Date())])
+                """, [.text(account), .text(mailbox), .integer(Int64(uid)), .blob(try seal(raw)), .date(Date())])
         }
     }
 
@@ -348,6 +418,8 @@ public final class MailCache: @unchecked Sendable {
                     try db.run("DELETE FROM \(table) WHERE account = ?", [.text(account)])
                 }
             }
+            // Удалённое затёрто (`secure_delete`); журнал WAL — тоже сбросить.
+            try? db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         }
     }
 }
