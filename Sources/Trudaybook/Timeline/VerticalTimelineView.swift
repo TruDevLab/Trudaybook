@@ -37,20 +37,18 @@ struct VerticalTimelineView: View {
         .background(Panel())
     }
 
-    /// Заголовки — ровно над своими колонками, у каждой свой «+»: сразу
-    /// видно, что создаёт каждый.
+    /// Заголовки — ровно над своими колонками. Создают кнопкой «Создать»
+    /// в панели: её тащат на нужную колонку.
     private func header(mailWidth: CGFloat, eventWidth: CGFloat) -> some View {
         let mail = model.dayItems.filter { $0.kind == .mail }
         let open = mail.filter { !model.status(of: $0).isDone }.count
         return HStack(spacing: 0) {
             Color.clear.frame(width: Self.inset + Self.hoursWidth + Self.columnGap)
-            ColumnHeader(title: String(localized: "Почта · \(open) из \(mail.count)"), symbol: "envelope",
-                         addHelp: String(localized: "Новое письмо (⌘N)")) { model.startNewMail() }
+            ColumnHeader(title: String(localized: "Почта · \(open) из \(mail.count + model.hiddenDayMail)"), symbol: "envelope")
                 .frame(width: mailWidth)
                 .help("Почта: открытых из всех писем за день")
             Color.clear.frame(width: Self.columnGap)
-            ColumnHeader(title: String(localized: "Встречи и напоминания"), symbol: "calendar",
-                         addHelp: QuickAddButton.eventHelp, draggableNewEvent: true) { model.startNewEvent() }
+            ColumnHeader(title: String(localized: "Встречи и напоминания"), symbol: "calendar")
                 .frame(width: eventWidth)
         }
         .padding(.vertical, 5)
@@ -104,13 +102,10 @@ struct VerticalTimelineView: View {
     }
 }
 
-/// Заголовок колонки: значок, название и «+» справа — над самой колонкой.
+/// Заголовок колонки: значок и название — над самой колонкой.
 private struct ColumnHeader: View {
     let title: String
     let symbol: String
-    let addHelp: String
-    var draggableNewEvent = false
-    let add: () -> Void
 
     var body: some View {
         HStack(spacing: 6) {
@@ -118,8 +113,8 @@ private struct ColumnHeader: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 4)
-            QuickAddButton(help: addHelp, draggableNewEvent: draggableNewEvent, action: add)
         }
+        .frame(height: 24)
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
     }
@@ -228,7 +223,7 @@ struct DayMailColumn: View {
             }
         }
         .contentShape(Rectangle())
-        .modifier(TimeDropTarget(scale: scale, vertical: true, acceptsNewEvent: false))
+        .modifier(TimeDropTarget(scale: scale, vertical: true, lane: .mail))
     }
 }
 

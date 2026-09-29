@@ -63,7 +63,7 @@ struct HoldToCreate: ViewModifier {
 }
 
 /// Заготовка новой встречи на шкале: при удержании мыши и пока над
-/// календарём тащат «+». Длина — как у новой встречи из настроек.
+/// календарём тащат «Создать». Длина — как у новой встречи из настроек.
 struct NewEventGhost: View {
     @EnvironmentObject private var model: AppModel
     let start: Date
@@ -71,20 +71,39 @@ struct NewEventGhost: View {
     let vertical: Bool
 
     var body: some View {
+        let end = start.addingTimeInterval(Double(model.newEventMinutes) * 60)
+        TimeGhost(start: start, minutes: Double(model.newEventMinutes), scale: scale, vertical: vertical,
+                  symbol: "plus", first: Format.time(start), second: String(localized: "до \(Format.time(end))"),
+                  range: Format.range(start, end))
+    }
+}
+
+/// Куда встанет то, что тащат по шкале: блок нужной длины с временем.
+/// Поперёк горизонтальной шкалы блок узкий — начало и конец строками.
+struct TimeGhost: View {
+    let start: Date
+    let minutes: Double
+    let scale: TimelineScale
+    let vertical: Bool
+    let symbol: String
+    let first: String
+    let second: String?
+    /// Подпись в одну строку — для вертикальной шкалы.
+    let range: String
+    var tint: Color = .accentColor
+
+    var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             let offset = CGFloat(scale.x(for: start))
-            let length = CGFloat(scale.hourWidth * Double(model.newEventMinutes) / 60)
-            let end = start.addingTimeInterval(Double(model.newEventMinutes) * 60)
-            // Ровно длина будущей встречи; в подписи — время, оно и важно.
-            // Поперёк горизонтальной шкалы блок узкий — начало и конец строками.
+            let length = CGFloat(scale.hourWidth * minutes / 60)
             Group {
                 if vertical {
-                    Label(Format.range(start, end), systemImage: "plus")
+                    Label(range, systemImage: symbol)
                 } else {
                     VStack(alignment: .leading, spacing: 1) {
-                        Label(Format.time(start), systemImage: "plus")
-                        Text("до \(Format.time(end))").opacity(0.75)
+                        Label(first, systemImage: symbol)
+                        if let second { Text(second).opacity(0.75) }
                     }
                 }
             }
@@ -93,65 +112,153 @@ struct NewEventGhost: View {
                 .minimumScaleFactor(0.7)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
-                .frame(width: vertical ? size.width - 2 : max(length, 24),
+                .frame(width: vertical ? size.width - 2 : max(length, 64),
                        height: vertical ? max(length, 16) : size.height - 8,
                        alignment: .topLeading)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.28)))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.accentColor, lineWidth: 1.5))
+                .background(RoundedRectangle(cornerRadius: 6).fill(tint.opacity(0.28)))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(tint, lineWidth: 1.5))
                 .offset(x: vertical ? 0 : offset, y: vertical ? offset : 4)
         }
         .allowsHitTesting(false)
     }
 }
 
+/// Что появится или куда переедет, пока над шкалой что-то тащат.
+enum DropGhost: Equatable {
+    /// «Создать» над дорожкой встреч — новая встреча с этого времени.
+    case newEvent(Date)
+    /// «Создать» над дорожкой писем — новое письмо, время не важно.
+    case newMail
+    /// Своя встреча, напоминание или письмо — новое время.
+    case move(TimelineItem, Date)
+}
+
+/// Какая дорожка принимает бросок: что на ней создаёт «Создать».
+enum DropLane {
+    case mail, events
+}
+
 /// Приём перетаскивания на шкалу. Элемент переносится туда, где его
-/// отпустили; «+» — новая встреча там же, и пока его ведут над шкалой,
-/// на месте будущей встречи видна заготовка с её временем.
+/// отпустили, и пока его ведут, видно, на какое время он встанет.
+/// «Создать» над дорожкой встреч — заготовка встречи с её временем, над
+/// дорожкой писем — вся дорожка подсвечена: «Создать новое письмо».
 struct TimeDropTarget: ViewModifier {
     @EnvironmentObject private var model: AppModel
     let scale: TimelineScale
     let vertical: Bool
-    /// Дорожка писем «+» не принимает: встречи — на дорожке встреч.
-    var acceptsNewEvent = true
+    var lane: DropLane = .events
     @ViewState private var isTargeted = false
-    @ViewState private var ghost: Date?
+    @ViewState private var ghost: DropGhost?
 
     func body(content: Content) -> some View {
         content
             .background(RoundedRectangle(cornerRadius: 8).fill(isTargeted ? Color.accentColor.opacity(0.08) : .clear))
-            .overlay(alignment: .topLeading) {
-                if let ghost = ghost ?? (acceptsNewEvent ? model.debugDropPreview(on: scale.dayStart) : nil) {
-                    NewEventGhost(start: ghost, scale: scale, vertical: vertical)
-                }
-            }
-            .onDrop(of: acceptsNewEvent ? [.url, .plainText] : [.plainText], delegate: TimelineDropDelegate(
+            .overlay(alignment: .topLeading) { ghostView }
+            .onDrop(of: [.url, .plainText], delegate: TimelineDropDelegate(
                 model: model,
-                acceptsNewEvent: acceptsNewEvent,
+                lane: lane,
                 date: { point in scale.date(at: Double(vertical ? point.y : point.x)) },
                 setTargeted: { isTargeted = $0 },
                 setGhost: { ghost = $0 }))
+    }
+
+    @ViewBuilder
+    private var ghostView: some View {
+        switch ghost ?? model.debugDropGhost(on: scale.dayStart, lane: lane) {
+        case .newEvent(let start):
+            NewEventGhost(start: start, scale: scale, vertical: vertical)
+        case .newMail:
+            NewMailHighlight()
+        case .move(let item, let start):
+            MoveGhost(item: item, start: start, scale: scale, vertical: vertical)
+        case nil:
+            EmptyView()
+        }
+    }
+}
+
+/// Дорожка писем под «Создать»: вся подсвечена, по центру — что будет.
+private struct NewMailHighlight: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.accentColor.opacity(0.16))
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])))
+            .overlay {
+                Label("Создать новое письмо", systemImage: "square.and.pencil")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color(nsColor: .controlBackgroundColor).opacity(0.9)))
+            }
+            .allowsHitTesting(false)
+    }
+}
+
+/// Куда переедет встреча, напоминание или письмо, если отпустить здесь.
+private struct MoveGhost: View {
+    @EnvironmentObject private var model: AppModel
+    let item: TimelineItem
+    let start: Date
+    let scale: TimelineScale
+    let vertical: Bool
+
+    var body: some View {
+        // Нельзя перенести (чужая встреча, серия у Exchange…) — так и сказать
+        // прямо на шкале, а не показывать время, на которое она не встанет.
+        if case .disabled = model.availability(of: .reschedule, for: item) {
+            TimeGhost(start: start, minutes: 60, scale: scale, vertical: vertical, symbol: "lock",
+                      first: String(localized: "Перенести нельзя"), second: nil,
+                      range: String(localized: "Перенести нельзя"), tint: .secondary)
+        } else {
+            ghost
+        }
+    }
+
+    @ViewBuilder
+    private var ghost: some View {
+        switch item.kind {
+        case .event:
+            let minutes = max((item.end ?? item.time.addingTimeInterval(1800)).timeIntervalSince(item.time) / 60, 15)
+            let end = start.addingTimeInterval(minutes * 60)
+            TimeGhost(start: start, minutes: minutes, scale: scale, vertical: vertical,
+                      symbol: "arrow.left.and.right", first: Format.time(start),
+                      second: String(localized: "до \(Format.time(end))"), range: Format.range(start, end))
+        case .reminder:
+            TimeGhost(start: start, minutes: 30, scale: scale, vertical: vertical, symbol: "bell",
+                      first: Format.time(start), second: nil, range: Format.time(start), tint: .orange)
+        case .mail:
+            // Письмо «переносится» — откладывается до этого времени; в прошлое нельзя.
+            let past = start <= model.now
+            TimeGhost(start: start, minutes: 30, scale: scale, vertical: vertical,
+                      symbol: past ? "nosign" : "clock",
+                      first: past ? String(localized: "Уже прошло") : String(localized: "До \(Format.time(start))"),
+                      second: nil, range: past ? String(localized: "Уже прошло") : String(localized: "Отложить до \(Format.time(start))"),
+                      tint: past ? .secondary : .orange)
+        }
     }
 }
 
 struct TimelineDropDelegate: DropDelegate {
     let model: AppModel
-    let acceptsNewEvent: Bool
+    let lane: DropLane
     let date: (CGPoint) -> Date
     let setTargeted: (Bool) -> Void
-    let setGhost: (Date?) -> Void
+    let setGhost: (DropGhost?) -> Void
 
-    /// «+» несёт ссылку, элементы — строку.
-    private func isNewEvent(_ info: DropInfo) -> Bool { info.hasItemsConforming(to: [.url]) }
+    /// «Создать» несёт ссылку, элементы — строку со своим номером.
+    private func isNewItem(_ info: DropInfo) -> Bool { info.hasItemsConforming(to: [.url]) }
 
     func validateDrop(info: DropInfo) -> Bool {
-        isNewEvent(info) ? acceptsNewEvent : info.hasItemsConforming(to: [.plainText])
+        isNewItem(info) || info.hasItemsConforming(to: [.plainText])
     }
 
     func dropEntered(info: DropInfo) { update(info) }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         update(info)
-        return DropProposal(operation: isNewEvent(info) ? .copy : .move)
+        return DropProposal(operation: isNewItem(info) ? .copy : .move)
     }
 
     func dropExited(info: DropInfo) {
@@ -164,13 +271,18 @@ struct TimelineDropDelegate: DropDelegate {
         setTargeted(false)
         setGhost(nil)
         let model = model
-        if isNewEvent(info) {
-            guard acceptsNewEvent else { return false }
-            // Только своя ссылка: ссылку из браузера на шкалу встречей не считаем.
+        let lane = lane
+        if isNewItem(info) {
+            // Только своя ссылка: ссылку из браузера на шкалу не считаем.
             guard let provider = info.itemProviders(for: [.url]).first else { return false }
             _ = provider.loadObject(ofClass: NSURL.self) { object, _ in
-                guard let url = object as? NSURL, url.absoluteString == AppModel.newEventURL.absoluteString else { return }
-                Task { @MainActor in model.startNewEvent(dropped: when) }
+                guard let url = object as? NSURL, url.absoluteString == AppModel.newItemURL.absoluteString else { return }
+                Task { @MainActor in
+                    switch lane {
+                    case .mail: model.startNewMail()
+                    case .events: model.startNewEvent(dropped: when)
+                    }
+                }
             }
             return true
         }
@@ -178,28 +290,36 @@ struct TimelineDropDelegate: DropDelegate {
         _ = provider.loadObject(ofClass: NSString.self) { object, _ in
             guard let id = object as? NSString else { return }
             let text = id as String
-            Task { @MainActor in model.dropItem(text, at: when) }
+            Task { @MainActor in
+                model.dragging = nil
+                model.dropItem(text, at: when)
+            }
         }
         return true
     }
 
     private func update(_ info: DropInfo) {
-        if isNewEvent(info) {
-            setGhost(AppModel.snapToQuarter(date(info.location)))
+        if isNewItem(info) {
+            switch lane {
+            case .mail: setGhost(.newMail)
+            case .events: setGhost(.newEvent(AppModel.snapToQuarter(date(info.location))))
+            }
+        } else if let item = model.dragging {
+            setGhost(.move(item, AppModel.dropTime(date(info.location))))
         } else {
             setTargeted(true)
         }
     }
 }
 
-/// Карточка под курсором, пока «+» тащат на календарь.
-struct NewEventDragPreview: View {
+/// Карточка под курсором, пока «Создать» тащат на календарь.
+struct NewItemDragPreview: View {
     var body: some View {
-        Label("Новая встреча", systemImage: "calendar.badge.plus")
-            .font(.callout.weight(.medium))
+        Label("Создать", systemImage: "plus")
+            .font(.callout.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.85)))
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.9)))
             .foregroundStyle(.white)
     }
 }

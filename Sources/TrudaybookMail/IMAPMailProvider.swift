@@ -298,6 +298,24 @@ public actor IMAPMailProvider: MailProvider {
         changeHandler?()
     }
 
+    public func trash(_ itemID: String) async throws {
+        guard let (mailbox, uid) = Self.parse(itemID) else { return }
+        guard let trash = self.mailbox(for: .trash) else {
+            throw MailNetworkError.server(String(localized: "на сервере нет папки «Корзина»"))
+        }
+        // Из самой «Корзины» — только навсегда (`\Deleted`); такого
+        // необратимого действия у приложения нет.
+        guard mailbox != trash else {
+            throw MailNetworkError.server(String(localized: "письмо уже в «Корзине»"))
+        }
+        try await perform {
+            try await select(mailbox)
+            try await client.uidMove([uid], to: trash)
+        }
+        try cache.delete([uid], mailbox: mailbox, account: account.id)
+        changeHandler?()
+    }
+
     public func send(_ mail: OutgoingMail, replyingTo itemID: String?) async throws {
         guard let password = password() else {
             throw MailNetworkError.authentication(String(localized: "пароль не найден в Связке ключей"))

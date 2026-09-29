@@ -94,7 +94,10 @@ struct EventEditorSheet: View {
         .frame(width: 720, height: sheetHeight)
         .animation(.easeOut(duration: 0.2), value: showsPlanner)
         // Фон — тот же, что у главного окна; поля — стеклянными карточками.
-        .background(AppBackgroundView())
+        // Под прозрачным заголовком окна — тоже фон: за него окно и тянут.
+        .background { AppBackgroundView().ignoresSafeArea() }
+        .onAppear { EventEditorWindow.fit(height: sheetHeight, model: model) }
+        .onChange(of: sheetHeight) { _, height in EventEditorWindow.fit(height: height, model: model) }
         .environment(\.auroraTheme, model.customBackground)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard state.kind == .meeting, canInvite || model.options.demo else { return false }

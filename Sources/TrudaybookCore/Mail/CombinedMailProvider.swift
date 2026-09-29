@@ -79,6 +79,10 @@ public final class CombinedMailProvider: MailProvider {
         try await box(ofItem: itemID).provider.archive(itemID)
     }
 
+    public func trash(_ itemID: String) async throws {
+        try await box(ofItem: itemID).provider.trash(itemID)
+    }
+
     public func send(_ mail: OutgoingMail, replyingTo itemID: String?) async throws {
         let box: Box
         if let accountID = mail.accountID {

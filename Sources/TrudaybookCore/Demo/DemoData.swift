@@ -104,6 +104,7 @@ public actor DemoMailProvider: MailProvider {
     private let calendar: Calendar
     private var archived: Set<String> = []
     private var answered: Set<String> = []
+    private var trashed: Set<String> = []
 
     public init(clock: @escaping @Sendable () -> Date, calendar: Calendar = .current,
                 accountID: String = "demo", me: Person = Demo.me, variant: Int = 0) {
@@ -122,7 +123,7 @@ public actor DemoMailProvider: MailProvider {
         return Demo.days(from: from, to: to, calendar: calendar).flatMap { day in
             generate(day: day, today: today)
         }
-        .filter { $0.time >= from && $0.time < to && $0.time <= now }
+        .filter { $0.time >= from && $0.time < to && $0.time <= now && !trashed.contains($0.id) }
         .map { item in
             guard answered.contains(item.id) || archived.contains(item.id), case .mail(var info) = item.detail else { return item }
             var item = item
@@ -170,6 +171,10 @@ public actor DemoMailProvider: MailProvider {
 
     public func archive(_ itemID: String) {
         archived.insert(itemID)
+    }
+
+    public func trash(_ itemID: String) {
+        trashed.insert(itemID)
     }
 
     public func send(_ mail: OutgoingMail, replyingTo itemID: String?) {
@@ -224,7 +229,7 @@ public actor DemoMailProvider: MailProvider {
         default:
             items = []
         }
-        return Array(items.sorted { $0.time > $1.time }.prefix(limit))
+        return Array(items.filter { !trashed.contains($0.id) }.sorted { $0.time > $1.time }.prefix(limit))
     }
 
     public func search(_ text: String, inFolder folderID: String?, fullText: Bool) -> [TimelineItem] {

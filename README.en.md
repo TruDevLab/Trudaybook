@@ -76,16 +76,33 @@ the count of unhandled emails. Meetings you haven't answered, or answered
 - Priorities (yours and the sender's); swipe actions on list rows — which
   ones is up to you in Settings.
 - Meeting invitations: a card with that day's calendar and answer buttons.
-- Drag a whole email out as an `.eml` file to Finder.
+- Open an email in its own window (double-click in the list or ⌘O), side by
+  side with others; `.eml` files from Finder open in the same kind of window.
+- Save a whole email as an `.eml` file with a button (⇧⌘S) or drag it to Finder.
+- Several emails at once: ⇧ for a range, ⌘ one by one; then archive them or
+  move them to the mailbox Trash (⌫).
+- Right-click an email, meeting or reminder for a menu of the main actions.
+- Pick which toolbar buttons to show and in what order in Settings →
+  Appearance; “New” sits on the right.
 
 **Calendar**
 - macOS calendars (iCloud, Google, Exchange via Internet Accounts) and
   Exchange directly.
-- New meeting: drag “+” to the right time or press and hold on an empty
-  spot. An editor with repeat, attendees, location and a free/busy planner.
+- New meeting or email: drag “Create” from the toolbar onto the meetings lane
+  (the meeting starts where you drop it) or onto the mail lane; or press and
+  hold on an empty spot. While you drag a meeting you see where it will land;
+  moving a meeting with attendees asks for confirmation first.
+  An editor with repeat, attendees, location and a free/busy planner.
+- Double-click a meeting to edit it — the editor is its own window you can
+  move aside to keep the timeline in view.
 - macOS reminders on the timeline, checked off with one click.
 - A note for every day under the month calendar, and in its own window (⌘J)
   with formatting, lists and checklists; notes for the week and the month.
+
+**Menu bar** — an icon with today's date: the month with week numbers, the
+day's meetings (the current or next one in focus — Return joins it) and a
+“Join” button for online meetings. ⌃⌥⌘J from any app joins the current or
+next meeting. Turn it off in Settings → Appearance.
 
 **Desktop widgets** — “Today” (upcoming meetings with a countdown, reminders,
 weather) and “To Handle” (how many emails are waiting and which matter):
@@ -100,10 +117,14 @@ Open-Meteo, by city or by location.
 right in the notification sends the answer without opening the window.
 
 **Look** — Liquid Glass on macOS 26, light and dark, calm gradients and
-texture backgrounds, your own picture as a background. The Sky theme follows
+texture backgrounds, your own picture as a background. The Sky theme (the default) follows
 the time of day and the weather: the moon in its phase and stars at night,
 the sun, clouds, rain, snow, fog and storms by day. Russian, English
 and Chinese interface.
+
+**Tutorial** — on first launch Trudaybook walks you through the essentials on
+sample emails and meetings; skip it any time, take it again from Help →
+Trudaybook Tutorial or Settings → Appearance.
 
 **Together with [Trunook](https://github.com/TruDevLab/Trunook)** — a MacBook
 notch app by the same author (optional, all off by default):
@@ -138,9 +159,11 @@ notch app by the same author (optional, all off by default):
 | ⌘1 ⌘2 ⌘3 / ⌘0 | High, medium, low priority / clear |
 | ⌘T | Today |
 | ⌘J | Note in a window |
+| ⌃⌥⌘J | Join the current or next meeting (from any app) |
 | ⌘[ / ⌘] | Previous / next day (week in week view) |
 | ⌘= / ⌘− | Zoom in / out |
 | ⌥⌘1 / ⌥⌘2 | Day / week |
+| ⇧⌘H | Hide / show handled emails on the timeline |
 | ⌥⌘L | Timeline top to bottom |
 | ↑ ↓ | Neighbouring item |
 

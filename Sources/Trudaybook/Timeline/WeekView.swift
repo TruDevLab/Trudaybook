@@ -26,15 +26,8 @@ struct WeekView: View {
                 HStack(alignment: .top, spacing: 0) {
                     Color.clear.frame(width: Self.inset + Self.hoursWidth, height: 1)
                     ForEach(days, id: \.self) { day in
-                        // У последнего дня справа — место под «+».
-                        WeekDayHeader(day: day, trailingInset: day == days.last ? 30 : 0).frame(width: columnWidth)
+                        WeekDayHeader(day: day).frame(width: columnWidth)
                     }
-                }
-                .overlay(alignment: .topTrailing) {
-                    QuickAddButton(help: QuickAddButton.eventHelp, draggableNewEvent: true) {
-                        model.startNewEvent()
-                    }
-                    .padding(.trailing, Self.inset + 4)
                 }
                 .padding(.top, 6)
                 .fixedSize(horizontal: false, vertical: true)

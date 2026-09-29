@@ -57,6 +57,7 @@ enum SettingsWindow {
     static var current: NSWindow? { window?.isVisible == true ? window : nil }
 
     static func show(model: AppModel, tab: Tab = .mail) {
+        let model = TourWindow.owner(model)
         let hosting = NSHostingController(rootView: SettingsView(initialTab: tab).environmentObject(model))
         if let window {
             window.contentViewController = hosting
@@ -104,7 +105,9 @@ struct SettingsView: View {
                     case .calendars: CalendarSettingsView()
                     case .notifications: NotificationSettingsView(notifier: model.notifier)
                     case .trunook: TrunookSettingsView(bridge: model.trunook)
-                    case .appearance: AppearanceSettingsView()
+                    case .appearance:
+                        AppearanceSettingsView()
+                        ToolbarSettingsCard()
                     case .updates: UpdateSettingsView(updates: model.updates)
                     }
                 }
@@ -498,6 +501,24 @@ struct AppearanceSettingsView: View {
                 SettingsHint(String(localized: "Панели — стекло (Liquid Glass): фон просвечивает сквозь них. Окно само становится светлым или тёмным — по яркости фона."))
             }
             WidgetSettingsCard()
+            SettingsCard(title: String(localized: "Строка меню"), icon: "menubar.rectangle") {
+                Toggle("Значок календаря в строке меню", isOn: $model.menuBarIcon)
+                    .toggleStyle(.switch)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SettingsHint(String(localized: "На значке — сегодняшнее число; по нажатию — месяц и встречи дня с кнопкой «Подключиться»."))
+                Toggle(String(localized: "Подключаться к ближайшей встрече по \(MeetingHotKey.title)"), isOn: $model.joinHotKey)
+                    .toggleStyle(.switch)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SettingsHint(String(localized: "Из любой программы: идущая или ближайшая сегодня онлайн-встреча открывается в Zoom, Teams, Телемосте… Подключаться не к чему — откроется окошко с днём."))
+            }
+            SettingsCard(title: String(localized: "Обучение"), icon: "graduationcap") {
+                HStack {
+                    Text("Главное о Trudaybook — на тестовых письмах и встречах; ваши данные не затронуты.")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 12)
+                    Button("Пройти обучение") { TourWindow.show(main: model) }
+                }
+            }
             if model.background == .aurora || model.background == .sky {
                 SettingsCard(title: String(localized: "Анимация"), icon: "wind") {
                     Toggle(model.background == .sky ? String(localized: "Облака плывут, идёт дождь и снег") : String(localized: "Пятна света плывут"),

@@ -48,3 +48,89 @@ struct SecurityTests {
         #expect(!MessageBuilder.exportFileName("Счёт\u{202E}fdp").contains("\u{202E}"))
     }
 }
+
+/// Связка ключей в памяти: записи и сколько раз к ним обращались.
+private final class MemoryKeychain: SecretBackend, @unchecked Sendable {
+    var items: [String: Data] = [:]
+    var reads: [String] = []
+    /// Эти записи «не даются» — как если человек нажал «Запретить».
+    var denied: Set<String> = []
+
+    func read(_ account: String) -> (status: OSStatus, data: Data?) {
+        reads.append(account)
+        if denied.contains(account) { return (errSecAuthFailed, nil) }
+        guard let data = items[account] else { return (errSecItemNotFound, nil) }
+        return (errSecSuccess, data)
+    }
+
+    func write(_ account: String, data: Data, label: String) -> OSStatus {
+        if denied.contains(account) { return errSecAuthFailed }
+        items[account] = data
+        return errSecSuccess
+    }
+
+    func delete(_ account: String) { items[account] = nil }
+}
+
+@Suite("Секреты — одной записью Связки ключей")
+struct SecretVaultTests {
+    @Test("Прежние отдельные записи (пароль и ключ кэша) переносятся в одну и удаляются")
+    func перенос() throws {
+        let keychain = MemoryKeychain()
+        let oldKey = Data(repeating: 7, count: 32)
+        keychain.items = ["acc-1": Data("секрет".utf8), "mail-cache-key": oldKey]
+        let vault = SecretVault(backend: keychain)
+        #expect(vault.password(for: "acc-1") == "секрет")
+        #expect(vault.cacheKey() == oldKey)
+        #expect(Set(keychain.items.keys) == ["trudaybook-secrets"])
+
+        // Следующий запуск — одна запись, одно чтение на всё.
+        keychain.reads = []
+        let next = SecretVault(backend: keychain)
+        #expect(next.password(for: "acc-1") == "секрет")
+        #expect(next.cacheKey() == oldKey)
+        #expect(next.password(for: "acc-1") == "секрет")
+        #expect(keychain.reads == ["trudaybook-secrets"])
+    }
+
+    @Test("Новый ключ кэша и пароль — в ту же запись; удаление ящика убирает пароль")
+    func запись() throws {
+        let keychain = MemoryKeychain()
+        let vault = SecretVault(backend: keychain)
+        let key = try #require(vault.cacheKey())
+        #expect(key.count == 32)
+        try vault.setPassword("p1", for: "a")
+        try vault.setPassword("p2", for: "b")
+        vault.deletePassword(for: "a")
+        #expect(Set(keychain.items.keys) == ["trudaybook-secrets"])
+        let next = SecretVault(backend: keychain)
+        #expect(next.password(for: "a") == nil)
+        #expect(next.password(for: "b") == "p2")
+        #expect(next.cacheKey() == key)
+    }
+
+    @Test("Связка отказала — запись не затирается пустой, пароль не записывается")
+    func отказ() throws {
+        let keychain = MemoryKeychain()
+        let saved = SecretVault(backend: keychain)
+        try saved.setPassword("p", for: "a")
+        let before = keychain.items
+        keychain.denied = ["trudaybook-secrets"]
+        let vault = SecretVault(backend: keychain)
+        #expect(vault.password(for: "a") == nil)
+        #expect(vault.cacheKey() == nil)
+        #expect(throws: Keychain.Failure.self) { try vault.setPassword("x", for: "b") }
+        keychain.denied = []
+        #expect(keychain.items == before)
+    }
+
+    @Test("Прежний ключ кэша не дался — новый не заводится: кэш под старым не пропадёт")
+    func старыйКлючНеДался() {
+        let keychain = MemoryKeychain()
+        keychain.items = ["mail-cache-key": Data(repeating: 1, count: 32)]
+        keychain.denied = ["mail-cache-key"]
+        let vault = SecretVault(backend: keychain)
+        #expect(vault.cacheKey() == nil)
+        #expect(keychain.items["trudaybook-secrets"] == nil)
+    }
+}

@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import UniformTypeIdentifiers
 import TrudaybookCore
 
 /// Правая панель: выбранное письмо, встреча или напоминание — или ответ.
@@ -11,6 +12,8 @@ struct InspectorView: View {
             if model.draft != nil {
                 // Ответ на выбранное или новое письмо.
                 ComposerView(item: model.draftItem)
+            } else if model.multiSelection.count > 1 {
+                SelectionSummary()
             } else if let item = model.selectedItem {
                 switch item.kind {
                 case .mail: MailDetail(item: item)
@@ -37,10 +40,12 @@ struct InspectorView: View {
 
 // MARK: - Общие части
 
-/// Вид элемента, статус и «Вернуть в работу».
-private struct InspectorHeader: View {
+/// Вид элемента, статус и «Вернуть в работу»; справа — свои значки
+/// (у письма — приоритет, «Сохранить» и «В окне»).
+private struct InspectorHeader<Accessories: View>: View {
     @EnvironmentObject private var model: AppModel
     let item: TimelineItem
+    @ViewBuilder var accessories: Accessories
 
     private var kindTitle: String {
         switch item.kind {
@@ -53,7 +58,8 @@ private struct InspectorHeader: View {
     var body: some View {
         let status = model.status(of: item)
         HStack(spacing: 8) {
-            Label(kindTitle, systemImage: item.symbol)
+            // Письмо в панели открыто — и значок открытого конверта.
+            Label(kindTitle, systemImage: item.kind == .mail ? "envelope.open" : item.symbol)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
             StatusPill(status: status)
@@ -64,8 +70,17 @@ private struct InspectorHeader: View {
                 Button("Вернуть в работу") { model.reopen(item.id) }
                     .buttonStyle(.link)
                     .font(.callout)
+                    .lineLimit(1)
+                    .fixedSize()
             }
+            accessories
         }
+    }
+}
+
+extension InspectorHeader where Accessories == EmptyView {
+    init(item: TimelineItem) {
+        self.init(item: item) { EmptyView() }
     }
 }
 
@@ -134,48 +149,23 @@ private struct MailDetail: View {
     @ViewState private var showRemote = false
     /// Письмо «на бумаге» (свои цвета) или тёмным; `nil` — само.
     @ViewState private var paper: Bool?
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let info = item.mail!
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                InspectorHeader(item: item)
+                InspectorHeader(item: item) {
+                    HStack(spacing: 4) {
+                        PriorityMenu(item: item)
+                        if let body = model.body {
+                            LetterFileButton(item: item, letter: body)
+                        }
+                        OpenInWindowButton { LetterWindow.show(item, model: model) }
+                    }
+                }
                 Text(item.title)
                     .font(.title2.weight(.semibold))
                     .textSelection(.enabled)
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
-                    // Только имена; адрес — при наведении. Длинные списки
-                    // свёрнуты в строку с «ещё N».
-                    GridRow {
-                        Text("От").foregroundStyle(.secondary)
-                        PeopleLine(people: [info.from])
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    GridRow {
-                        Text("Кому").foregroundStyle(.secondary)
-                        PeopleLine(people: info.to)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if !info.cc.isEmpty {
-                        GridRow {
-                            Text("Копия").foregroundStyle(.secondary)
-                            PeopleLine(people: info.cc)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    GridRow {
-                        Text("Время").foregroundStyle(.secondary)
-                        Text("\(Format.dayTitle(item.time)), \(Format.time(item.time))")
-                    }
-                    if let box = model.accountName(of: item) {
-                        GridRow {
-                            Text("Ящик").foregroundStyle(.secondary)
-                            Text(box)
-                        }
-                    }
-                }
-                .font(.callout)
+                LetterFields(item: item, account: model.accountName(of: item))
 
                 if let invitation = model.invitation {
                     InvitationCard(item: item, invitation: invitation)
@@ -193,23 +183,10 @@ private struct MailDetail: View {
                                     help: String(localized: "Назначить встречу с участниками письма")) {
                         model.startMeeting(with: item)
                     }
-                    PriorityMenu(item: item)
-                    if let body = model.body {
-                        LetterFileChip(item: item, letter: body)
-                    }
                 }
 
-                if let html = model.body?.html, !showRemote, html.range(of: "src=\"http", options: .caseInsensitive) != nil {
-                    HStack {
-                        Image(systemName: "photo.badge.exclamationmark")
-                        Text("Картинки из сети не загружены — так отправитель не узнает, что письмо открыто.")
-                            .font(.caption)
-                        Spacer()
-                        Button("Загрузить") { showRemote = true }
-                            .controlSize(.small)
-                    }
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
+                if let body = model.body, !showRemote {
+                    RemoteImagesNotice(letter: body) { showRemote = true }
                 }
 
                 // Пересказ — только когда есть кому пересказывать.
@@ -223,26 +200,184 @@ private struct MailDetail: View {
             Divider()
 
             if let body = model.body {
-                MailBodyView(body: body, allowRemote: showRemote, paper: paper)
-                    .overlay(alignment: .topTrailing) {
-                        // Тёмная тема: письмо в своих цветах на листе или тёмным.
-                        if colorScheme == .dark, body.html != nil {
-                            let current = paper ?? MailBodyView.hasOwnColors(body.html)
-                            Button { paper = !current } label: {
-                                Image(systemName: current ? "moon" : "doc.richtext")
-                                    .padding(6)
-                                    .background(Circle().fill(Color.primary.opacity(0.1)))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(10)
-                            .help(current ? String(localized: "Показать в тёмной теме") : String(localized: "Показать в цветах письма (таблицы, выделения)"))
-                        }
-                    }
+                LetterBodyPane(letter: body, allowRemote: showRemote, paper: $paper)
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .id(item.id)
+    }
+}
+
+/// Значок «в окне» — те же стрелки, что у заметки под календарём.
+struct OpenInWindowButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(String(localized: "Открыть письмо в отдельном окне · ⌘O"))
+    }
+}
+
+/// Выделено несколько строк списка: что с ними сделать разом.
+private struct SelectionSummary: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        let items = model.selectionItems
+        let letters = items.filter { $0.kind == .mail }
+        let archivable = items.filter { model.availability(of: .archive, for: $0).isEnabled }
+        VStack(spacing: 14) {
+            Image(systemName: "envelope.stack")
+                .font(.system(size: 38))
+                .foregroundStyle(.secondary)
+            Text(Self.title(items.count, letters: letters.count))
+                .font(.title3.weight(.semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(items.prefix(6)) { item in
+                    Text("\(item.subtitle) — \(item.title)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                if items.count > 6 {
+                    Text("и ещё \(items.count - 6)").font(.callout).foregroundStyle(.tertiary)
+                }
+            }
+            .frame(maxWidth: 320, alignment: .leading)
+            HStack(spacing: 8) {
+                Button { model.archiveSelection() } label: {
+                    Label(archivable.count == items.count ? String(localized: "В архив")
+                                                          : String(localized: "В архив: \(archivable.count)"),
+                          systemImage: "archivebox")
+                }
+                .disabled(archivable.isEmpty)
+                .help("В архив всё выделенное · ⌘E")
+                Button(role: .destructive) { model.trash(letters.map(\.id)) } label: {
+                    Label(letters.count == items.count ? String(localized: "В корзину")
+                                                       : String(localized: "Письма в корзину: \(letters.count)"),
+                          systemImage: "trash")
+                }
+                .disabled(letters.isEmpty)
+                .help("В «Корзину» ящика — вернуть можно оттуда же · ⌫")
+            }
+            .controlSize(.large)
+            Button("Снять выделение") { model.clearMultiSelection() }
+                .buttonStyle(.link)
+            Text("⇧ — выделить подряд, ⌘ — добавить или убрать одно")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// «Выбрано 3 письма», а если в выделении и встречи — «Выбрано 4».
+    static func title(_ count: Int, letters: Int) -> String {
+        letters == count ? String(localized: "Выбрано писем: \(count)") : String(localized: "Выбрано: \(count)")
+    }
+}
+
+/// От кого, кому, копия, время и ящик. Только имена; адрес — при
+/// наведении. Длинные списки свёрнуты в строку с «ещё N».
+struct LetterFields: View {
+    let item: TimelineItem
+    /// Ящик — когда их несколько; у письма из файла — имя файла.
+    var account: String?
+    var accountTitle = String(localized: "Ящик")
+
+    var body: some View {
+        let info = item.mail!
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
+            GridRow {
+                Text("От").foregroundStyle(.secondary)
+                PeopleLine(people: [info.from])
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !info.to.isEmpty {
+                GridRow {
+                    Text("Кому").foregroundStyle(.secondary)
+                    PeopleLine(people: info.to)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            if !info.cc.isEmpty {
+                GridRow {
+                    Text("Копия").foregroundStyle(.secondary)
+                    PeopleLine(people: info.cc)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            GridRow {
+                Text("Время").foregroundStyle(.secondary)
+                Text("\(Format.dayTitle(item.time)), \(Format.time(item.time))")
+            }
+            if let account {
+                GridRow {
+                    Text(accountTitle).foregroundStyle(.secondary)
+                    Text(account)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+        }
+        .font(.callout)
+    }
+}
+
+/// Картинки из сети в письме не загружены — и кнопка «Загрузить».
+struct RemoteImagesNotice: View {
+    let letter: MailBody
+    let load: () -> Void
+
+    var body: some View {
+        if let html = letter.html, html.range(of: "src=\"http", options: .caseInsensitive) != nil {
+            HStack {
+                Image(systemName: "photo.badge.exclamationmark")
+                Text("Картинки из сети не загружены — так отправитель не узнает, что письмо открыто.")
+                    .font(.caption)
+                Spacer()
+                Button("Загрузить", action: load)
+                    .controlSize(.small)
+            }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
+        }
+    }
+}
+
+/// Тело письма с переключателем «на листе / тёмным» в тёмной теме.
+struct LetterBodyPane: View {
+    let letter: MailBody
+    let allowRemote: Bool
+    /// Письмо «на бумаге» (свои цвета) или тёмным; `nil` — само.
+    @Binding var paper: Bool?
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        MailBodyView(body: letter, allowRemote: allowRemote, paper: paper)
+            .overlay(alignment: .topTrailing) {
+                // Тёмная тема: письмо в своих цветах на листе или тёмным.
+                if colorScheme == .dark, letter.html != nil {
+                    let current = paper ?? MailBodyView.hasOwnColors(letter.html)
+                    Button { paper = !current } label: {
+                        Image(systemName: current ? "moon" : "doc.richtext")
+                            .padding(6)
+                            .background(Circle().fill(Color.primary.opacity(0.1)))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(10)
+                    .help(current ? String(localized: "Показать в тёмной теме") : String(localized: "Показать в цветах письма (таблицы, выделения)"))
+                }
+            }
     }
 }
 
@@ -860,31 +995,59 @@ enum TextPalette {
     ]
 }
 
-/// Письмо файлом: значок, который тащат на полку Trunook или в Finder.
-/// Не кнопка — у кнопки перетаскивание не начинается.
-private struct LetterFileChip: View {
+/// Письмо файлом `.eml`: нажатие — сохранить куда скажут, перетаскивание —
+/// на полку Trunook или в Finder. Не `Button` — у кнопки перетаскивание
+/// не начинается, поэтому вид кнопки нарисован, а нажатие — жестом.
+struct LetterFileButton: View {
     let item: TimelineItem
     let letter: MailBody
+    /// Исходный файл письма (открытого из `.eml`) — сохраняется как есть.
+    var raw: Data?
+    @ViewState private var hovered = false
 
     var body: some View {
-        Image(systemName: "envelope.open")
-            .font(.system(size: 13))
-            .foregroundStyle(.secondary)
-            .frame(width: 30, height: 26)
-            .background(Capsule().strokeBorder(Color.primary.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
-            .contentShape(Capsule())
-            .help(String(localized: "Перетащите письмо файлом — на полку Trunook или в Finder"))
-            .onHover { inside in inside ? NSCursor.openHand.push() : NSCursor.pop() }
+        HoverLabel(title: String(localized: "Сохранить"), symbol: "square.and.arrow.down", expanded: hovered)
+            .background(HoverChrome(hovered: hovered, dashed: true))
+            .contentShape(Rectangle())
+            .onHover { inside in withAnimation(HoverMotion.animation) { hovered = inside } }
+            .help(String(localized: "Сохранить письмо файлом · ⇧⌘S. Можно и перетащить — на полку Trunook или в Finder"))
+            .onTapGesture { Self.save(item, letter, raw: raw) }
             .onDrag {
-                guard let url = Self.file(item, letter) else { return NSItemProvider() }
+                guard let url = Self.file(item, letter, raw: raw) else { return NSItemProvider() }
                 return NSItemProvider(contentsOf: url) ?? NSItemProvider()
             }
     }
 
+    /// «Сохранить как…»: имя — по теме письма, файл — с карантинной
+    /// меткой, как вложение: внутри чужие файлы.
+    static func save(_ item: TimelineItem, _ letter: MailBody, raw: Data? = nil) {
+        guard let data = raw ?? MessageBuilder.export(item, body: letter) else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = MessageBuilder.exportFileName(item.title)
+        panel.allowedContentTypes = [UTType(filenameExtension: "eml") ?? .data]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        let window = NSApp.keyWindow
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try AttachmentSaver.write(data, to: url)
+                DebugLog.write("письмо сохранено файлом")
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+        if let window {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            finish(panel.runModal())
+        }
+    }
+
     /// Файл во временной папке: своя подпапка на письмо, чтобы одинаковые
     /// темы не затирали друг друга.
-    static func file(_ item: TimelineItem, _ body: MailBody) -> URL? {
-        guard let data = MessageBuilder.export(item, body: body) else { return nil }
+    static func file(_ item: TimelineItem, _ body: MailBody, raw: Data? = nil) -> URL? {
+        guard let data = raw ?? MessageBuilder.export(item, body: body) else { return nil }
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("Trudaybook-letters/\(abs(item.id.hashValue))", isDirectory: true)
         let url = folder.appendingPathComponent(MessageBuilder.exportFileName(item.title))

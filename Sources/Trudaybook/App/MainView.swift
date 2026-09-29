@@ -44,6 +44,7 @@ struct MainView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Panel.radius, style: .continuous))
                     .frame(width: width - Self.gap)
                     .frame(maxHeight: .infinity)
+                    .tourSpot(.inspector)
                     .padding([.top, .trailing, .bottom], Self.gap)
             }
         }
@@ -68,9 +69,36 @@ struct MainView: View {
         } message: { item in
             Text(model.declineDescription(item).message)
         }
-        .sheet(item: $model.eventEditor) { request in
-            EventEditorSheet(request: request).environmentObject(model)
+        // Перенос встречи с участниками перетаскиванием — сначала вопрос.
+        .confirmationDialog(model.pendingMove.map { String(localized: "Перенести встречу «\($0.item.title)»?") } ?? "",
+                            isPresented: Binding(get: { model.pendingMove != nil },
+                                                 set: { if !$0 { model.pendingMove = nil } }),
+                            presenting: model.pendingMove) { _ in
+            Button("Перенести") { model.confirmMove() }
+            Button("Не переносить", role: .cancel) { model.pendingMove = nil }
+        } message: { move in
+            Text(Self.moveMessage(move))
         }
+        // Удаление встречи из меню правой кнопки: у серии — эту или все.
+        .confirmationDialog(model.deleteEventTarget.map { $0.event?.isRecurring == true
+                                ? String(localized: "Удалить повторяющуюся встречу")
+                                : String(localized: "Удалить встречу «\($0.title)»?") } ?? "",
+                            isPresented: Binding(get: { model.deleteEventTarget != nil },
+                                                 set: { if !$0 { model.deleteEventTarget = nil } }),
+                            presenting: model.deleteEventTarget) { item in
+            if item.event?.isRecurring == true {
+                ForEach(RecurrenceScope.allCases, id: \.self) { scope in
+                    Button(scope.title, role: .destructive) { model.deleteEvent(item, scope: scope) }
+                }
+            } else {
+                Button("Удалить", role: .destructive) { model.deleteEvent(item, scope: .thisEvent) }
+            }
+        } message: { item in
+            if let info = item.event, info.attendees.contains(where: { !$0.isMe }) {
+                Text(info.canEdit ? String(localized: "Участники получат отмену встречи.") : String(localized: "Встреча удалится только из вашего календаря."))
+            }
+        }
+        // Редактор встречи — своим окном (`EventEditorWindow`): лист не двигается.
         .alert("Не получилось", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
@@ -79,6 +107,18 @@ struct MainView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+    }
+
+    /// «Было — стало» и кто узнает: день пишется, только если он меняется.
+    static func moveMessage(_ move: AppModel.PendingMove) -> String {
+        let item = move.item
+        let length = (item.end ?? item.time.addingTimeInterval(1800)).timeIntervalSince(item.time)
+        let newEnd = move.date.addingTimeInterval(length)
+        let sameDay = Calendar.current.isDate(item.time, inSameDayAs: move.date)
+        let before = Format.range(item.time, item.end)
+        let after = sameDay ? Format.range(move.date, newEnd) : "\(Format.dayTitle(move.date)), \(Format.range(move.date, newEnd))"
+        let guests = item.event?.attendees.filter { !$0.isMe }.count ?? 0
+        return String(localized: "Было: \(before). Станет: \(after). Участники (\(guests)) получат обновлённое приглашение.")
     }
 
     /// Нижнему ряду (список, месяц, заметка) нужно не меньше — иначе
@@ -112,19 +152,24 @@ struct MainView: View {
         let timelineWidth = min(max(verticalWidth, range.lowerBound), range.upperBound)
         return VStack(spacing: Self.gap) {
             ActionBar()
+                .tourSpot(.actionBar)
             DayHeader()
                 .frame(height: Self.dayHeaderHeight)
             HStack(spacing: 0) {
                 VerticalTimelineView()
                     .frame(width: timelineWidth)
+                    .tourSpot(.timeline)
                 PanelDivider(width: $verticalWidth, current: timelineWidth, range: range, grows: .right,
                              defaultWidth: 440)
                 VStack(spacing: Self.gap) {
                     MailListPanel()
+                        .tourSpot(.mailList)
                     HStack(alignment: .top, spacing: Self.gap) {
                         MonthCalendarView()
                             .frame(width: model.showWeekNumbers ? 290 : 270)
+                            .tourSpot(.month)
                         DayNotePanel()
+                            .tourSpot(.note)
                     }
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -139,6 +184,7 @@ struct MainView: View {
         let metrics = TimelineMetrics(extra: CGFloat(min(timelineExtra, limit)))
         return VStack(spacing: Self.gap) {
             ActionBar()
+                .tourSpot(.actionBar)
             DayHeader()
                 .frame(height: Self.dayHeaderHeight)
             VStack(spacing: 0) {
@@ -151,14 +197,18 @@ struct MainView: View {
                 }
                 .frame(height: metrics.panelHeight)
                 .environment(\.timelineMetrics, metrics)
+                .tourSpot(.timeline)
                 RowDivider(extra: $timelineExtra, current: Double(metrics.extra), range: 0...limit)
                 // Нижняя полоса забирает всё оставшееся по высоте место.
                 HStack(alignment: .top, spacing: Self.gap) {
                     MailListPanel()
+                        .tourSpot(.mailList)
                     VStack(spacing: Self.gap) {
                         MonthCalendarView()
                             .fixedSize(horizontal: false, vertical: true)
+                            .tourSpot(.month)
                         DayNotePanel()
+                            .tourSpot(.note)
                     }
                     .frame(width: model.showWeekNumbers ? 290 : 270)
                 }
@@ -268,6 +318,9 @@ struct ActionBar: View {
             UpdateCapsule(updates: model.updates)
             MailStatus()
                 .glassCapsule()
+            // «Создать» — отдельно от действий над выбранным, в правом краю.
+            CreateButton()
+                .tourSpot(.create)
         }
         .padding(.horizontal, 6)
         .padding(.leading, MainView.windowButtonsWidth)
@@ -277,38 +330,17 @@ struct ActionBar: View {
     }
 
     private func buttons(compact: Bool) -> some View {
+        // Набор и порядок — из настроек («Оформление → Кнопки панели»).
         HStack(spacing: 6) {
-            ForEach(ItemAction.allCases) { action in
-                ActionDropButton(action: action, compact: compact)
+            ForEach(model.toolbarButtons) { button in
+                if let action = button.action {
+                    ActionDropButton(action: action, compact: compact)
+                } else {
+                    ToolbarExtraButton(button: button, compact: compact)
+                }
             }
-            CreateMenu(compact: compact)
         }
         .fixedSize()
-    }
-}
-
-/// «Создать»: письмо, встречу, напоминание.
-struct CreateMenu: View {
-    @EnvironmentObject private var model: AppModel
-    var compact = false
-    @ViewState private var isHovered = false
-
-    var body: some View {
-        Menu {
-            Button("Письмо  ⌘N") { model.startNewMail() }
-            Button("Встреча  ⇧⌘N") { model.startNewEvent() }
-            Button("Напоминание  ⌥⌘N") { model.startNewReminder() }
-        } label: {
-            HoverLabel(title: String(localized: "Создать"), symbol: "plus", expanded: !compact || isHovered)
-                .modifier(GlassButtonSurface(hovered: isHovered))
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .onHover { inside in withAnimation(HoverMotion.animation) { isHovered = inside } }
-        .help("Новое письмо, встреча или напоминание")
     }
 }
 
@@ -411,7 +443,12 @@ struct ActionDropButton: View {
 
     var body: some View {
         Button {
-            if let id = model.selectedID { model.perform(action, on: id) }
+            // Выделено несколько строк — пачкой только архив.
+            if !model.multiSelection.isEmpty {
+                if action == .archive { model.archiveSelection() }
+            } else if let id = model.selectedID {
+                model.perform(action, on: id)
+            }
         } label: {
             // Пунктир — знак, что сюда можно бросить письмо.
             HoverLabel(title: action.title, symbol: action.symbol, expanded: expanded)
@@ -488,6 +525,16 @@ struct DayHeader: View {
                 .help("День или неделя (⌥⌘1 / ⌥⌘2)")
             }
 
+            // Разобранные письма — прятать с таймлайна или показывать с галочкой.
+            Button {
+                withAnimation(HoverMotion.animation) { model.hideResolvedMail.toggle() }
+            } label: {
+                Image(systemName: model.hideResolvedMail ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(model.hideResolvedMail ? Color.accentColor : .primary)
+            }
+            .help(model.hideResolvedMail
+                  ? String(localized: "Разобранные письма скрыты — показать (⇧⌘H)")
+                  : String(localized: "Скрыть разобранные письма с таймлайна (⇧⌘H)"))
             Button {
                 withAnimation(HoverMotion.animation) { model.timelineVertical.toggle() }
             } label: {

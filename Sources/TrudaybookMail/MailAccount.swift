@@ -264,85 +264,203 @@ public final class PasswordCache: @unchecked Sendable {
 ///
 /// Доступ к записи привязан к подписи приложения; подпись стабильная
 /// (свой сертификат), поэтому после пересборки macOS пароль не переспрашивает.
+/// Все секреты приложения — пароли ящиков и ключ кэша — одной записью
+/// Связки ключей («trudaybook-secrets»).
+///
+/// Почему одной: приложение подписано своим сертификатом без Team ID, и после
+/// каждой пересборки или обновления macOS спрашивает доступ к каждой записи
+/// отдельно. Было две записи (пароль и ключ кэша) — было два окна; теперь
+/// одно. Прежние отдельные записи переносятся сюда при первом чтении и
+/// удаляются.
 public enum Keychain {
     static let service = "com.trudaybook.mail"
+    static let vault = SecretVault(backend: SystemKeychain(service: service))
 
     public enum Failure: LocalizedError {
         case status(OSStatus)
+        case denied
 
         public var errorDescription: String? {
-            if case .status(let status) = self {
+            switch self {
+            case .status(let status):
                 let message = SecCopyErrorMessageString(status, nil) as String? ?? String(localized: "код \(status)")
                 return String(localized: "Связка ключей: \(message)")
+            case .denied:
+                return String(localized: "Связка ключей не дала доступ к паролям Trudaybook")
             }
-            return nil
         }
     }
 
     public static func password(for accountID: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: accountID,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        vault.password(for: accountID)
     }
 
     public static func setPassword(_ password: String, for accountID: String, label: String) throws {
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: accountID,
-        ]
-        let data = Data(password.utf8)
-        let update = SecItemUpdate(base as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        if update == errSecSuccess { return }
-        guard update == errSecItemNotFound else { throw Failure.status(update) }
-        var add = base
-        add[kSecValueData as String] = data
-        add[kSecAttrLabel as String] = "Trudaybook — \(label)"
-        let status = SecItemAdd(add as CFDictionary, nil)
-        guard status == errSecSuccess else { throw Failure.status(status) }
+        try vault.setPassword(password, for: accountID)
     }
 
     /// Ключ шифрования кэша писем: берётся из Связки ключей, а нет его —
     /// создаётся. `nil` — Связка не дала (человек отказал в доступе): кэш
     /// тогда живёт с временным ключом и после перезапуска скачается заново.
     public static func cacheKey() -> Data? {
-        let account = "mail-cache-key"
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecSuccess, let data = result as? Data, data.count == 32 { return data }
-        guard status == errSecItemNotFound else { return nil }
-        let key = DataSealer.newKeyData()
-        let add: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrLabel as String: String(localized: "Trudaybook — ключ кэша писем"),
-            kSecValueData as String: key,
-        ]
-        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess ? key : nil
+        vault.cacheKey()
     }
 
     public static func deletePassword(for accountID: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: accountID,
-        ]
-        SecItemDelete(query as CFDictionary)
+        vault.deletePassword(for: accountID)
+    }
+}
+
+/// Где лежат записи: Связка ключей или, в тестах, память.
+public protocol SecretBackend: Sendable {
+    func read(_ account: String) -> (status: OSStatus, data: Data?)
+    func write(_ account: String, data: Data, label: String) -> OSStatus
+    func delete(_ account: String)
+}
+
+/// Записи приложения в Связке ключей: служба `com.trudaybook.mail`.
+struct SystemKeychain: SecretBackend {
+    let service: String
+
+    private func base(_ account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: account]
+    }
+
+    func read(_ account: String) -> (status: OSStatus, data: Data?) {
+        var query = base(account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        return (status, result as? Data)
+    }
+
+    func write(_ account: String, data: Data, label: String) -> OSStatus {
+        let update = SecItemUpdate(base(account) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        guard update == errSecItemNotFound else { return update }
+        var add = base(account)
+        add[kSecValueData as String] = data
+        add[kSecAttrLabel as String] = label
+        return SecItemAdd(add as CFDictionary, nil)
+    }
+
+    func delete(_ account: String) {
+        SecItemDelete(base(account) as CFDictionary)
+    }
+}
+
+/// Содержимое общей записи и переносы из прежних отдельных записей.
+///
+/// Запись читается один раз за запуск и держится в памяти. Если Связка
+/// отказала или запись не читается — её не перезаписываем: иначе пустая
+/// новая затёрла бы сохранённые пароли.
+public final class SecretVault: @unchecked Sendable {
+    struct Contents: Codable, Equatable {
+        var passwords: [String: String] = [:]
+        var cacheKey: Data?
+    }
+
+    private enum State {
+        case unknown
+        case loaded(Contents)
+        case unavailable
+    }
+
+    static let account = "trudaybook-secrets"
+    static let legacyCacheKey = "mail-cache-key"
+    static let label = String(localized: "Trudaybook — пароли почты и ключ кэша")
+
+    private let backend: SecretBackend
+    private let lock = NSLock()
+    private var state = State.unknown
+
+    public init(backend: SecretBackend) {
+        self.backend = backend
+    }
+
+    public func password(for accountID: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var contents = load() else { return nil }
+        if let known = contents.passwords[accountID] { return known }
+        // Пароль прежней версии — отдельной записью: перенести и убрать её.
+        let legacy = backend.read(accountID)
+        guard legacy.status == errSecSuccess, let data = legacy.data,
+              let password = String(data: data, encoding: .utf8) else { return nil }
+        contents.passwords[accountID] = password
+        if save(contents) == errSecSuccess { backend.delete(accountID) }
+        return password
+    }
+
+    public func setPassword(_ password: String, for accountID: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var contents = load() else { throw Keychain.Failure.denied }
+        contents.passwords[accountID] = password
+        let status = save(contents)
+        guard status == errSecSuccess else { throw Keychain.Failure.status(status) }
+        backend.delete(accountID)
+    }
+
+    public func deletePassword(for accountID: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        if var contents = load(), contents.passwords[accountID] != nil {
+            contents.passwords[accountID] = nil
+            _ = save(contents)
+        }
+        backend.delete(accountID)
+    }
+
+    public func cacheKey() -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var contents = load() else { return nil }
+        if let key = contents.cacheKey, key.count == 32 { return key }
+        let legacy = backend.read(Self.legacyCacheKey)
+        if legacy.status == errSecSuccess, let key = legacy.data, key.count == 32 {
+            contents.cacheKey = key
+            if save(contents) == errSecSuccess { backend.delete(Self.legacyCacheKey) }
+            return key
+        }
+        // Прежний ключ есть, но не дался — новый не заводим: кэш под старым
+        // ключом тогда пропал бы насовсем.
+        guard legacy.status == errSecItemNotFound else { return nil }
+        let key = DataSealer.newKeyData()
+        contents.cacheKey = key
+        return save(contents) == errSecSuccess ? key : nil
+    }
+
+    /// Под замком.
+    private func load() -> Contents? {
+        switch state {
+        case .loaded(let contents):
+            return contents
+        case .unavailable:
+            return nil
+        case .unknown:
+            let read = backend.read(Self.account)
+            if read.status == errSecSuccess, let data = read.data,
+               let contents = try? JSONDecoder().decode(Contents.self, from: data) {
+                state = .loaded(contents)
+                return contents
+            }
+            if read.status == errSecItemNotFound {
+                state = .loaded(Contents())
+                return Contents()
+            }
+            state = .unavailable
+            return nil
+        }
+    }
+
+    /// Под замком.
+    private func save(_ contents: Contents) -> OSStatus {
+        guard let data = try? JSONEncoder().encode(contents) else { return errSecParam }
+        let status = backend.write(Self.account, data: data, label: Self.label)
+        if status == errSecSuccess { state = .loaded(contents) }
+        return status
     }
 }

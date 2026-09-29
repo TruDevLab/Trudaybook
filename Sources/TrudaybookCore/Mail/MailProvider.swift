@@ -139,6 +139,9 @@ public protocol MailProvider: AnyObject, Sendable {
     func messages(from: Date, to: Date) async throws -> [TimelineItem]
     func body(of itemID: String) async throws -> MailBody
     func archive(_ itemID: String) async throws
+    /// В «Корзину» ящика — не стереть навсегда: письмо можно вернуть
+    /// из «Корзины» здесь же или в любой почте. С таймлайна оно уходит.
+    func trash(_ itemID: String) async throws
     /// Отправить. Если это ответ, `itemID` — исходное письмо: сервер
     /// пометит его отвеченным.
     func send(_ mail: OutgoingMail, replyingTo itemID: String?) async throws

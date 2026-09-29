@@ -86,6 +86,19 @@ struct LaunchOptions {
     var agenda = false
     var digest = false
     var agendaOffline = false
+    /// Выбранное письмо — в отдельном окне перед снимком: `--select mail --letter`.
+    var letter = false
+    /// Письмо из файла `.eml` — отдельным окном: `--open-file /путь/письмо.eml`.
+    var openFile: String?
+    /// Выделить первые N строк списка, как ⇧-щелчком: `--multi 3`.
+    var multi: Int?
+    /// Модель окна обучения: тестовые данные в том же процессе, что и
+    /// настоящая почта, — общего (уведомления, Trunook) она не трогает.
+    var tour = false
+    /// Окно обучения на этом шаге перед снимком: `--tour 3`.
+    var tourStep: Int?
+    /// Окошко значка в строке меню перед снимком: `--menubar`.
+    var menubar = false
 
     static func parse(_ arguments: [String]) -> LaunchOptions {
         var options = LaunchOptions()
@@ -119,6 +132,11 @@ struct LaunchOptions {
             case "--sky-weather": options.skyWeather = iterator.next().flatMap(SkyScene.Weather.init(rawValue:))
             case "--digest": options.digest = true
             case "--agenda-offline": options.agendaOffline = true
+            case "--letter": options.letter = true
+            case "--open-file": options.openFile = iterator.next()
+            case "--multi": options.multi = iterator.next().flatMap(Int.init)
+            case "--tour": options.tourStep = iterator.next().flatMap(Int.init) ?? 0
+            case "--menubar": options.menubar = true
             case "--background": options.backgroundKind = iterator.next()
             case "--hover": options.hoverAction = iterator.next()
             case "--size":
@@ -148,16 +166,43 @@ struct LaunchOptions {
 final class AppModel: ObservableObject {
     @Published private(set) var day: Date
     @Published private(set) var dayItems: [TimelineItem] = []
+    /// Сколько разобранных писем дня спрятано с таймлайна (`hideResolvedMail`):
+    /// счётчик «Почта · N из M» считает и их.
+    @Published private(set) var hiddenDayMail = 0
+    /// Разобранные письма (в архиве, отвеченные, отмеченные) — не на таймлайне.
+    /// В «Не разобрано» их и так нет; отложенные остаются.
+    @Published var hideResolvedMail: Bool = UserDefaults.standard.bool(forKey: "hideResolvedMail") {
+        didSet {
+            guard hideResolvedMail != oldValue else { return }
+            if !options.demo { UserDefaults.standard.set(hideResolvedMail, forKey: "hideResolvedMail") }
+            recompute()
+        }
+    }
     @Published private(set) var unresolved: [TimelineItem] = []
     @Published private(set) var states: [String: LocalState] = [:]
     @Published private(set) var now: Date
     @Published var selectedID: String? {
         didSet {
             guard selectedID != oldValue else { return }
+            multiSelection = []
+            selectionAnchor = nil
             draft = nil
             loadBody()
         }
     }
+    /// Несколько выделенных строк списка (⇧ — подряд, ⌘ — по одной);
+    /// пусто — выбран один `selectedID`. Правая панель тогда показывает
+    /// действия над всеми сразу.
+    @Published private(set) var multiSelection: Set<String> = []
+    /// От какой строки тянется выделение с ⇧; `nil` — от `selectedID`.
+    private var selectionAnchor: String?
+    /// Подвижный край выделения — его двигают ⇧↑ и ⇧↓.
+    private var selectionEdge: String?
+    /// Письма, открытые здесь: сервер уже отметил их прочитанными, а
+    /// список узнает об этом только при следующей загрузке.
+    @Published private(set) var readHere: Set<String> = []
+    /// Письма, отправленные в «Корзину»: скрыты сразу, не дожидаясь сервера.
+    private var trashed: Set<String> = []
     @Published var hourWidth: Double = 120
     /// Номера недель в календаре месяца.
     /// Номера недель — по умолчанию показаны (прежний ключ хранил «выключено»
@@ -201,6 +246,14 @@ final class AppModel: ObservableObject {
     }
     @Published var swipeRight = SwipeAction(rawValue: UserDefaults.standard.string(forKey: SwipeAction.rightKey) ?? "") ?? .priorityHigh {
         didSet { UserDefaults.standard.set(swipeRight.rawValue, forKey: SwipeAction.rightKey) }
+    }
+    /// Кнопки верхней панели: порядок всех и какие скрыты (см. `Toolbar.swift`).
+    /// Хранятся все — у скрытой в настройках остаётся её место.
+    @Published var toolbarOrder = ToolbarButton.savedOrder() {
+        didSet { if !options.demo { UserDefaults.standard.set(toolbarOrder.map(\.rawValue), forKey: ToolbarButton.orderKey) } }
+    }
+    @Published var toolbarHidden = ToolbarButton.savedHidden() {
+        didSet { if !options.demo { UserDefaults.standard.set(toolbarHidden.map(\.rawValue).sorted(), forKey: ToolbarButton.hiddenKey) } }
     }
 
     // MARK: Язык
@@ -344,7 +397,11 @@ final class AppModel: ObservableObject {
     /// Письма дня по времени на шкале (отложенные — во время возврата):
     /// для режима «Письма» недели.
     func mailItems(on day: Date) -> [TimelineItem] {
-        allMail.filter { calendar.isDate(effectiveTime(of: $0), inSameDayAs: day) }
+        allMail.filter { calendar.isDate(effectiveTime(of: $0), inSameDayAs: day) && !(hideResolvedMail && isResolvedMail($0)) }
+    }
+
+    private func isResolvedMail(_ item: TimelineItem) -> Bool {
+        item.kind == .mail && StatusRules.status(of: item, local: states[item.id], now: now).isDone
     }
 
     /// Неделя показывается только в горизонтальном виде.
@@ -373,7 +430,7 @@ final class AppModel: ObservableObject {
 
     /// Какой фон. Прежняя настройка «Сияние» (`themeAurora`) переходит сама.
     @Published var background: AppBackground = AppBackground(rawValue: UserDefaults.standard.string(forKey: "appBackground") ?? "")
-        ?? (UserDefaults.standard.bool(forKey: "themeAurora") ? .aurora : .system) {
+        ?? (UserDefaults.standard.bool(forKey: "themeAurora") ? .aurora : .sky) {
         didSet { if !options.demo { UserDefaults.standard.set(background.rawValue, forKey: "appBackground") } }
     }
     /// Цвет фона или первый цвет градиента.
@@ -395,6 +452,15 @@ final class AppModel: ObservableObject {
     }
 
     var themeAurora: Bool { background == .aurora }
+
+    /// Значок в строке меню: месяц и встречи дня (`MenuBarCalendar`).
+    @Published var menuBarIcon: Bool = UserDefaults.standard.object(forKey: "menuBarIcon") as? Bool ?? true {
+        didSet { if !options.demo { UserDefaults.standard.set(menuBarIcon, forKey: "menuBarIcon") } }
+    }
+    /// ⌃⌥⌘J из любой программы — к текущей или ближайшей встрече (`MeetingHotKey`).
+    @Published var joinHotKey: Bool = UserDefaults.standard.object(forKey: "joinHotKey") as? Bool ?? true {
+        didSet { if !options.demo { UserDefaults.standard.set(joinHotKey, forKey: "joinHotKey") } }
+    }
     /// Панели полупрозрачные — фон не системный.
     var customBackground: Bool { background != .system }
 
@@ -489,6 +555,9 @@ final class AppModel: ObservableObject {
     @Published var rescheduleTarget: TimelineItem?
     /// Встреча или напоминание, которые просят отклонить, — ждут подтверждения.
     @Published var declineTarget: TimelineItem?
+    /// Встреча, которую просят удалить из меню правой кнопки, — ждёт
+    /// подтверждения (у серии — ещё и выбора: эту или все).
+    @Published var deleteEventTarget: TimelineItem?
     /// Открытый редактор встречи: новой или существующей.
     @Published var eventEditor: EventEditorRequest?
     @Published private(set) var isSavingEvent = false
@@ -613,8 +682,9 @@ final class AppModel: ObservableObject {
             directWeather.file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Caches/TrudaybookDemo/weather-week.json")
         }
-        if options.demo {
+        if options.demo, !options.tour {
             // Проверки в тестовом режиме не показываются в настоящем вырезе.
+            // Кроме обучения: оно живёт рядом с настоящей почтой, а папка — общая.
             TrunookLink.shared.inbox = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Caches/TrudaybookDemo/trunook-inbox", isDirectory: true)
             // Пересказ и разметка по флагу — настоящая просьба к Trunook
@@ -727,8 +797,12 @@ final class AppModel: ObservableObject {
     var accessProblem: String? { calendarSource.accessProblem }
 
     func start() async {
-        notifier.activate()
-        trunook.start()
+        // Уведомления и Trunook — у настоящей модели; модель обучения
+        // перехватила бы у неё ответы из уведомлений и из выреза.
+        if !options.tour {
+            notifier.activate()
+            trunook.start()
+        }
         loadWeather()
         await calendarSource.requestAccess()
         loadCalendarSources()
@@ -746,12 +820,18 @@ final class AppModel: ObservableObject {
                 self.now = Date().addingTimeInterval(self.clockOffset)
                 self.recompute()
                 self.loadWeather()
-                Task { await self.trunook.tick() }
+                if !self.options.tour { Task { await self.trunook.tick() } }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         if options.trunookProbe { await trunook.probe() }
+    }
+
+    /// Окно обучения закрыли — его часы больше не нужны.
+    func stop() {
+        timer?.invalidate()
+        timer = nil
     }
 
     // MARK: - Данные
@@ -806,11 +886,14 @@ final class AppModel: ObservableObject {
     /// после действия или когда сдвинулось «сейчас».
     private func recompute() {
         let dayEnd = calendar.date(byAdding: .day, value: 1, to: day) ?? day
+        if !trashed.isEmpty { allMail.removeAll { trashed.contains($0.id) } }
         let dayMail = allMail.filter { item in
             let time = StatusRules.effectiveTime(of: item, local: states[item.id])
             return time >= day && time < dayEnd
         }
-        dayItems = dayMail + events
+        let shownMail = hideResolvedMail ? dayMail.filter { !isResolvedMail($0) } : dayMail
+        hiddenDayMail = dayMail.count - shownMail.count
+        dayItems = shownMail + events
         unresolved = (allMail + overdue)
             .filter { StatusRules.isUnresolved($0, local: states[$0.id], now: now, mailCutoff: mailCutoff) }
             .sorted { StatusRules.effectiveTime(of: $0, local: states[$0.id]) > StatusRules.effectiveTime(of: $1, local: states[$1.id]) }
@@ -1192,6 +1275,7 @@ final class AppModel: ObservableObject {
 
     func show(list mode: ListMode) {
         guard mode != listMode else { return }
+        multiSelection = []
         listMode = mode
         searchResults = nil
         Task { await reloadList() }
@@ -1258,8 +1342,8 @@ final class AppModel: ObservableObject {
     }
 
     private var filteredListItems: [TimelineItem] {
-        if let searchResults { return searchResults }
-        var base = listMode == .unresolved ? unresolved : folderItems
+        if let searchResults { return searchResults.filter { !trashed.contains($0.id) } }
+        var base = listMode == .unresolved ? unresolved : folderItems.filter { !trashed.contains($0.id) }
         if listMode == .unresolved, let labelFilter {
             base = base.filter { label(of: $0) == labelFilter }
         }
@@ -1587,6 +1671,7 @@ final class AppModel: ObservableObject {
         let id = item.id
         Task {
             let loaded = try? await mail.body(of: id)
+            if loaded != nil { readHere.insert(id) }
             guard selectedID == id else { return }
             body = loaded
             await loadInvitation(from: loaded, itemID: id)
@@ -1783,6 +1868,25 @@ final class AppModel: ObservableObject {
         return await calendarSource.items(from: start, to: end).filter { $0.kind == .event }
     }
 
+    /// Встречи дня для окошка в строке меню: из показанных календарей,
+    /// отменённые письмом — зачёркнутыми, по времени начала.
+    func menuBarEvents(on date: Date) async -> [TimelineItem] {
+        markCancelled(await events(onDayOf: date))
+            .sorted { ($0.isAllDay ? 0 : 1, $0.time) < ($1.isAllDay ? 0 : 1, $1.time) }
+    }
+
+    /// Ссылка текущей или ближайшей сегодня онлайн-встречи (`NearestMeeting`).
+    func nearestMeetingLink() async -> MeetingLink? {
+        NearestMeeting.pick(await menuBarEvents(on: now), now: now, needsLink: true)?.event?.link
+    }
+
+    /// Дни месяца, в которые есть встречи, — точки в календаре строки меню.
+    func eventDays(inMonthOf date: Date) async -> Set<Date> {
+        guard let interval = calendar.dateInterval(of: .month, for: date) else { return [] }
+        let items = await calendarSource.items(from: interval.start, to: interval.end)
+        return Set(items.filter { $0.kind == .event }.map { calendar.startOfDay(for: $0.time) })
+    }
+
     /// Встречи, начинающиеся с этой минуты до `until`.
     /// Отменённые — нет: о них не напоминают.
     func upcomingEvents(until: Date) async -> [TimelineItem] {
@@ -1917,8 +2021,7 @@ final class AppModel: ObservableObject {
     /// Перетаскивание по шкале: новое время — там, где элемент отпустили.
     func reschedule(id: String, to date: Date) {
         guard let item = item(id) else { return }
-        let rounded = Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 300).rounded() * 300)
-        reschedule(item, to: rounded)
+        reschedule(item, to: Self.dropTime(date))
     }
 
     /// Вернуть разобранное в работу: снять отметки приложения.
@@ -2018,14 +2121,53 @@ final class AppModel: ObservableObject {
     /// Что несёт «+», которую тащат на календарь: не элемент, а новая встреча.
     /// Ссылка, а не строка: строкой переносятся элементы, и по типу ещё до
     /// броска видно, что тащат «+» — можно рисовать заготовку встречи.
-    static let newEventURL = URL(string: "trudaybook://new-event")!
+    /// Что несёт «Создать», когда её тащат на таймлайн: дорожка решает,
+    /// письмо это или встреча.
+    static let newItemURL = URL(string: "trudaybook://new-item")!
+
+    /// Элемент, который сейчас тащат по шкале (`CursorDragSource`), — чтобы
+    /// показать, на какое время он встанет. Не `@Published`: меняется
+    /// в начале перетаскивания, перерисовывать ради этого нечего.
+    var dragging: TimelineItem?
+
+    /// Время под курсором при броске — до пяти минут, как и перенос.
+    static func dropTime(_ date: Date) -> Date {
+        Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 300).rounded() * 300)
+    }
+
+    /// Перенос встречи с участниками ждёт подтверждения: им уйдёт
+    /// обновлённое приглашение.
+    struct PendingMove: Identifiable {
+        let id = UUID()
+        let item: TimelineItem
+        let date: Date
+    }
+    @Published var pendingMove: PendingMove?
+
+    func confirmMove() {
+        guard let move = pendingMove else { return }
+        pendingMove = nil
+        reschedule(move.item, to: move.date)
+    }
+
+    /// Есть ли у встречи участники, кроме меня.
+    func hasGuests(_ item: TimelineItem) -> Bool {
+        item.event?.attendees.contains { !$0.isMe } == true
+    }
 
     /// Бросили элемент на шкалу — перенести на это время. Письмо — только
     /// вперёд: вернуть его в прошлое значило бы оставить неразобранным.
     func dropItem(_ id: String, at date: Date) {
         guard let item = item(id) else { return }
         if item.kind == .mail, date <= now { return }
-        reschedule(id: id, to: date)
+        let when = Self.dropTime(date)
+        if item.kind == .event, when == item.time { return }
+        // С участниками — сначала спросить: перенос уйдёт им приглашением.
+        if hasGuests(item), availability(of: .reschedule, for: item).isEnabled {
+            pendingMove = PendingMove(item: item, date: when)
+            return
+        }
+        reschedule(item, to: when)
     }
 
     /// Новая встреча там, куда бросили «+» или где подержали мышь: время —
@@ -2051,10 +2193,34 @@ final class AppModel: ObservableObject {
                     errorMessage = String(localized: "В ссылке была скрытая копия — её в окне письма нет, добавьте адреса сами.")
                 }
                 DebugLog.write("открыта ссылка mailto: адресатов \(link.to.count + link.cc.count)")
+            } else if url.isFileURL, EmailFile.isEmailFile(url) {
+                LetterWindow.open(file: url, model: self)
             } else if url.isFileURL {
                 openCalendarFile(url)
             }
         }
+    }
+
+    // MARK: - Письмо в отдельном окне
+
+    /// Тело письма, которое не выбрано в главном окне, — для окна письма.
+    func letterBody(of id: String) async -> MailBody? {
+        let body = try? await mail.body(of: id)
+        if body != nil { readHere.insert(id) }
+        return body
+    }
+
+    /// Ответ из окна письма: черновик — в главном окне, как обычно.
+    /// Письмо из файла в ящике не лежит — отметить его «отвеченным» нечем,
+    /// и сервер о таком ответе не узнает.
+    func startReply(fromWindow item: TimelineItem, body: MailBody?, all: Bool) {
+        let fromMailbox = !EmailFile.isFileItem(item.id)
+        // Выбор сбрасывает черновик — поэтому до него.
+        if fromMailbox, self.item(item.id) != nil { selectedID = item.id }
+        var reply = ReplyBuilder.reply(to: item, body: body, all: all, ownAddresses: mail.ownAddresses)
+        reply?.accountID = senderAccount(for: item)
+        draft = reply
+        draftReplyTo = fromMailbox ? item.id : nil
     }
 
     /// Нажатие по виджету: `trudaybook://today`, `…/unresolved`,
@@ -2093,9 +2259,21 @@ final class AppModel: ObservableObject {
         eventEditor?.reminderListID = newReminderListID
     }
 
-    /// `--drop-preview`: время заготовки на шкале этого дня (только в тестовом режиме).
-    func debugDropPreview(on dayStart: Date) -> Date? {
+    /// `--drop-preview` для снимка (только в тестовом режиме): `15:30` —
+    /// заготовка встречи, `mail` — «Создать» над дорожкой писем,
+    /// `move:15:30` — куда встанет выбранное, если его отпустить здесь.
+    func debugDropGhost(on dayStart: Date, lane: DropLane) -> DropGhost? {
         guard options.demo, let text = options.dropPreview, calendar.isDate(dayStart, inSameDayAs: day) else { return nil }
+        if text == "mail" { return lane == .mail ? .newMail : nil }
+        if text.hasPrefix("move:") {
+            guard lane == .events, let item = selectedItem, let time = debugTime(String(text.dropFirst(5)), on: dayStart) else { return nil }
+            return .move(item, time)
+        }
+        guard lane == .events, let time = debugTime(text, on: dayStart) else { return nil }
+        return .newEvent(time)
+    }
+
+    private func debugTime(_ text: String, on dayStart: Date) -> Date? {
         let parts = text.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2 else { return nil }
         return calendar.date(bySettingHour: parts[0], minute: parts[1], second: 0, of: dayStart)
@@ -2188,7 +2366,15 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Удалить можно из календаря, который разрешает правку, — и чужую
+    /// встречу тоже: она уйдёт только из своего календаря.
+    func canDelete(_ item: TimelineItem) -> Bool {
+        guard let info = item.event else { return false }
+        return calendarSources.first { $0.id == info.calendarID }?.isWritable ?? info.canEdit
+    }
+
     func deleteEvent(_ item: TimelineItem, scope: RecurrenceScope) {
+        deleteEventTarget = nil
         Task {
             do {
                 try await calendarSource.delete(item, scope: scope)
@@ -2339,6 +2525,119 @@ final class AppModel: ObservableObject {
         selectedID = sequence[next].id
     }
 
+    // MARK: - Несколько писем
+
+    func isSelected(_ id: String) -> Bool {
+        multiSelection.isEmpty ? selectedID == id : multiSelection.contains(id)
+    }
+
+    /// Выделенное в порядке списка — для панели «Выбрано N».
+    var selectionItems: [TimelineItem] {
+        let order = visibleListItems.map(\.id)
+        let known = multiSelection.compactMap(item)
+        return known.sorted { (order.firstIndex(of: $0.id) ?? .max) < (order.firstIndex(of: $1.id) ?? .max) }
+    }
+
+    /// Щелчок по строке списка: с ⇧ — выделить подряд от прежней строки,
+    /// с ⌘ — добавить или убрать одну, без них — выбрать одну.
+    func click(_ item: TimelineItem, extend: Bool, toggle: Bool) {
+        let order = visibleListItems.map(\.id)
+        if extend, let anchor = selectionAnchor ?? selectedID,
+           let from = order.firstIndex(of: anchor), let to = order.firstIndex(of: item.id) {
+            let range = Set(order[min(from, to)...max(from, to)])
+            if range.count > 1 {
+                multiSelection = range
+                selectionAnchor = anchor
+                selectionEdge = item.id
+            } else {
+                multiSelection = []
+                selectedID = item.id
+            }
+        } else if toggle, let current = selectedID, order.contains(item.id) {
+            var chosen = multiSelection.isEmpty ? [current] : multiSelection
+            if chosen.contains(item.id) { chosen.remove(item.id) } else { chosen.insert(item.id) }
+            if chosen.count > 1 {
+                multiSelection = chosen
+                selectionAnchor = item.id
+                selectionEdge = item.id
+            } else if let only = chosen.first {
+                multiSelection = []
+                selectedID = only
+            }
+        } else {
+            multiSelection = []
+            selectedID = item.id
+        }
+    }
+
+    /// ⇧↑ / ⇧↓ — растянуть выделение: двигается дальний от якоря край.
+    func extendSelection(by step: Int) {
+        let list = visibleListItems
+        guard let anchor = selectionAnchor ?? selectedID, list.contains(where: { $0.id == anchor }) else {
+            return moveSelection(by: step)
+        }
+        let edgeID = multiSelection.isEmpty ? anchor : (selectionEdge ?? anchor)
+        guard let edge = list.firstIndex(where: { $0.id == edgeID }) else { return }
+        click(list[min(max(edge + step, 0), list.count - 1)], extend: true, toggle: false)
+    }
+
+    func clearMultiSelection() {
+        multiSelection = []
+        selectionAnchor = nil
+    }
+
+    /// Выделенное — в архив: письма, встречи и напоминания, что можно разобрать.
+    func archiveSelection() {
+        let items = selectionItems.filter { availability(of: .archive, for: $0).isEnabled }
+        clearMultiSelection()
+        for item in items { perform(.archive, on: item.id) }
+        DebugLog.write("в архив пачкой: \(items.count)")
+    }
+
+    /// Письма из выделения (или выбранное) — в «Корзину» ящика.
+    /// Не навсегда: вернуть можно из «Корзины» в любой почте.
+    func trash(_ ids: [String]) {
+        let letters = ids.compactMap(item).filter { $0.kind == .mail && !EmailFile.isFileItem($0.id) }
+        guard !letters.isEmpty else { return }
+        let gone = Set(letters.map(\.id))
+        trashed.formUnion(gone)
+        clearMultiSelection()
+        if let selectedID, gone.contains(selectedID) { self.selectedID = nil }
+        recompute()
+        Task {
+            var failed: [String] = []
+            var lastError: Error?
+            for letter in letters {
+                do {
+                    try await mail.trash(letter.id)
+                } catch {
+                    failed.append(letter.id)
+                    lastError = error
+                }
+            }
+            DebugLog.write("в корзину: \(letters.count - failed.count) из \(letters.count)")
+            if let lastError {
+                trashed.subtract(failed)
+                errorMessage = failed.count == 1
+                    ? String(localized: "Письмо не удалось удалить: \(MailAccounts.describe(lastError))")
+                    : String(localized: "Не удалось удалить писем: \(failed.count) — \(MailAccounts.describe(lastError))")
+            }
+            await reload()
+            await reloadList()
+        }
+    }
+
+    /// Что удалит ⌘⌫: выделенные письма или выбранное.
+    var trashTargets: [String] {
+        let ids = multiSelection.isEmpty ? [selectedID].compactMap { $0 } : Array(multiSelection)
+        return ids.filter { item($0)?.kind == .mail }
+    }
+
+    /// Прочитано ли письмо — сервером или открытием здесь.
+    func isRead(_ item: TimelineItem) -> Bool {
+        item.mail?.isRead == true || readHere.contains(item.id)
+    }
+
     /// Открыть элемент из уведомления: его день и его карточку (и ответ).
     func open(itemID: String, reply: Bool = false, prefill: String? = nil) {
         Task {
@@ -2443,6 +2742,13 @@ final class AppModel: ObservableObject {
         case "reminder": startNewReminder()
         default: break
         }
+        if let count = options.multi {
+            let list = visibleListItems
+            if list.count > 1 {
+                selectedID = list[0].id
+                click(list[min(count, list.count) - 1], extend: true, toggle: false)
+            }
+        }
         guard let kind = options.select else { return }
         // С поиском — первое найденное: так выбирается нужное письмо.
         if options.search != nil, let found = listItems.first(where: { $0.kind == kind }) {
@@ -2455,6 +2761,14 @@ final class AppModel: ObservableObject {
         selectedID = target.id
         if options.reply { startReply(to: target, all: true, prefill: options.prefill) }
         if options.edit { startEditing(target) }
+        // `--drop-preview confirm:15:30` — вопрос перед переносом встречи
+        // с участниками: первая такая, которую можно переносить.
+        if let text = options.dropPreview, text.hasPrefix("confirm:"),
+           let time = debugTime(String(text.dropFirst(8)), on: day),
+           let movable = dayItems.first(where: { hasGuests($0) && availability(of: .reschedule, for: $0).isEnabled }) {
+            selectedID = movable.id
+            dropItem(movable.id, at: time)
+        }
     }
 }
 

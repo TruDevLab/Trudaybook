@@ -54,20 +54,9 @@ struct TimelineView: View {
         HStack(spacing: 0) {
             LaneTitles()
             Divider()
+            // Создают кнопкой «Создать» в панели: нажатием или перетаскиванием
+            // на нужную дорожку (см. `CreateButton`, `TimeDropTarget`).
             lanes
-                // «+» в правых верхних углах дорожек — поверх прокрутки,
-                // чтобы не уезжали вместе с часами.
-                .overlay(alignment: .topTrailing) {
-                    VStack(alignment: .trailing, spacing: 0) {
-                        QuickAddButton(help: String(localized: "Новое письмо (⌘N)")) { model.startNewMail() }
-                            .frame(height: metrics.mailLane + metrics.laneGap, alignment: .top)
-                        QuickAddButton(help: QuickAddButton.eventHelp, draggableNewEvent: true) {
-                            model.startNewEvent()
-                        }
-                    }
-                    .padding(.top, 14)
-                    .padding(.trailing, 10)
-                }
         }
         .background(Panel())
     }
@@ -120,65 +109,6 @@ struct TimelineView: View {
     }
 }
 
-/// Круглая «+» для быстрого создания — в углу дорожки. Та, что создаёт
-/// встречу, ещё и тащится на календарь (встреча начнётся там, где
-/// отпустили): у неё пунктирная рамка и курсор-ладонь. Вернул её на место —
-/// ничего не создаётся.
-struct QuickAddButton: View {
-    let help: String
-    var draggableNewEvent = false
-    let action: () -> Void
-    @ViewState private var hovered = false
-    /// «+» несут обратно — отпустить здесь значит передумать.
-    @ViewState private var returning = false
-
-    var body: some View {
-        let lit = hovered || returning
-        let circle = Image(systemName: returning ? "xmark" : "plus")
-            .font(.system(size: 12, weight: .semibold))
-            .frame(width: 24, height: 24)
-            .background(Circle().fill(returning ? Color.red.opacity(0.85) : lit ? Color.accentColor : Color(nsColor: .controlBackgroundColor)))
-            .foregroundStyle(lit ? Color.white : draggableNewEvent ? Color.accentColor : Color.secondary)
-            .overlay {
-                if draggableNewEvent {
-                    Circle().strokeBorder(Color.accentColor.opacity(lit ? 0 : 0.8),
-                                          style: StrokeStyle(lineWidth: 1.3, dash: [2.5, 2]))
-                } else {
-                    Circle().strokeBorder(Color.primary.opacity(0.15))
-                }
-            }
-            .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
-            .scaleEffect(returning ? 1.15 : 1)
-            .animation(.easeOut(duration: 0.15), value: returning)
-            .contentShape(Circle())
-            .onHover { inside in
-                hovered = inside
-                guard draggableNewEvent else { return }
-                if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
-            }
-            // Не `Button`: у кнопки мышь уходит в нажатие, и потащить её нельзя.
-            .onTapGesture(perform: action)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(help)
-            .help(returning ? String(localized: "Отпустите здесь — встреча не создастся") : help)
-        if draggableNewEvent {
-            circle
-                .draggable(AppModel.newEventURL) { NewEventDragPreview() }
-                // Место возврата — чуть шире самой кнопки, чтобы попасть было легко.
-                .background(
-                    Color.clear
-                        .frame(width: 56, height: 56)
-                        .contentShape(Rectangle())
-                        .onDrop(of: [.url], isTargeted: $returning) { _ in true }
-                )
-        } else {
-            circle
-        }
-    }
-
-    static let eventHelp = String(localized: "Новая встреча или напоминание (⇧⌘N). Потяните «+» на нужное время — встреча начнётся там; передумали — верните «+» на место или нажмите Esc")
-}
-
 /// Подписи дорожек — неподвижной колонкой слева. Поверх шкалы (как на
 /// макете, в правом углу) они закрывали карточки вечерних писем и встреч.
 private struct LaneTitles: View {
@@ -189,7 +119,7 @@ private struct LaneTitles: View {
         let mail = model.dayItems.filter { $0.kind == .mail }
         let open = mail.filter { !model.status(of: $0).isDone }.count
         VStack(spacing: metrics.laneGap) {
-            title(String(localized: "Почта · \(open) из \(mail.count)"), height: metrics.mailLane)
+            title(String(localized: "Почта · \(open) из \(mail.count + model.hiddenDayMail)"), height: metrics.mailLane)
             title(String(localized: "Встречи и напоминания"), height: metrics.eventLane)
             Color.clear.frame(height: metrics.axis)
         }
@@ -328,7 +258,7 @@ private struct MailLane: View {
             }
         }
         .contentShape(Rectangle())
-        .modifier(TimeDropTarget(scale: scale, vertical: false, acceptsNewEvent: false))
+        .modifier(TimeDropTarget(scale: scale, vertical: false, lane: .mail))
     }
 }
 
@@ -383,12 +313,24 @@ private struct EventLane: View {
 // MARK: - Карточки
 
 extension View {
-    /// Выбор нажатием и перетаскивание — общее для всех карточек.
+    /// Выбор нажатием, перетаскивание и меню правой кнопки — общее для
+    /// всех карточек таймлайна (дня, недели, вертикального).
     func timelineItem(_ item: TimelineItem, model: AppModel) -> some View {
         self
             .contentShape(Rectangle())
+            // Двойной щелчок: встреча — в редактор (если её можно менять),
+            // письмо — в отдельное окно, как в списке.
+            .onTapGesture(count: 2) {
+                model.selectedID = item.id
+                if item.kind == .event, item.event?.canEdit == true {
+                    model.startEditing(item)
+                } else if item.kind == .mail {
+                    LetterWindow.show(item, model: model)
+                }
+            }
             .onTapGesture { model.selectedID = item.id }
             .itemDraggable(item)
+            .contextMenu { ItemContextMenu(item: item).environmentObject(model) }
     }
 
     /// Перетаскивание элемента с плашкой прямо под курсором.
@@ -409,6 +351,7 @@ extension View {
 /// плашка встаёт под курсор — как бы система ни привязывала картинку:
 /// к углу элемента или к его середине.
 private struct CursorDragSource: ViewModifier {
+    @EnvironmentObject private var model: AppModel
     let item: TimelineItem
     /// Где курсор внутри элемента — последнее положение перед нажатием.
     @ViewState private var grab: CGPoint?
@@ -420,7 +363,13 @@ private struct CursorDragSource: ViewModifier {
                 if case .active(let point) = phase { grab = point }
             }
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
-            .draggable(item.id) {
+            // `onDrag`, а не `draggable`: замыкание зовётся в начале
+            // перетаскивания — шкала узнаёт, что тащат, и показывает, на
+            // какое время оно встанет (строку с номером до броска не прочесть).
+            .onDrag {
+                model.dragging = item
+                return NSItemProvider(object: item.id as NSString)
+            } preview: {
                 DragCanvas(item: item, size: size, grab: grab)
             }
     }

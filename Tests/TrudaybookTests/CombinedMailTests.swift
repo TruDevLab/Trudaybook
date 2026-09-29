@@ -37,6 +37,20 @@ struct CombinedMailTests {
         #expect(combined.displayName == "2 ящика")
     }
 
+    @Test("В корзину: письмо уходит из своего ящика — с дня и из Входящих, другой ящик не трогается")
+    func trashGoesToTheLettersBox() async throws {
+        let (combined, first, second) = boxes()
+        let before = try await combined.messages(from: today.0, to: today.1)
+        let letter = try #require(before.first { $0.mail?.accountID == "B" })
+        try await combined.trash(letter.id)
+        let after = try await combined.messages(from: today.0, to: today.1)
+        #expect(after.count == before.count - 1)
+        #expect(!after.contains { $0.id == letter.id })
+        #expect(try await first.messages(from: today.0, to: today.1).count == before.filter { $0.mail?.accountID == "A" }.count)
+        let inbox = try await second.messages(inFolder: "INBOX", limit: 500)
+        #expect(!inbox.contains { $0.id == letter.id })
+    }
+
     @Test func archiveGoesToTheLettersBox() async throws {
         let (combined, first, second) = boxes()
         let letter = try #require(try await second.messages(from: today.0, to: today.1).first)
@@ -132,6 +146,7 @@ private final class BrokenMailProvider: MailProvider {
     func messages(from: Date, to: Date) async throws -> [TimelineItem] { throw Offline() }
     func body(of itemID: String) async throws -> MailBody { throw Offline() }
     func archive(_ itemID: String) async throws { throw Offline() }
+    func trash(_ itemID: String) async throws { throw Offline() }
     func send(_ mail: OutgoingMail, replyingTo itemID: String?) async throws { throw Offline() }
     func folders() async throws -> [MailFolder] { throw Offline() }
     func messages(inFolder folderID: String, limit: Int) async throws -> [TimelineItem] { throw Offline() }

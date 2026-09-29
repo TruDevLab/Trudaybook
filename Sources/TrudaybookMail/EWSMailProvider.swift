@@ -305,6 +305,17 @@ public actor EWSMailProvider: AccountMailProvider {
         try forgetHandled(uid, in: folder)
     }
 
+    /// В «Удалённые» (`deleteditems`) — `MoveItem`, а не `DeleteItem`:
+    /// письмо вернётся из «Корзины» в Outlook или здесь.
+    public func trash(_ itemID: String) async throws {
+        let (folder, uid) = try locate(itemID)
+        try EWSRequest.requireSuccess(try await call("MoveItem", EWSRequest.move([try remoteID(uid)], to: "deleteditems")))
+        try cache.delete([uid], mailbox: folder, account: account.id)
+        try cache.forgetRemoteIDs([uid], account: account.id)
+        headers[key(folder, uid)] = nil
+        changeHandler?()
+    }
+
     /// Письмо ушло из папки нашим действием. Строка и тело остаются с
     /// отметкой «ушло» — на таймлайне письмо разобранное и открывается;
     /// номер письма больше никому не достанется (`MailCache.localUID`).

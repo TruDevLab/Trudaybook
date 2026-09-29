@@ -9,12 +9,13 @@ struct ItemRow: View {
 
     var body: some View {
         let status = model.status(of: item)
-        let selected = model.selectedID == item.id
-        let unread = item.mail?.isRead == false
+        let selected = model.isSelected(item.id)
+        let unread = item.kind == .mail && !model.isRead(item)
         let priority = model.priority(of: item)
 
         HStack(spacing: 8) {
-            Image(systemName: item.symbol)
+            // Прочитанное — открытый конверт, новое — закрытый.
+            Image(systemName: item.kind == .mail && !unread ? "envelope.open" : item.symbol)
                 .foregroundStyle(item.kind == .reminder ? Color.orange : Color.accentColor)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
@@ -54,20 +55,23 @@ struct ItemRow: View {
         .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.accentColor.opacity(0.18) : .clear))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            // Двойное нажатие — перейти к дню элемента на таймлайне.
+            // Двойное нажатие: письмо — в отдельное окно, встреча и
+            // напоминание — к их дню на таймлайне.
             model.selectedID = item.id
-            model.show(day: model.effectiveTime(of: item))
+            if item.kind == .mail {
+                LetterWindow.show(item, model: model)
+            } else {
+                model.show(day: model.effectiveTime(of: item))
+            }
             onSelect?()
         }
         .onTapGesture {
-            model.selectedID = item.id
+            let flags = NSEvent.modifierFlags
+            model.click(item, extend: flags.contains(.shift), toggle: flags.contains(.command))
             onSelect?()
         }
         .itemDraggable(item)
-        .contextMenu {
-            PriorityPicker(id: item.id, current: priority)
-            LabelPicker(item: item)
-        }
+        .contextMenu { ItemContextMenu(item: item) }
     }
 }
 

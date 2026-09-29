@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var keyMonitor: Any?
     private var model: AppModel?
+    private var menuBar: MenuBarCalendar?
+    private var hotKey: MeetingHotKey?
     private var pendingURLs: [URL] = []
 
     static func main() {
@@ -57,12 +59,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         self.window = window
+        EventEditorWindow.attach(model: model) { [weak self] in self?.window }
+        // Значок в строке меню — у настоящего приложения; в тестовом режиме
+        // только для снимка (`--menubar`), чтобы копии не плодили значков.
+        if !model.options.demo || model.options.menubar { menuBar = MenuBarCalendar(model: model) }
+        // Сочетание для всей системы — только у настоящего приложения: копия
+        // для снимков перехватила бы его у установленного.
+        if !model.options.demo {
+            let hotKey = MeetingHotKey(model: model) { [weak self] in
+                self?.menuBar?.show()
+            }
+            self.hotKey = hotKey
+            MainMenu.joinMeeting = { hotKey.join() }
+        }
         // Стрелки — к соседнему письму (см. `KeyNavigation`). Монитор зовётся
         // на главном потоке; событие дальше него не уходит.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             nonisolated(unsafe) let incoming = event
             let handled = MainActor.assumeIsolated { () -> Bool in
                 guard let self, let model = self.model else { return false }
+                // В окне обучения — его тестовые данные.
+                if let tour = TourWindow.active, incoming.window === tour.window {
+                    return KeyNavigation.handle(incoming, window: tour.window, model: tour.model)
+                }
                 return KeyNavigation.handle(incoming, window: self.window, model: model)
             }
             return handled ? nil : event
@@ -80,6 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !pendingURLs.isEmpty {
                 model.open(urls: pendingURLs)
                 pendingURLs = []
+            }
+            if let path = model.options.openFile { model.open(urls: [URL(fileURLWithPath: path)]) }
+            // Обучение — при первом запуске; пропустить можно, повторить — из настроек.
+            if !model.options.demo, !UserDefaults.standard.bool(forKey: TourWindow.shownKey) {
+                TourWindow.show(main: model)
             }
             DebugLog.write("данные: на дне \(model.dayItems.count), не разобрано \(model.unresolved.count)")
             if model.options.labelMail { model.labelUnresolved(manual: true) }
@@ -107,8 +131,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let period = model.options.note {
                     await Self.prepareNoteWindow(model: model, period: period)
                 }
-                // Открытый лист (редактор встречи) — отдельное окно поверх главного.
-                WindowSnapshot.write(NoteWindow.current ?? SettingsWindow.current ?? window.attachedSheet ?? window, to: path)
+                if model.options.letter, let item = model.selectedItem {
+                    LetterWindow.show(item, model: model)
+                    try? await Task.sleep(for: .seconds(1.5))
+                }
+                if let step = model.options.tourStep {
+                    TourWindow.show(main: model, step: step)
+                    try? await Task.sleep(for: .seconds(3))
+                }
+                if model.options.menubar {
+                    menuBar?.show()
+                    try? await Task.sleep(for: .seconds(1.5))
+                }
+                // Редактор встречи — отдельное окно поверх главного.
+                WindowSnapshot.write(menuBar?.popoverWindow ?? EventEditorWindow.current ?? TourWindow.current
+                                     ?? LetterWindow.current ?? NoteWindow.current ?? SettingsWindow.current
+                                     ?? window, to: path)
                 NSApp.terminate(nil)
             }
         }
@@ -158,14 +196,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// ⌘C, ⌘V и ⌘A — AppKit раздаёт их через пункты меню.
 @MainActor
 enum MainMenu {
-    static func build(model: AppModel) -> NSMenu {
+    /// Подключение к ближайшей встрече — у настоящего приложения.
+    static var joinMeeting: (() -> Void)?
+
+    static func build(model primary: AppModel) -> NSMenu {
+        // Пока впереди окно обучения — команды относятся к его тестовым данным.
+        var model: AppModel { TourWindow.keyModel ?? primary }
         let main = NSMenu()
 
         main.addItem(submenu("Trudaybook", [
             item(String(localized: "О программе Trudaybook"), #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
-            ClosureItem(String(localized: "Проверить обновления…"), key: "") { UpdateActions.checkFromMenu(model: model) },
+            ClosureItem(String(localized: "Проверить обновления…"), key: "") { UpdateActions.checkFromMenu(model: primary) },
             .separator(),
-            ClosureItem(String(localized: "Настройки…"), key: ",") { SettingsWindow.show(model: model) },
+            ClosureItem(String(localized: "Настройки…"), key: ",") { SettingsWindow.show(model: primary) },
             .separator(),
             item(String(localized: "Скрыть Trudaybook"), #selector(NSApplication.hide(_:)), key: "h"),
             item(String(localized: "Скрыть остальные"), #selector(NSApplication.hideOtherApplications(_:)), key: "h", modifiers: [.command, .option]),
@@ -177,6 +220,8 @@ enum MainMenu {
             ClosureItem(String(localized: "Новое письмо"), key: "n") { model.startNewMail() },
             ClosureItem(String(localized: "Новая встреча"), key: "n", modifiers: [.command, .shift]) { model.startNewEvent() },
             ClosureItem(String(localized: "Новое напоминание"), key: "n", modifiers: [.command, .option]) { model.startNewReminder() },
+            .separator(),
+            ClosureItem(String(localized: "Открыть файл…"), key: "o", modifiers: [.command, .shift]) { LetterWindow.chooseFile(model: model) },
         ]))
 
         main.addItem(submenu(String(localized: "Правка"), [
@@ -192,7 +237,12 @@ enum MainMenu {
         // Заглавная буква в клавише — это ⇧: «Ответить всем» — ⇧⌘R.
         let actions: [NSMenuItem] = ItemAction.allCases.map { action in
             ClosureItem(action.title, key: String(action.key)) {
-                if let id = model.selectedID { model.perform(action, on: id) }
+                // Выделено несколько — пачкой только архив; остальное — про одно письмо.
+                if !model.multiSelection.isEmpty {
+                    if action == .archive { model.archiveSelection() }
+                } else if let id = model.selectedID {
+                    model.perform(action, on: id)
+                }
             }
         }
         // Приоритет — ⌘1…⌘3, ⌘0 снимает (и просто 1…3, 0 — см. `KeyNavigation`).
@@ -201,7 +251,26 @@ enum MainMenu {
                 if let id = model.selectedID { model.setPriority(priority, for: id) }
             }
         }
-        main.addItem(submenu(String(localized: "Действия"), actions + [.separator(), submenu(String(localized: "Приоритет"), priorityItems),
+        // Письмо в окне и файлом: ⌘S в окне письма сохраняет его, в главном — выбранное.
+        let letterItems: [NSMenuItem] = [
+            ClosureItem(String(localized: "Открыть письмо в окне"), key: "o") {
+                if let item = model.selectedItem, item.kind == .mail { LetterWindow.show(item, model: model) }
+            },
+            // ⌘S занят «Отложить» — сохранение, как «Сохранить как…», с ⇧.
+            ClosureItem(String(localized: "Сохранить письмо…"), key: "s", modifiers: [.command, .shift]) {
+                if let document = LetterWindow.key, let body = document.body {
+                    LetterFileButton.save(document.item, body, raw: document.raw)
+                } else if let item = model.selectedItem, item.kind == .mail, let body = model.body {
+                    LetterFileButton.save(item, body)
+                }
+            },
+            // Клавиша — ⌫ в списке (`KeyNavigation`): в меню ⌘⌫ отнимал бы
+            // у полей ввода «стереть до начала строки».
+            ClosureItem(String(localized: "В корзину  ⌫"), key: "") {
+                model.trash(model.trashTargets)
+            },
+        ]
+        main.addItem(submenu(String(localized: "Действия"), actions + [.separator()] + letterItems + [.separator(), submenu(String(localized: "Приоритет"), priorityItems),
             ClosureItem(String(localized: "Сортировать по приоритету"), key: "") { model.sortByPriority.toggle() }]))
 
         main.addItem(submenu(String(localized: "День"), [
@@ -209,11 +278,17 @@ enum MainMenu {
             ClosureItem(String(localized: "Предыдущий день"), key: "[") { model.shiftDay(-1) },
             ClosureItem(String(localized: "Следующий день"), key: "]") { model.shiftDay(1) },
             ClosureItem(String(localized: "Заметка в окне"), key: "j") { NoteWindow.show(model: model) },
+            // Работает и из других программ (`MeetingHotKey`); здесь — чтобы его было видно.
+            ClosureItem(String(localized: "Подключиться к ближайшей встрече"), key: MeetingHotKey.menuKey,
+                        modifiers: MeetingHotKey.menuModifiers) { joinMeeting?() },
             .separator(),
             ClosureItem(String(localized: "Крупнее"), key: "=") { model.zoom(by: 1.25) },
             ClosureItem(String(localized: "Мельче"), key: "-") { model.zoom(by: 0.8) },
             .separator(),
             ClosureItem(String(localized: "Номера недель"), key: "") { model.showWeekNumbers.toggle() },
+            ClosureItem(String(localized: "Скрывать разобранные письма"), key: "h", modifiers: [.command, .shift]) {
+                withAnimation(HoverMotion.animation) { model.hideResolvedMail.toggle() }
+            },
             ClosureItem(String(localized: "Вертикальный таймлайн"), key: "l", modifiers: [.command, .option]) {
                 withAnimation(HoverMotion.animation) { model.timelineVertical.toggle() }
             },
@@ -230,6 +305,12 @@ enum MainMenu {
         ])
         NSApp.windowsMenu = windowMenu.submenu
         main.addItem(windowMenu)
+
+        let helpMenu = submenu(String(localized: "Справка"), [
+            ClosureItem(String(localized: "Обучение Trudaybook"), key: "") { TourWindow.show(main: primary) },
+        ])
+        NSApp.helpMenu = helpMenu.submenu
+        main.addItem(helpMenu)
         return main
     }
 

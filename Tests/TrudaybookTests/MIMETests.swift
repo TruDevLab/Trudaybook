@@ -169,3 +169,67 @@ struct MIMEBodyTests {
         #expect(String(decoding: parts[0], as: UTF8.self) == "текст --b внутри")
     }
 }
+
+@Suite("Письмо из файла .eml")
+struct EmailFileTests {
+    let fallback = Date(timeIntervalSince1970: 0)
+
+    @Test("Заголовки, тело и вложение — из файла; ящика у письма нет")
+    func письмо() throws {
+        let data = message([
+            "From: =?UTF-8?B?0JDQvdC90LA=?= <anna@example.test>",
+            "To: me@example.test",
+            "Cc: boss@example.test",
+            "Subject: =?UTF-8?B?0J7RgtGH0ZHRgg==?=",
+            "Date: Mon, 28 Sep 2026 10:00:00 +0300",
+            "Message-ID: <abc@example.test>",
+            "Content-Type: multipart/mixed; boundary=\"b\"",
+            "",
+            "--b",
+            "Content-Type: text/plain; charset=utf-8",
+            "",
+            "Привет, отчёт во вложении.",
+            "--b",
+            "Content-Type: application/pdf; name=\"report.pdf\"",
+            "Content-Disposition: attachment; filename=\"report.pdf\"",
+            "Content-Transfer-Encoding: base64",
+            "",
+            "JVBERi0=",
+            "--b--",
+        ])
+        let url = URL(fileURLWithPath: "/tmp/письма/../письма/Отчёт.eml")
+        let letter = try #require(EmailFile.letter(from: data, id: EmailFile.itemID(for: url), fallbackDate: fallback))
+        #expect(letter.item.title == "Отчёт")
+        #expect(letter.item.id == "file:/tmp/письма/Отчёт.eml")
+        #expect(EmailFile.isFileItem(letter.item.id))
+        let info = try #require(letter.item.mail)
+        #expect(info.accountID == EmailFile.accountID)
+        #expect(info.from.address == "anna@example.test")
+        #expect(info.from.name == "Анна")
+        #expect(info.to.map(\.address) == ["me@example.test"])
+        #expect(info.cc.map(\.address) == ["boss@example.test"])
+        #expect(info.messageID == "abc@example.test")
+        #expect(info.hasAttachments)
+        #expect(letter.item.time == Date(timeIntervalSince1970: 1_790_578_800))
+        #expect(letter.body.text?.contains("отчёт во вложении") == true)
+        #expect(letter.body.attachments.map(\.name) == ["report.pdf"])
+    }
+
+    @Test("Не письмо — не открывается: пустой файл, текст без заголовков, слишком большой")
+    func неПисьмо() {
+        #expect(EmailFile.letter(from: Data(), id: "file:x", fallbackDate: fallback) == nil)
+        #expect(EmailFile.letter(from: Data("Список покупок\nмолоко: 2\n".utf8), id: "file:x", fallbackDate: fallback) == nil)
+        #expect(EmailFile.letter(from: Data(count: EmailFile.maxSize + 1), id: "file:x", fallbackDate: fallback) == nil)
+        // Без темы и даты, но с отправителем — письмо; дата — запасная.
+        let bare = EmailFile.letter(from: message(["From: a@example.test", "", "текст"]), id: "file:x", fallbackDate: fallback)
+        #expect(bare?.item.title == "Без темы")
+        #expect(bare?.item.time == fallback)
+    }
+
+    @Test("Файл письма узнаётся по расширению .eml; .emlx Почты — нет")
+    func расширение() {
+        #expect(EmailFile.isEmailFile(URL(fileURLWithPath: "/tmp/Письмо.EML")))
+        #expect(!EmailFile.isEmailFile(URL(fileURLWithPath: "/tmp/12345.emlx")))
+        #expect(!EmailFile.isEmailFile(URL(fileURLWithPath: "/tmp/встреча.ics")))
+    }
+}

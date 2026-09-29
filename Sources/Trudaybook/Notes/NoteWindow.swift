@@ -39,6 +39,7 @@ enum NoteWindow {
     }
 
     static func show(model: AppModel, period: NotePeriod? = nil) {
+        let model = TourWindow.owner(model)
         if let period { state.period = period }
         if let window {
             window.makeKeyAndOrderFront(nil)
