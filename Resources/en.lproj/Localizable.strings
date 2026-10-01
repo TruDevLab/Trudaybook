@@ -19,6 +19,7 @@
 "%lld мин" = "%lld min";
 "%lld писем" = "%lld emails";
 "%lld писем с %@ — нажмите, чтобы раскрыть" = "%lld emails from %@ — click to expand";
+"%lld ч" = "%lld h";
 "%lld ч %lld мин" = "%lld h %lld min";
 "%lld часа" = "%lld hours";
 "(без темы)" = "(no subject)";
@@ -64,6 +65,7 @@
 "XML не разобран: %@" = "XML not parsed: %@";
 "macOS спросит разрешение при включении" = "macOS will ask for permission when turned on";
 "menu.undo" = "Undo";
+"«%@» не изменить отсюда: встречу меняет организатор или это календарь только для чтения. Ответить можно справа." = "“%@” can't be changed from here: the organizer changes this meeting, or the calendar is read-only. You can reply on the right.";
 "«%@» через %lld мин" = "“%@” in %lld min";
 "«Напрямую» — ящик Exchange, подключённый в Trudaybook. «Через macOS» — учётные записи из Системных настроек → Учётные записи интернета. Новые календари, добавленные в системе, появятся сами." = "“Direct” is an Exchange mailbox connected in Trudaybook. “Via macOS” are accounts from System Settings → Internet Accounts. New calendars added in the system appear automatically.";
 "«Ответить» в уведомлении macOS отправляет ответ, не открывая окна." = "“Reply” in a macOS notification sends the reply without opening the window.";
@@ -130,11 +132,13 @@
 "Весь день" = "All day";
 "Вид" = "Style";
 "Виджеты на рабочем столе" = "Desktop Widgets";
+"Видно на шкале дня" = "Visible on the day timeline";
 "Включите в настройках Trudaybook → Trunook связь и помощь модели." = "Turn on the link and model help in Trudaybook Settings → Trunook.";
 "Включите: Trunook → Настройки → Уведомления → «Разрешить программам спрашивать через вырез»." = "Turn it on: Trunook → Settings → Notifications → “Allow apps to ask via the notch”.";
 "Вложение" = "Attachment";
 "Вложения" = "Attachments";
 "Вместе больше 20 МБ — почтовый сервер может не принять" = "Over 20 MB in total — the mail server may reject it";
+"Вне окна" = "Outside the window";
 "Впереди" = "Upcoming";
 "Время" = "Time";
 "Время свободно" = "Time is free";
@@ -181,6 +185,7 @@
 "Выбранные письма — в «Корзину» ящика · ⌫" = "Selected messages to the mailbox Trash · ⌫";
 "Выбрано писем: %lld" = "Messages selected: %lld";
 "Выбрано: %lld" = "Selected: %lld";
+"Выбрать город" = "Choose a city";
 "Выделенные письма — в корзину" = "Move Selected Messages to Trash";
 "Выделить всё" = "Select All";
 "Выделить цветом" = "Highlight";
@@ -265,6 +270,7 @@
 "Итоги недели" = "Week Summary";
 "К встрече" = "To prepare";
 "К сегодняшнему дню · ⌘T" = "Go to today · ⌘T";
+"К сегодняшнему дню и текущему времени (⌘T)" = "Go to today and the current time (⌘T)";
 "Каждую неделю" = "Every week";
 "Каждую неделю (%@)" = "Every week (%@)";
 "Каждые" = "Every";
@@ -426,6 +432,7 @@
 "Новые письма" = "New emails";
 "Новые письма — с ящика" = "New emails — from mailbox";
 "Номера недель" = "Week numbers";
+"Ночью — тёмное окно, луна и звёзды; днём — светлое и солнце. Облака, дождь, снег, туман и гроза — по погоде из Trunook или Open-Meteo; без погоды — только время суток." = "At night — a dark window, the moon and stars; by day — a light one and the sun. Clouds, rain, snow, fog and storms follow the weather from Trunook or Open-Meteo; without weather — only the time of day.";
 "Ночью — тёмное окно, луна и звёзды; днём — светлое и солнце. Облака, дождь, снег, туман и гроза — по погоде из Trunook, без него — только время суток." = "At night — a dark window, the moon and stars; by day — a light one and the sun. Clouds, rain, snow, fog and storms follow the weather from Trunook; without it, only the time of day.";
 "Нужен пароль для внешнего приложения: настройки Mail.ru → Безопасность." = "You need a password for an external app: Mail.ru settings → Security.";
 "Нужен пароль приложения (id.yandex.ru → Безопасность) и включённый IMAP в настройках Почты." = "You need an app password (id.yandex.ru → Security) and IMAP turned on in Mail settings.";
@@ -435,6 +442,7 @@
 "О встречах календарей macOS Trunook напоминает сам — отсюда добавятся письма от участников." = "Trunook reminds you of macOS calendar meetings itself — this adds emails from attendees.";
 "О программе Trudaybook" = "About Trudaybook";
 "Облака плывут, идёт дождь и снег" = "Clouds drift, rain and snow fall";
+"Облака, дождь и снег — по погоде. Trunook её не присылает: укажите место, и небо покажет погоду за окном." = "Clouds, rain and snow follow the weather. Trunook doesn't send it: set a place and the sky will show the weather outside.";
 "Облачно" = "Cloudy";
 "Обновить" = "Refresh";
 "Обновить все" = "Refresh all";
@@ -444,6 +452,7 @@
 "Обновляем…" = "Updating…";
 "Обучение" = "Tutorial";
 "Обучение Trudaybook" = "Trudaybook Tutorial";
+"Общее" = "General";
 "Обычный пароль рабочей учётной записи — тот же, что для Outlook и веб-почты." = "The regular password of your work account — the same as for Outlook and webmail.";
 "Обычный цвет" = "Default color";
 "Окно" = "Window";
@@ -531,6 +540,7 @@
 "Перезапустить" = "Restart";
 "Перезапустить и обновить" = "Restart and Update";
 "Переменная облачность" = "Partly cloudy";
+"Перенесите встречу или бросьте письмо на время" = "Move a meeting or drop an email on a time";
 "Перенесите встречу на другое время" = "Move a meeting to another time";
 "Перенести" = "Reschedule";
 "Перенести встречу" = "Reschedule meeting";
@@ -587,6 +597,7 @@
 "Повторяется" = "Repeats";
 "Повторяющаяся встреча" = "Recurring meeting";
 "Погода" = "Weather";
+"Погода для неба — от Open-Meteo" = "Weather for the sky — from Open-Meteo";
 "Погода не получена: %@" = "Weather not received: %@";
 "Погоду присылает Trunook — включите в нём погоду" = "Weather comes from Trunook — turn weather on there";
 "Погоду присылает Trunook." = "Trunook provides the weather.";
@@ -626,7 +637,10 @@
 "Понятно" = "OK";
 "Попробовать снова" = "Try Again";
 "После таймера — одно уведомление обо всех письмах." = "When the timer ends — one notification for all emails.";
+"Потяните вверх — таймлайн встанет над списком писем (⌥⌘B)" = "Drag up to put the timeline above the email list (⌥⌘B)";
+"Потяните вниз — таймлайн встанет под списком писем (⌥⌘B)" = "Drag down to put the timeline below the email list (⌥⌘B)";
 "Потяните встречу по таймлайну — подсказка покажет новое время; если есть участники, приложение сначала спросит. Письмо, брошенное на время, отложится до него." = "Drag a meeting along the timeline — a hint shows the new time; if there are attendees, the app asks first. An email dropped on a time is snoozed until then.";
+"Потяните свою встречу по таймлайну — подсказка покажет новое время; если есть участники, приложение сначала спросит. Чужую встречу переносит организатор. Письмо, брошенное правее красной линии, отложится до этого времени." = "Drag your own meeting along the timeline — a hint shows the new time; if there are attendees, the app asks first. Someone else's meeting is moved by its organizer. An email dropped to the right of the red line is snoozed until that time.";
 "Потяните, чтобы изменить высоту таймлайна; двойной щелчок — обычная высота" = "Drag to change the timeline height; double-click for the normal height";
 "Потяните, чтобы изменить ширину панели; двойной щелчок — ширина по умолчанию" = "Drag to change the panel width; double-click for the default width";
 "Почта" = "Mail";
@@ -678,6 +692,8 @@
 "Пт" = "Fr";
 "Пятна света плывут" = "Light spots drift";
 "Рабочая неделя или полная" = "Work week or full week";
+"Рабочие часы на шкале светлее, остальные — чуть темнее. Сколько часов видно — подбирается под ширину окна; ⌘= и ⌘− меняют масштаб до следующей смены этой настройки." = "Working hours are lighter on the timeline, the rest slightly darker. The visible hours fit the window width; ⌘= and ⌘− change the zoom until you change this setting again.";
+"Рабочий день" = "Working day";
 "Раз в сутки спрашивает GitHub и скачивает новую версию фоном. Ставится только по вашей кнопке." = "Asks GitHub once a day and downloads a new version in the background. It's installed only when you click the button.";
 "Развернуть" = "Expand";
 "Разделы по датам: Сегодня, Вчера, дни недели, старше 7 и 30 дней" = "Date sections: Today, Yesterday, weekdays, older than 7 and 30 days";
@@ -701,6 +717,8 @@
 "Свайпы в списке писем" = "Swipes in the email list";
 "Свернуть" = "Collapse";
 "Свернуть пересказ" = "Collapse Summary";
+"Сверху" = "Top";
+"Сверху — письма по времени прихода, снизу — встречи и напоминания. Красная линия — сейчас (в обучении всегда утро). Двойной щелчок по своей встрече открывает её редактор, по письму — отдельное окно." = "Emails on top by arrival time, meetings and reminders below. The red line is now (always morning in the tutorial). Double-click your own meeting to open its editor, an email — to open its own window.";
 "Сверху — письма по времени прихода, снизу — встречи и напоминания. Красная линия — сейчас. Двойной щелчок по встрече открывает её редактор, по письму — отдельное окно." = "Emails on top by arrival time, meetings and reminders below. The red line is now. Double-click a meeting to edit it, an email to open it in its own window.";
 "Сводка для плитки «Почта» и шкалы дня" = "Summary for the Mail tile and the day timeline";
 "Сводка и фокус" = "Summary and focus";
@@ -716,6 +734,7 @@
 "Сегодня вечером" = "This evening";
 "Сейчас письма пишет: %@" = "Emails are written in: %@";
 "Сейчас сначала важное. Нажмите — по времени" = "Important first now. Click — sort by time";
+"Сейчас таймлайн вертикальный — слева; верх и низ — для таймлайна слева направо (⌥⌘L)." = "The timeline is vertical now — on the left; top and bottom apply to the left-to-right timeline (⌥⌘L).";
 "Сейчас файлы календаря открывает: %@" = "Calendar files open in: %@";
 "Сейчас: %@, %@" = "Now: %@, %@";
 "Сейчас: %@. Длительность сохранится.%@" = "Now: %@. The duration is kept.%@";
@@ -760,6 +779,9 @@
 "Сначала выберите письмо" = "Select a message first";
 "Сначала выберите письмо или событие" = "Select a message or event first";
 "Снег" = "Snow";
+"Снизу" = "Bottom";
+"Снизу — список писем, месяц и заметка над ним (⌥⌘B)." = "Bottom — the email list, month and note sit above it (⌥⌘B).";
+"Снизу — список писем, месяц и заметка над ним. Можно и перетащить таймлайн за ручку ≡ слева от даты или нажать ⌥⌘B." = "Bottom — the email list, month and note sit above it. You can also drag the timeline by the ≡ handle left of the date, or press ⌥⌘B.";
 "Снять выделение" = "Deselect";
 "Снять приоритет" = "Remove priority";
 "Со звуком" = "With sound";
@@ -806,6 +828,9 @@
 "Старше 7 дней" = "Older than 7 days";
 "Строка меню" = "Menu Bar";
 "Сумерки" = "Dusk";
+"Таймлайн" = "Timeline";
+"Таймлайн в окне" = "Timeline in the window";
+"Таймлайн внизу окна" = "Timeline at the Bottom";
 "Таймлайн дня" = "Day timeline";
 "Таймлайн сверху вниз (⌥⌘L)" = "Timeline top to bottom (⌥⌘L)";
 "Таймлайн слева направо (⌥⌘L)" = "Timeline left to right (⌥⌘L)";
@@ -898,6 +923,7 @@
 "в ответе нет тела" = "the response has no body";
 "важных: %lld" = "important: %lld";
 "весь день" = "all day";
+"видно: %lld из %lld" = "visible: %lld of %lld";
 "вс" = "Su";
 "встреч: %lld" = "meetings: %lld";
 "вт" = "Tu";
@@ -908,6 +934,7 @@
 "день" = "day";
 "дней" = "days";
 "дня" = "days";
+"до" = "to";
 "до %@" = "until %@";
 "доступ к EWS запрещён для этой учётной записи — спросите администратора" = "EWS access is denied for this account — ask your administrator";
 "есть" = "set";
@@ -973,6 +1000,7 @@
 "письмо на сервере изменилось, обновите список" = "the email changed on the server, refresh the list";
 "письмо уже в «Корзине»" = "the message is already in the Trash";
 "пн" = "mo";
+"погоды нет" = "no weather";
 "погоды нет — Trunook её не прислал" = "no weather — Trunook hasn't sent it";
 "под вопросом" = "tentative";
 "порт" = "port";
@@ -984,6 +1012,7 @@
 "раз" = "time";
 "раза" = "times";
 "рассвет" = "dawn";
+"с" = "from";
 "сб" = "sa";
 "свернуть" = "collapse";
 "сегодня, %@" = "today, %@";

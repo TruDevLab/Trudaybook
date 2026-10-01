@@ -421,7 +421,7 @@ private struct MenuBarEventRow: View {
             if let link = item.event?.link, !ended, !cancelled {
                 // Идёт или вот-вот начнётся — кнопка акцентная, остальные спокойнее.
                 let join = Button {
-                    NSWorkspace.shared.open(link.url)
+                    MeetingOpener.open(link)
                 } label: {
                     Label("Подключиться", systemImage: "video.fill")
                         .labelStyle(.titleAndIcon)

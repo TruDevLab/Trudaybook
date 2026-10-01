@@ -89,13 +89,13 @@ struct VerticalTimelineView: View {
                     .onChanged { value in
                         let base = pinchBase ?? model.hourWidth
                         pinchBase = base
-                        model.hourWidth = TimelineScale.clampHourWidth(base * value.magnification)
+                        model.setHourWidth(base * value.magnification)
                     }
                     .onEnded { _ in pinchBase = nil }
             )
-            .task(id: model.day) {
+            .task(id: ScrollTarget(day: model.day, request: model.nowScrollRequest)) {
                 try? await Task.sleep(for: .milliseconds(80))
-                let hour = model.isToday ? max(model.calendar.component(.hour, from: model.now) - 1, 0) : 8
+                let hour = model.isToday ? max(model.calendar.component(.hour, from: model.now) - 1, 0) : model.workHours.lowerBound
                 proxy.scrollTo("vhour-\(hour)", anchor: .top)
             }
         }
@@ -123,16 +123,19 @@ private struct ColumnHeader: View {
 // MARK: - Сетка
 
 private struct VerticalHourGrid: View {
+    @EnvironmentObject private var model: AppModel
     let scale: TimelineScale
     let width: CGFloat
 
     var body: some View {
+        let work = model.workHours
         ZStack(alignment: .topLeading) {
             Canvas { context, size in
                 let hour = CGFloat(scale.hourWidth)
                 let shade = Color.primary.opacity(0.035)
-                context.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: hour * 8)), with: .color(shade))
-                context.fill(Path(CGRect(x: 0, y: hour * 19, width: size.width, height: size.height - hour * 19)),
+                let start = CGFloat(work.lowerBound), end = CGFloat(work.upperBound)
+                context.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: hour * start)), with: .color(shade))
+                context.fill(Path(CGRect(x: 0, y: hour * end, width: size.width, height: size.height - hour * end)),
                              with: .color(shade))
                 for index in 0...24 {
                     let y = CGFloat(index) * hour
@@ -335,9 +338,14 @@ private struct VerticalMailCluster: View {
         let open = items.filter { !model.status(of: $0).isDone }.count
         let containsSelection = items.contains { $0.id == model.selectedID }
         HStack(spacing: 6) {
-            Image(systemName: "envelope.stack")
+            // Разобрана вся пачка — зелёная галочка, как у письма.
+            if open == 0 {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            } else {
+                Image(systemName: "envelope.stack")
+            }
             Text("\(items.count) писем").font(.system(size: 11, weight: .bold))
-            if open < items.count {
+            if open > 0, open < items.count {
                 Text("✓\(items.count - open)").font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -349,6 +357,7 @@ private struct VerticalMailCluster: View {
         .overlay(RoundedRectangle(cornerRadius: 6)
             .strokeBorder(containsSelection ? Color.accentColor : Color.primary.opacity(0.2),
                           lineWidth: containsSelection ? 2 : 1))
+        .opacity(open == 0 && !containsSelection ? 0.6 : 1)
         .contentShape(Rectangle())
         .onTapGesture { isOpen = true }
         .help("\(items.count) писем с \(Format.time(items.first?.time ?? Date())) — нажмите, чтобы раскрыть")

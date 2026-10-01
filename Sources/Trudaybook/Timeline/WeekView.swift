@@ -85,15 +85,16 @@ struct WeekView: View {
                     .onChanged { value in
                         let base = pinchBase ?? model.hourWidth
                         pinchBase = base
-                        model.hourWidth = TimelineScale.clampHourWidth(base * value.magnification)
+                        model.setHourWidth(base * value.magnification)
                     }
                     .onEnded { _ in pinchBase = nil }
             )
-            .task(id: days.first) {
+            .task(id: ScrollTarget(day: days.first, request: model.nowScrollRequest)) {
                 try? await Task.sleep(for: .milliseconds(80))
                 // С начала рабочего дня; вечером — так, чтобы «сейчас» было видно.
                 let nowHour = model.calendar.component(.hour, from: model.now)
-                let hour = model.showsToday ? max(min(8, nowHour - 1), nowHour - 5, 0) : 8
+                let start = model.workHours.lowerBound
+                let hour = model.showsToday ? max(min(start, nowHour - 1), nowHour - 5, 0) : start
                 proxy.scrollTo("whour-\(hour)", anchor: .top)
             }
         }
@@ -244,13 +245,15 @@ private struct WeekHourGrid: View {
 
     var body: some View {
         let days = model.weekDays
+        let work = model.workHours
         ZStack(alignment: .topLeading) {
             Canvas { context, size in
                 let hour = CGFloat(hourHeight)
                 let left = WeekView.hoursWidth
                 let shade = Color.primary.opacity(0.035)
-                context.fill(Path(CGRect(x: left, y: 0, width: size.width - left, height: hour * 8)), with: .color(shade))
-                context.fill(Path(CGRect(x: left, y: hour * 19, width: size.width - left, height: size.height - hour * 19)),
+                let start = CGFloat(work.lowerBound), end = CGFloat(work.upperBound)
+                context.fill(Path(CGRect(x: left, y: 0, width: size.width - left, height: hour * start)), with: .color(shade))
+                context.fill(Path(CGRect(x: left, y: hour * end, width: size.width - left, height: size.height - hour * end)),
                              with: .color(shade))
                 for (index, day) in days.enumerated() where model.calendar.isDateInWeekend(day) {
                     context.fill(Path(CGRect(x: left + CGFloat(index) * columnWidth, y: 0, width: columnWidth, height: size.height)),

@@ -50,3 +50,29 @@ struct NearestMeetingTests {
         #expect(NearestMeeting.pick([event("прошла", in: -60)], now: now, needsLink: false) == nil)
     }
 }
+
+@Suite("Ответ организатора")
+struct OrganizerResponseTests {
+    private let organizer = Person(name: "О", address: "Org@X")
+    private let guest = Person(name: "Г", address: "g@x")
+
+    @Test("Организатор без ответа — принял; гость без ответа — без ответа")
+    func organizerAccepted() {
+        let info = EventInfo(calendarTitle: "Работа", organizer: organizer,
+                             attendees: [Attendee(person: Person(name: "О", address: "org@x"), response: .pending),
+                                         Attendee(person: guest, response: .pending)])
+        #expect(info.response(of: info.attendees[0]) == .accepted)
+        #expect(info.response(of: info.attendees[1]) == .pending)
+    }
+
+    @Test("Отменённая встреча и явный отказ организатора — как есть")
+    func cancelledOrDeclined() {
+        var info = EventInfo(calendarTitle: "Работа", organizer: organizer,
+                             attendees: [Attendee(person: organizer, response: .unknown)])
+        info.isCancelled = true
+        #expect(info.response(of: info.attendees[0]) == .unknown)
+        let declined = EventInfo(calendarTitle: "Работа", organizer: organizer,
+                                 attendees: [Attendee(person: organizer, response: .declined)])
+        #expect(declined.response(of: declined.attendees[0]) == .declined)
+    }
+}

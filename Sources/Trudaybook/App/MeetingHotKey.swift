@@ -63,7 +63,7 @@ final class MeetingHotKey {
         Task {
             if let link = await model.nearestMeetingLink() {
                 DebugLog.write("быстрое подключение: \(link.provider.rawValue)")
-                NSWorkspace.shared.open(link.url)
+                MeetingOpener.open(link)
             } else {
                 NSSound.beep()
                 fallback()

@@ -42,7 +42,12 @@ On the right: the whole email or meeting — replies with formatting,
 attachments, invitations with Accept and Decline, attendees and the online
 meeting link.
 
-The timeline can run top to bottom too — the button next to “Day | Week”.
+The timeline can run top to bottom too — the button next to “Day | Week” —
+or sit below the email list: drag it by the ≡ handle left of the date,
+or press ⌥⌘B. Working hours are lighter; which hours
+they are and how many hours you see at once (12 by default) — Settings →
+Calendars → Timeline. A checkmark on an email or a bundle means handled;
+a past meeting simply fades.
 
 ## Week
 
@@ -102,7 +107,9 @@ the count of unhandled emails. Meetings you haven't answered, or answered
 **Menu bar** — an icon with today's date: the month with week numbers, the
 day's meetings (the current or next one in focus — Return joins it) and a
 “Join” button for online meetings. ⌃⌥⌘J from any app joins the current or
-next meeting. Turn it off in Settings → Appearance.
+next meeting. Zoom, Teams and Telemost meetings open straight in their app if
+it's installed (the link goes only to an app signed by that service); others
+open in the browser. Turn it off in Settings → Calendars.
 
 **Desktop widgets** — “Today” (upcoming meetings with a countdown, reminders,
 weather) and “To Handle” (how many emails are waiting and which matter):
@@ -117,7 +124,7 @@ Open-Meteo, by city or by location.
 right in the notification sends the answer without opening the window.
 
 **Look** — Liquid Glass on macOS 26, light and dark, calm gradients and
-texture backgrounds, your own picture as a background. The Sky theme (the default) follows
+texture backgrounds, your own picture as a background. The Sky theme follows
 the time of day and the weather: the moon in its phase and stars at night,
 the sun, clouds, rain, snow, fog and storms by day. Russian, English
 and Chinese interface.
@@ -165,6 +172,7 @@ notch app by the same author (optional, all off by default):
 | ⌥⌘1 / ⌥⌘2 | Day / week |
 | ⇧⌘H | Hide / show handled emails on the timeline |
 | ⌥⌘L | Timeline top to bottom |
+| ⌥⌘B | Timeline at the bottom of the window |
 | ↑ ↓ | Neighbouring item |
 
 ---

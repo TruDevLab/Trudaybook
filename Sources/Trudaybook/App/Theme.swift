@@ -256,6 +256,49 @@ struct SettingsCard<Content: View>: View {
     }
 }
 
+/// Карточка настроек, которая открывается по щелчку: для редкого —
+/// чтобы длинный список не оттеснял частые настройки.
+struct CollapsibleSettingsCard<Content: View>: View {
+    let title: String
+    var icon: String?
+    /// Что видно в свёрнутой строке справа от заголовка.
+    var summary: String?
+    @ViewBuilder var content: Content
+    @ViewState private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    if let icon {
+                        Image(systemName: icon).foregroundStyle(.secondary)
+                    }
+                    Text(title).font(.system(size: 13, weight: .semibold))
+                    if let summary, !expanded {
+                        Text(summary).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            if expanded {
+                content
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(GlassPanelBackground(cornerRadius: 10))
+    }
+}
+
 /// Пояснение под настройкой.
 struct SettingsHint: View {
     let text: String
@@ -267,5 +310,20 @@ struct SettingsHint: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Заголовок группы карточек в настройках: во вкладке с шестью карточками
+/// без групп не видно, что к чему относится.
+struct SettingsSectionTitle: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 16, weight: .bold))
+            .padding(.top, 8)
+            .padding(.leading, 2)
+            .padding(.bottom, -6)
     }
 }

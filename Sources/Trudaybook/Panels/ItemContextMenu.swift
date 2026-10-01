@@ -82,7 +82,7 @@ struct ItemContextMenu: View {
             Label("Подробнее", systemImage: "info.circle")
         }
         if let link = info.link {
-            Button { NSWorkspace.shared.open(link.url) } label: {
+            Button { MeetingOpener.open(link) } label: {
                 Label("Подключиться · \(link.provider.rawValue)", systemImage: "video.fill")
             }
         }

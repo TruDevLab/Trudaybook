@@ -189,11 +189,20 @@ struct MailListPanel: View {
                 }
                 Spacer(minLength: 8)
                 if model.isLoadingList { ProgressView().controlSize(.small) }
+                // Стрелки сортировки, а не воронка: воронка — это фильтр
+                // (она же у «скрыть разобранные»), а здесь меняется порядок.
+                // Включено — рядом флажок: «по приоритету».
                 Button { model.sortByPriority.toggle() } label: {
-                    Image(systemName: "line.3.horizontal.decrease")
-                        .foregroundStyle(model.sortByPriority ? Color.accentColor : .secondary)
-                        .padding(4)
-                        .background(Circle().fill(model.sortByPriority ? Color.accentColor.opacity(0.18) : .clear))
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.up.arrow.down")
+                        if model.sortByPriority {
+                            Image(systemName: "flag.fill").font(.system(size: 9))
+                        }
+                    }
+                    .foregroundStyle(model.sortByPriority ? Color.accentColor : .secondary)
+                    .padding(.horizontal, model.sortByPriority ? 6 : 4)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(model.sortByPriority ? Color.accentColor.opacity(0.18) : .clear))
                 }
                 .buttonStyle(.borderless)
                 .help(model.sortByPriority

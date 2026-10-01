@@ -265,7 +265,9 @@ struct ToolbarSettingsCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        SettingsCard(title: String(localized: "Кнопки панели"), icon: "rectangle.topthird.inset.filled") {
+        // Свёрнута: настраивают её редко, а список длинный.
+        CollapsibleSettingsCard(title: String(localized: "Кнопки панели"), icon: "rectangle.topthird.inset.filled",
+                                summary: String(localized: "видно: \(model.toolbarButtons.count) из \(model.toolbarOrder.count)")) {
             List {
                 ForEach(model.toolbarOrder) { button in
                     HStack(spacing: 8) {

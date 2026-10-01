@@ -203,7 +203,38 @@ final class AppModel: ObservableObject {
     @Published private(set) var readHere: Set<String> = []
     /// Письма, отправленные в «Корзину»: скрыты сразу, не дожидаясь сервера.
     private var trashed: Set<String> = []
+    /// Ширина часа на шкале — это и есть масштаб. Сама подбирается под
+    /// окно (`fitTimeline`), пока масштаб не меняли руками.
     @Published var hourWidth: Double = 120
+    /// Масштаб меняли руками (⌘=/⌘−, щипок) — подбор под окно не вмешивается,
+    /// пока не сменят «Показывать часов».
+    private var zoomedByHand = false
+    /// Ширина видимой части шкалы — от таймлайна, для подбора масштаба.
+    private var timelineViewport: Double = 0
+    /// Рабочий день — светлый участок шкалы; остальное чуть темнее.
+    @Published var workStart = AppModel.storedInt("workDayStart", default: 8) {
+        didSet { if !options.demo { UserDefaults.standard.set(workStart, forKey: "workDayStart") } }
+    }
+    @Published var workEnd = AppModel.storedInt("workDayEnd", default: 19) {
+        didSet { if !options.demo { UserDefaults.standard.set(workEnd, forKey: "workDayEnd") } }
+    }
+    /// Сколько часов видно на шкале дня без прокрутки.
+    @Published var visibleHours = AppModel.storedInt("timelineVisibleHours", default: 12) {
+        didSet {
+            if !options.demo { UserDefaults.standard.set(visibleHours, forKey: "timelineVisibleHours") }
+            zoomedByHand = false
+            fitTimeline(width: timelineViewport)
+        }
+    }
+    /// Число из настроек. `integer(forKey:)`, а не `as? Int`: из аргументов
+    /// запуска (`-workDayStart 9`, снимки) значение приходит строкой.
+    static func storedInt(_ key: String, default value: Int) -> Int {
+        UserDefaults.standard.object(forKey: key) == nil ? value : UserDefaults.standard.integer(forKey: key)
+    }
+    /// Таймлайн под списком писем, месяцем и заметкой, а не над ними.
+    @Published var timelineAtBottom = UserDefaults.standard.bool(forKey: "timelineAtBottom") {
+        didSet { if !options.demo { UserDefaults.standard.set(timelineAtBottom, forKey: "timelineAtBottom") } }
+    }
     /// Номера недель в календаре месяца.
     /// Номера недель — по умолчанию показаны (прежний ключ хранил «выключено»
     /// у всех, кто кнопку не нажимал, поэтому ключ новый).
@@ -429,8 +460,10 @@ final class AppModel: ObservableObject {
     // MARK: Фон окна (см. `Backgrounds.swift`)
 
     /// Какой фон. Прежняя настройка «Сияние» (`themeAurora`) переходит сама.
+    /// По умолчанию — системный (решение пользователя 01.10: «Небо» по
+    /// умолчанию не прижилось, оно остаётся на выбор).
     @Published var background: AppBackground = AppBackground(rawValue: UserDefaults.standard.string(forKey: "appBackground") ?? "")
-        ?? (UserDefaults.standard.bool(forKey: "themeAurora") ? .aurora : .sky) {
+        ?? (UserDefaults.standard.bool(forKey: "themeAurora") ? .aurora : .system) {
         didSet { if !options.demo { UserDefaults.standard.set(background.rawValue, forKey: "appBackground") } }
     }
     /// Цвет фона или первый цвет градиента.
@@ -817,7 +850,15 @@ final class AppModel: ObservableObject {
         let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                let before = self.now
+                let wasToday = self.showsToday
                 self.now = Date().addingTimeInterval(self.clockOffset)
+                // Наступил новый день (или Mac проснулся назавтра), а на
+                // экране было «сегодня» — перейти на новый и вернуть шкалу
+                // к красной линии. Иначе окно оставалось на вчерашнем дне.
+                if wasToday, !self.calendar.isDate(before, inSameDayAs: self.now) {
+                    self.showToday()
+                }
                 self.recompute()
                 self.loadWeather()
                 if !self.options.tour { Task { await self.trunook.tick() } }
@@ -1912,7 +1953,9 @@ final class AppModel: ObservableObject {
         }
         switch (action, item.kind) {
         case (.archive, .mail):
+            let order = visibleListItems.map(\.id)
             mark(id) { $0.archivedAt = self.now }
+            selectNeighbour(of: id, leaving: order)
             // Уже ушло из Входящих (вернули в работу, а теперь снова в архив) —
             // на сервере переносить нечего.
             guard item.mail?.movedAway != true else { return }
@@ -2001,7 +2044,9 @@ final class AppModel: ObservableObject {
         }
         switch item.kind {
         case .mail:
+            let order = visibleListItems.map(\.id)
             mark(item.id) { $0.snoozedUntil = date }
+            selectNeighbour(of: item.id, leaving: order)
         case .event, .reminder:
             Task {
                 do {
@@ -2508,6 +2553,20 @@ final class AppModel: ObservableObject {
         notifier.notify(fresh, ownPlaque: ownPlaque) { [weak self] item in self?.accountName(of: item) }
     }
 
+    /// Выбранное письмо ушло из списка (архив, корзина, отложено) — выбрать
+    /// следующее под ним, а у последнего — предыдущее. Иначе справа оставалось
+    /// убранное письмо, и после ⌘E приходилось щёлкать следующее руками.
+    /// `order` — список до действия; выбранное не из списка (с таймлайна)
+    /// остаётся как есть.
+    func selectNeighbour(of id: String, leaving order: [String], gone: Set<String> = []) {
+        guard selectedID == id, let index = order.firstIndex(of: id) else { return }
+        let remaining = Set(visibleListItems.map(\.id)).subtracting(gone)
+        guard !remaining.contains(id) else { return }
+        let after = order[(index + 1)...].first { remaining.contains($0) }
+        let before = order[..<index].reversed().first { remaining.contains($0) }
+        selectedID = after ?? before
+    }
+
     /// Стрелками — к соседнему: в нижнем списке, если выбранное в нём,
     /// иначе по таймлайну дня в порядке времени.
     func moveSelection(by step: Int) {
@@ -2602,8 +2661,13 @@ final class AppModel: ObservableObject {
         let gone = Set(letters.map(\.id))
         trashed.formUnion(gone)
         clearMultiSelection()
-        if let selectedID, gone.contains(selectedID) { self.selectedID = nil }
+        let order = visibleListItems.map(\.id)
+        let selected = selectedID.flatMap { gone.contains($0) ? $0 : nil }
         recompute()
+        if let selected {
+            selectNeighbour(of: selected, leaving: order, gone: gone)
+            if self.selectedID == selected { self.selectedID = nil }
+        }
         Task {
             var failed: [String] = []
             var lastError: Error?
@@ -2711,7 +2775,14 @@ final class AppModel: ObservableObject {
         show(day: date)
     }
 
-    func showToday() { show(day: now) }
+    /// «Сегодня» и ⌘T, когда сегодня уже на экране: шкала возвращается
+    /// к красной линии. Раньше кнопка в этом случае гасла и казалась сломанной.
+    @Published private(set) var nowScrollRequest = 0
+
+    func showToday() {
+        show(day: now)
+        nowScrollRequest += 1
+    }
 
     func shiftMonth(_ offset: Int) {
         guard let target = calendar.date(byAdding: .month, value: offset, to: monthAnchor) else { return }
@@ -2720,7 +2791,28 @@ final class AppModel: ObservableObject {
     }
 
     func zoom(by factor: Double) {
-        hourWidth = TimelineScale.clampHourWidth(hourWidth * factor)
+        setHourWidth(hourWidth * factor)
+    }
+
+    /// Масштаб руками — кнопками, клавишами или щипком.
+    func setHourWidth(_ value: Double) {
+        zoomedByHand = true
+        hourWidth = TimelineScale.clampHourWidth(value)
+    }
+
+    /// Шкала дня — под ширину окна: видно `visibleHours` часов.
+    func fitTimeline(width: Double) {
+        guard width > 0 else { return }
+        timelineViewport = width
+        guard !zoomedByHand else { return }
+        let fitted = TimelineScale.clampHourWidth(width / Double(max(visibleHours, 1)))
+        if abs(fitted - hourWidth) > 0.5 { hourWidth = fitted }
+    }
+
+    /// Рабочие часы по порядку: конец позже начала.
+    var workHours: ClosedRange<Int> {
+        let start = min(max(workStart, 0), 23)
+        return start...max(min(workEnd, 24), start + 1)
     }
 
     private func loadBusyDays() async {

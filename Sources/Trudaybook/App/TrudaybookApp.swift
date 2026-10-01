@@ -292,6 +292,9 @@ enum MainMenu {
             ClosureItem(String(localized: "Вертикальный таймлайн"), key: "l", modifiers: [.command, .option]) {
                 withAnimation(HoverMotion.animation) { model.timelineVertical.toggle() }
             },
+            ClosureItem(String(localized: "Таймлайн внизу окна"), key: "b", modifiers: [.command, .option]) {
+                withAnimation(HoverMotion.animation) { model.timelineAtBottom.toggle() }
+            },
             ClosureItem(String(localized: "День"), key: "1", modifiers: [.command, .option]) { model.timelineSpan = .day },
             ClosureItem(String(localized: "Неделя"), key: "2", modifiers: [.command, .option]) {
                 model.timelineVertical = false

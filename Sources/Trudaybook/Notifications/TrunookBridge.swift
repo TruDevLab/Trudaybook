@@ -169,8 +169,8 @@ final class TrunookBridge: ObservableObject {
             title += " · " + String(localized: "\(letters.count) \(RecurrenceRule.plural(letters.count, String(localized: "письмо"), String(localized: "письма"), String(localized: "писем"))) от участников")
         }
         var buttons: [TrunookLink.Button] = []
-        let meetingURL = event.event?.link.flatMap { Self.safeMeetingURL($0.url) }
-        if !seen, meetingURL != nil {
+        let meetingLink = event.event?.link.flatMap { Self.safeMeetingURL($0.url) == nil ? nil : $0 }
+        if !seen, meetingLink != nil {
             buttons.append(.init(id: "join", title: String(localized: "Подключиться"), positive: true, icon: "video"))
         }
         if !letters.isEmpty {
@@ -182,7 +182,7 @@ final class TrunookBridge: ObservableObject {
                   event: (event.title, event.time)) { [weak self] answer in
             switch answer {
             case "join":
-                if let meetingURL { NSWorkspace.shared.open(meetingURL) }
+                if let meetingLink { MeetingOpener.open(meetingLink) }
             case "letters":
                 NSApp.activate()
                 if let firstLetter { self?.model?.open(itemID: firstLetter) }

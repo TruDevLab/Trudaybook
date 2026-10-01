@@ -215,9 +215,11 @@ struct OpenInWindowButton: View {
 
     var body: some View {
         Button(action: action) {
+            // Основным цветом, и именно `Color.primary`: у `.borderless`
+            // иерархическое `.primary` — вторичное, значок казался выключенным.
             Image(systemName: "arrow.up.left.and.arrow.down.right")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.primary)
                 .frame(width: 26, height: 26)
                 .contentShape(Rectangle())
         }
@@ -597,7 +599,7 @@ private struct EventDetail: View {
                 if let link = info.link {
                     Field(title: String(localized: "Ссылка")) {
                         Button {
-                            NSWorkspace.shared.open(link.url)
+                            MeetingOpener.open(link)
                         } label: {
                             Label("Подключиться · \(link.provider.rawValue)", systemImage: "video.fill")
                         }
@@ -614,9 +616,10 @@ private struct EventDetail: View {
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(info.attendees, id: \.self) { attendee in
+                                let response = info.response(of: attendee)
                                 HStack(spacing: 6) {
-                                    Image(systemName: icon(attendee.response))
-                                        .foregroundStyle(color(attendee.response))
+                                    Image(systemName: icon(response))
+                                        .foregroundStyle(color(response))
                                         .frame(width: 16)
                                     Text(attendee.isMe ? String(localized: "Вы") : attendee.person.display)
                                         .help(attendee.person.address ?? "")

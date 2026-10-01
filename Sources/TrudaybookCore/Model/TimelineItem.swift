@@ -198,6 +198,16 @@ public struct EventInfo: Hashable, Sendable {
     /// «под вопросом». В календаре такие рисуются иначе, чем принятые.
     public var isUnconfirmed: Bool { myResponse == .pending || myResponse == .tentative }
 
+    /// Ответ участника — для показа. Организатор приглашения себе не шлёт,
+    /// и календари отдают его «без ответа»: человек сам назначил встречу,
+    /// а висел неподтверждённым. Пока встреча не отменена, он — «принял».
+    public func response(of attendee: Attendee) -> Attendee.Response {
+        guard attendee.response == .pending || attendee.response == .unknown, !isCancelled else { return attendee.response }
+        let address = attendee.person.normalizedAddress
+        let isOrganizer = address != nil && address == organizer?.normalizedAddress
+        return isOrganizer ? .accepted : attendee.response
+    }
+
     public init(
         calendarTitle: String,
         location: String? = nil,

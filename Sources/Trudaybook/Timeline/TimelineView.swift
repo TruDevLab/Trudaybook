@@ -88,25 +88,35 @@ struct TimelineView: View {
                 .padding(.horizontal, metrics.edge)
                 .padding(.vertical, 10)
             }
+            // Масштаб — под ширину: видно столько часов, сколько в настройках.
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                model.fitTimeline(width: Double(width - metrics.edge * 2))
+            }
             .simultaneousGesture(
                 MagnifyGesture()
                     .onChanged { value in
                         let base = pinchBase ?? model.hourWidth
                         pinchBase = base
-                        model.hourWidth = TimelineScale.clampHourWidth(base * value.magnification)
+                        model.setHourWidth(base * value.magnification)
                     }
                     .onEnded { _ in pinchBase = nil }
             )
-            .task(id: model.day) {
+            .task(id: ScrollTarget(day: model.day, request: model.nowScrollRequest)) {
                 // Раскладка должна успеть посчитаться, иначе прокручивать некуда.
                 try? await Task.sleep(for: .milliseconds(80))
                 let hour = model.isToday
                     ? max(model.calendar.component(.hour, from: model.now) - 2, 0)
-                    : 8
+                    : model.workHours.lowerBound
                 proxy.scrollTo("hour-\(hour)", anchor: .leading)
             }
         }
     }
+}
+
+/// Когда прокручивать шкалу: сменился день или снова нажали «Сегодня».
+struct ScrollTarget: Hashable {
+    var day: Date?
+    var request: Int
 }
 
 /// Подписи дорожек — неподвижной колонкой слева. Поверх шкалы (как на
@@ -143,13 +153,16 @@ private struct LaneTitles: View {
 
 private struct HourGrid: View {
     @Environment(\.timelineMetrics) private var metrics
+    @EnvironmentObject private var model: AppModel
     let scale: TimelineScale
 
     var body: some View {
+        let work = model.workHours
         Canvas { context, size in
             // Нерабочие часы чуть темнее: день читается с первого взгляда.
-            let evening = CGFloat(scale.hourWidth * 19)
-            let morning = CGFloat(scale.hourWidth * 8)
+            // Границы рабочего дня — из настроек.
+            let evening = CGFloat(scale.hourWidth * Double(work.upperBound))
+            let morning = CGFloat(scale.hourWidth * Double(work.lowerBound))
             let shade = Color.primary.opacity(0.035)
             context.fill(Path(CGRect(x: 0, y: 0, width: morning, height: metrics.lanesHeight)), with: .color(shade))
             context.fill(Path(CGRect(x: evening, y: 0, width: size.width - evening, height: metrics.lanesHeight)),
@@ -324,6 +337,9 @@ extension View {
                 model.selectedID = item.id
                 if item.kind == .event, item.event?.canEdit == true {
                     model.startEditing(item)
+                } else if item.kind == .event {
+                    // Молча не открыть редактор — непонятно, сломалось ли.
+                    model.errorMessage = String(localized: "«\(item.title)» не изменить отсюда: встречу меняет организатор или это календарь только для чтения. Ответить можно справа.")
                 } else if item.kind == .mail {
                     LetterWindow.show(item, model: model)
                 }
@@ -532,11 +548,19 @@ private struct MailCluster: View {
                     .strokeBorder(containsSelection ? Color.accentColor : Color.primary.opacity(0.2),
                                   lineWidth: containsSelection ? 2 : 1))
             VStack(spacing: 6) {
-                Image(systemName: "envelope.stack")
-                    .font(.system(size: 15))
+                // Разобрана вся пачка — та же зелёная галочка, что у письма:
+                // одна бледность не говорила, всё ли в порядке.
+                if open == 0 {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.green)
+                } else {
+                    Image(systemName: "envelope.stack")
+                        .font(.system(size: 15))
+                }
                 Text("\(items.count)")
                     .font(.system(size: 17, weight: .bold).monospacedDigit())
-                if open < items.count {
+                if open > 0, open < items.count {
                     Text("✓\(items.count - open)")
                         .font(.system(size: 10).monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -544,6 +568,7 @@ private struct MailCluster: View {
             }
         }
         .frame(width: width, height: metrics.cardHeight)
+        .opacity(open == 0 && !containsSelection ? 0.6 : 1)
         .contentShape(Rectangle())
         .onTapGesture { isOpen = true }
         .help("\(items.count) писем с \(Format.time(items.first?.time ?? Date())) — нажмите, чтобы раскрыть")
@@ -604,7 +629,12 @@ struct EventBlock: View {
                             .font(.system(size: 12, weight: .semibold))
                             .lineLimit(2)
                         Spacer(minLength: 0)
-                        StatusBadge(status: status).font(.system(size: 10))
+                        // Прошедшая встреча просто бледнеет; галочка — только
+                        // если её разобрали руками, как письмо. Иначе галочки
+                        // стояли у всех встреч до красной линии и путали.
+                        if status == .done(.marked) {
+                            StatusBadge(status: status).font(.system(size: 10))
+                        }
                     }
                     HStack(spacing: 4) {
                         Text(Format.range(item.time, item.end))

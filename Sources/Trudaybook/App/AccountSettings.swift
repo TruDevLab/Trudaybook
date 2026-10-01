@@ -105,9 +105,7 @@ struct SettingsView: View {
                     case .calendars: CalendarSettingsView()
                     case .notifications: NotificationSettingsView(notifier: model.notifier)
                     case .trunook: TrunookSettingsView(bridge: model.trunook)
-                    case .appearance:
-                        AppearanceSettingsView()
-                        ToolbarSettingsCard()
+                    case .appearance: AppearanceSettingsView()
                     case .updates: UpdateSettingsView(updates: model.updates)
                     }
                 }
@@ -246,9 +244,6 @@ struct AccountSettingsView: View {
                 }
                 FolderOrderCard()
             }
-            SettingsCard(title: String(localized: "Почта по умолчанию"), icon: "envelope.open") {
-                DefaultAppRow(role: .mail)
-            }
             SettingsCard(title: String(localized: "Список «Не разобрано»"), icon: "tray.full") {
                 Toggle("Разделы по датам: Сегодня, Вчера, дни недели, старше 7 и 30 дней", isOn: $model.groupByDate)
                     .toggleStyle(.switch)
@@ -260,6 +255,10 @@ struct AccountSettingsView: View {
                 Divider()
                 swipeRow(String(localized: "Свайп вправо"), systemImage: "arrow.right", selection: $model.swipeRight)
                 SettingsHint(String(localized: "Двумя пальцами по трекпаду по строке письма. Короткий свайп показывает кнопку, длинный — сразу выполняет. Повторный свайп приоритета снимает его."))
+            }
+            // Редкая настройка — в конце вкладки.
+            SettingsCard(title: String(localized: "Почта по умолчанию"), icon: "envelope.open") {
+                DefaultAppRow(role: .mail)
             }
         }
     }
@@ -386,6 +385,7 @@ struct CalendarSettingsView: View {
             SettingsCard(title: String(localized: "Напоминания на таймлайне"), icon: "checklist") {
                 checkboxes(kind: .reminders)
             }
+            SettingsHint(String(localized: "«Напрямую» — ящик Exchange, подключённый в Trudaybook. «Через macOS» — учётные записи из Системных настроек → Учётные записи интернета. Новые календари, добавленные в системе, появятся сами."))
             SettingsCard(title: String(localized: "По умолчанию"), icon: "star") {
                 defaultRow(String(localized: "Новые встречи"), selection: Binding(get: { model.newEventCalendarID },
                                                                set: { model.defaultCalendarID = $0 }),
@@ -409,11 +409,13 @@ struct CalendarSettingsView: View {
                 }
                 SettingsHint(String(localized: "Подставляются первыми, когда создаёте встречу или напоминание; в самом окне создания можно выбрать другой. Встречу можно создать и на самом календаре: перетащите «+» на нужное время или зажмите мышь на пустом месте."))
             }
+            TimelineSettingsCard()
+            MenuBarSettingsCard()
+            WeatherSettingsCard(weather: model.directWeather)
+            // Редкая настройка — в конце вкладки.
             SettingsCard(title: String(localized: "Календарь по умолчанию"), icon: "calendar.badge.checkmark") {
                 DefaultAppRow(role: .calendar)
             }
-            WeatherSettingsCard(weather: model.directWeather)
-            SettingsHint(String(localized: "«Напрямую» — ящик Exchange, подключённый в Trudaybook. «Через macOS» — учётные записи из Системных настроек → Учётные записи интернета. Новые календари, добавленные в системе, появятся сами."))
         }
         .onAppear { model.loadCalendarSources() }
     }
@@ -462,13 +464,15 @@ struct CalendarSettingsView: View {
     }
 }
 
-/// Вкладка «Оформление»: фон главного окна — системный, сияние, цвет,
-/// градиент или своя картинка — и анимация сияния.
+/// Вкладка «Оформление»: сверху общее (язык, обучение), затем вид — фон
+/// (с анимацией и погодой для «Неба»), виджеты и в самом низу свёрнутые
+/// кнопки панели. Таймлайн и строка меню — во вкладке «Календари».
 struct AppearanceSettingsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            SettingsSectionTitle(String(localized: "Общее"))
             SettingsCard(title: String(localized: "Язык"), icon: "globe") {
                 HStack {
                     Text("Язык приложения")
@@ -490,27 +494,6 @@ struct AppearanceSettingsView: View {
                     }
                 }
             }
-            SettingsCard(title: String(localized: "Фон приложения"), icon: "photo.on.rectangle") {
-                Picker("", selection: $model.background) {
-                    ForEach(AppBackground.allCases) { Text($0.shortTitle).help($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-                details
-                SettingsHint(String(localized: "Панели — стекло (Liquid Glass): фон просвечивает сквозь них. Окно само становится светлым или тёмным — по яркости фона."))
-            }
-            WidgetSettingsCard()
-            SettingsCard(title: String(localized: "Строка меню"), icon: "menubar.rectangle") {
-                Toggle("Значок календаря в строке меню", isOn: $model.menuBarIcon)
-                    .toggleStyle(.switch)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                SettingsHint(String(localized: "На значке — сегодняшнее число; по нажатию — месяц и встречи дня с кнопкой «Подключиться»."))
-                Toggle(String(localized: "Подключаться к ближайшей встрече по \(MeetingHotKey.title)"), isOn: $model.joinHotKey)
-                    .toggleStyle(.switch)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                SettingsHint(String(localized: "Из любой программы: идущая или ближайшая сегодня онлайн-встреча открывается в Zoom, Teams, Телемосте… Подключаться не к чему — откроется окошко с днём."))
-            }
             SettingsCard(title: String(localized: "Обучение"), icon: "graduationcap") {
                 HStack {
                     Text("Главное о Trudaybook — на тестовых письмах и встречах; ваши данные не затронуты.")
@@ -519,15 +502,30 @@ struct AppearanceSettingsView: View {
                     Button("Пройти обучение") { TourWindow.show(main: model) }
                 }
             }
-            if model.background == .aurora || model.background == .sky {
-                SettingsCard(title: String(localized: "Анимация"), icon: "wind") {
+            SettingsSectionTitle(String(localized: "Вид"))
+            SettingsCard(title: String(localized: "Фон приложения"), icon: "photo.on.rectangle") {
+                Picker("", selection: $model.background) {
+                    ForEach(AppBackground.allCases) { Text($0.shortTitle).help($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+                details
+                if model.background == .sky {
+                    SkyWeatherPrompt(weather: model.directWeather)
+                }
+                if model.background == .aurora || model.background == .sky {
                     Toggle(model.background == .sky ? String(localized: "Облака плывут, идёт дождь и снег") : String(localized: "Пятна света плывут"),
                            isOn: $model.themeAnimated)
                         .toggleStyle(.switch)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     SettingsHint(String(localized: "Выключено — фон замирает на одном кадре и не тратит процессор. Касается и этого окна. При «Уменьшить движение» в Универсальном доступе фон стоит всегда."))
                 }
+                SettingsHint(String(localized: "Панели — стекло (Liquid Glass): фон просвечивает сквозь них. Окно само становится светлым или тёмным — по яркости фона."))
             }
+            WidgetSettingsCard()
+            // Свёрнута и в самом низу: настраивают редко, список длинный.
+            ToolbarSettingsCard()
         }
     }
 
@@ -540,7 +538,7 @@ struct AppearanceSettingsView: View {
         default: String(localized: "день")
         }
         let weather = model.weekWeather.flatMap { $0.isFresh(at: model.now) ? $0 : nil } == nil && model.options.skyWeather == nil
-            ? String(localized: "погоды нет — Trunook её не прислал")
+            ? String(localized: "погоды нет")
             : WeekWeather.title(SkyRules.code(for: scene.weather)).lowercased()
         return String(localized: "Сейчас: \(time), \(weather)")
     }
@@ -552,7 +550,7 @@ struct AppearanceSettingsView: View {
             SettingsHint(String(localized: "Цвет окна как у системы — светлый или тёмный по настройке macOS."))
         case .sky:
             SettingsHint(skyNow)
-            SettingsHint(String(localized: "Ночью — тёмное окно, луна и звёзды; днём — светлое и солнце. Облака, дождь, снег, туман и гроза — по погоде из Trunook, без него — только время суток."))
+            SettingsHint(String(localized: "Ночью — тёмное окно, луна и звёзды; днём — светлое и солнце. Облака, дождь, снег, туман и гроза — по погоде из Trunook или Open-Meteo; без погоды — только время суток."))
         case .aurora:
             SettingsHint(String(localized: "Тёмное окно с плывущими пятнами света — как настройки и знакомство в Trunook."))
         case .color:
@@ -1133,11 +1131,80 @@ private struct SignatureEditor: View {
     }
 }
 
+/// Значок календаря в строке меню и ⌃⌥⌘J.
+private struct MenuBarSettingsCard: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        SettingsCard(title: String(localized: "Строка меню"), icon: "menubar.rectangle") {
+            Toggle("Значок календаря в строке меню", isOn: $model.menuBarIcon)
+                .toggleStyle(.switch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            SettingsHint(String(localized: "На значке — сегодняшнее число; по нажатию — месяц и встречи дня с кнопкой «Подключиться»."))
+            Toggle(String(localized: "Подключаться к ближайшей встрече по \(MeetingHotKey.title)"), isOn: $model.joinHotKey)
+                .toggleStyle(.switch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            SettingsHint(String(localized: "Из любой программы: идущая или ближайшая сегодня онлайн-встреча открывается в Zoom, Teams, Телемосте… Подключаться не к чему — откроется окошко с днём."))
+        }
+    }
+}
+
+/// Таймлайн: где он в окне, рабочий день и сколько часов видно сразу.
+private struct TimelineSettingsCard: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        SettingsCard(title: String(localized: "Таймлайн"), icon: "calendar.day.timeline.left") {
+            HStack {
+                Text("Таймлайн в окне")
+                Spacer(minLength: 12)
+                Picker("", selection: $model.timelineAtBottom) {
+                    Text("Сверху").tag(false)
+                    Text("Снизу").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+            SettingsHint(model.timelineVertical
+                ? String(localized: "Сейчас таймлайн вертикальный — слева; верх и низ — для таймлайна слева направо (⌥⌘L).")
+                : String(localized: "Снизу — список писем, месяц и заметка над ним. Можно и перетащить таймлайн за ручку ≡ слева от даты или нажать ⌥⌘B."))
+            HStack {
+                Text("Рабочий день")
+                Spacer(minLength: 12)
+                Picker("с", selection: $model.workStart) {
+                    ForEach(0..<24, id: \.self) { Text(Self.hour($0)).tag($0) }
+                }
+                .fixedSize()
+                Picker("до", selection: $model.workEnd) {
+                    ForEach((model.workStart + 1)...24, id: \.self) { Text(Self.hour($0)).tag($0) }
+                }
+                .fixedSize()
+            }
+            .onChange(of: model.workStart) { _, start in
+                if model.workEnd <= start { model.workEnd = min(start + 1, 24) }
+            }
+            HStack {
+                Text("Видно на шкале дня")
+                Spacer(minLength: 12)
+                Stepper(value: $model.visibleHours, in: 4...24) {
+                    Text(String(localized: "\(model.visibleHours) ч")).monospacedDigit()
+                }
+                .fixedSize()
+            }
+            SettingsHint(String(localized: "Рабочие часы на шкале светлее, остальные — чуть темнее. Сколько часов видно — подбирается под ширину окна; ⌘= и ⌘− меняют масштаб до следующей смены этой настройки."))
+        }
+    }
+
+    private static func hour(_ value: Int) -> String {
+        String(format: "%02d:00", value)
+    }
+}
+
 /// Погода: от Trunook или сама, от Open-Meteo.
 struct WeatherSettingsCard: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject var weather: DirectWeather
-    @ViewState private var query = ""
 
     var body: some View {
         SettingsCard(title: String(localized: "Погода"), icon: "cloud.sun") {
@@ -1148,18 +1215,31 @@ struct WeatherSettingsCard: View {
             Toggle("Получать погоду напрямую, если Trunook её не прислал", isOn: $weather.enabled)
                 .toggleStyle(.switch)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if weather.enabled {
-                Picker("Место", selection: $weather.source) {
-                    Text("Город").tag(DirectWeather.Source.city)
-                    Text("Где я сейчас").tag(DirectWeather.Source.location)
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-                if weather.source == .city { cityPicker }
-                status
-            }
-            SettingsHint(String(localized: "Прогноз — у Open-Meteo (open-meteo.com): бесплатно, без ключей и учётных записей. Наружу уходят только координаты, округлённые примерно до 10 км, или название города при поиске."))
+            if weather.enabled { WeatherPlacePicker(weather: weather) }
+            SettingsHint(WeatherPlacePicker.privacy)
         }
+    }
+}
+
+/// Откуда брать прогноз: город или «где я сейчас», и что с ним сейчас.
+/// Общий для карточки «Погода» и для «Неба» в оформлении.
+struct WeatherPlacePicker: View {
+    @ObservedObject var weather: DirectWeather
+    @ViewState private var query = ""
+
+    static var privacy: String {
+        String(localized: "Прогноз — у Open-Meteo (open-meteo.com): бесплатно, без ключей и учётных записей. Наружу уходят только координаты, округлённые примерно до 10 км, или название города при поиске.")
+    }
+
+    var body: some View {
+        Picker("Место", selection: $weather.source) {
+            Text("Город").tag(DirectWeather.Source.city)
+            Text("Где я сейчас").tag(DirectWeather.Source.location)
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 320)
+        if weather.source == .city { cityPicker }
+        status
     }
 
     private var cityPicker: some View {
@@ -1209,6 +1289,48 @@ struct WeatherSettingsCard: View {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// «Небо» без погоды — только время суток. Выбрали его, а погоды нет ни от
+/// Trunook, ни своей — сразу предложить место. Сеть — только по нажатию:
+/// до него Open-Meteo ничего не узнаёт.
+private struct SkyWeatherPrompt: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var weather: DirectWeather
+
+    var body: some View {
+        if !model.trunookWeatherFresh {
+            VStack(alignment: .leading, spacing: 8) {
+                if weather.enabled {
+                    Label("Погода для неба — от Open-Meteo", systemImage: "cloud.sun")
+                        .font(.callout.weight(.semibold))
+                    WeatherPlacePicker(weather: weather)
+                } else {
+                    Label("Облака, дождь и снег — по погоде. Trunook её не присылает: укажите место, и небо покажет погоду за окном.",
+                          systemImage: "location.circle")
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        Button {
+                            weather.source = .location
+                            weather.enabled = true
+                        } label: {
+                            Label("Где я сейчас", systemImage: "location.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Выбрать город") {
+                            weather.source = .city
+                            weather.enabled = true
+                        }
+                    }
+                }
+                SettingsHint(WeatherPlacePicker.privacy)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.accentColor.opacity(0.08)))
         }
     }
 }

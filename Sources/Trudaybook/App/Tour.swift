@@ -20,7 +20,10 @@ struct TourSpotKey: PreferenceKey {
 extension View {
     /// Отметить часть окна для обучения. В обычном окне ничего не меняет.
     func tourSpot(_ spot: TourSpot) -> some View {
-        anchorPreference(key: TourSpotKey.self, value: .bounds) { [spot: $0] }
+        // Дописать к меткам внутри, а не заменить их: `anchorPreference`
+        // у панели действий стирал «Создать» в ней — шаг оставался без
+        // окошка, и кнопку закрывало затемнение.
+        transformAnchorPreference(key: TourSpotKey.self, value: .bounds) { $0[spot] = $1 }
     }
 }
 
@@ -44,7 +47,7 @@ struct TourStep {
                      text: String(localized: "Почта, встречи и напоминания — на одной линии дня. Покажем главное на тестовых письмах и встречах: нажимайте смело — ваши почта и календарь не затронуты.")),
             TourStep(spots: [.timeline], symbol: "calendar.day.timeline.left",
                      title: String(localized: "Таймлайн дня"),
-                     text: String(localized: "Сверху — письма по времени прихода, снизу — встречи и напоминания. Красная линия — сейчас. Двойной щелчок по встрече открывает её редактор, по письму — отдельное окно."),
+                     text: String(localized: "Сверху — письма по времени прихода, снизу — встречи и напоминания. Красная линия — сейчас (в обучении всегда утро). Двойной щелчок по своей встрече открывает её редактор, по письму — отдельное окно."),
                      task: .selectMail, taskTitle: String(localized: "Щёлкните письмо на таймлайне")),
             TourStep(spots: [.inspector], symbol: "sidebar.right",
                      title: String(localized: "Письмо или встреча — справа"),
@@ -58,8 +61,8 @@ struct TourStep {
                      task: .archive, taskTitle: String(localized: "Уберите письмо в архив — ⌘E или кнопкой")),
             TourStep(spots: [.timeline], symbol: "arrow.left.and.right",
                      title: String(localized: "Перенос перетаскиванием"),
-                     text: String(localized: "Потяните встречу по таймлайну — подсказка покажет новое время; если есть участники, приложение сначала спросит. Письмо, брошенное на время, отложится до него."),
-                     task: .moveMeeting, taskTitle: String(localized: "Перенесите встречу на другое время")),
+                     text: String(localized: "Потяните свою встречу по таймлайну — подсказка покажет новое время; если есть участники, приложение сначала спросит. Чужую встречу переносит организатор. Письмо, брошенное правее красной линии, отложится до этого времени."),
+                     task: .moveMeeting, taskTitle: String(localized: "Перенесите встречу или бросьте письмо на время")),
             TourStep(spots: [.create], symbol: "plus",
                      title: String(localized: "Создать"),
                      text: String(localized: "Нажмите — письмо, встреча или напоминание. Или перетащите кнопку на дорожку встреч: встреча начнётся там, где отпустите; на дорожку писем — новое письмо."),
@@ -100,7 +103,9 @@ final class TourState: ObservableObject {
     func enter(model: AppModel) {
         switch step.task {
         case .archive: unresolvedBefore = model.unresolved.count
-        case .moveMeeting: meetingsBefore = Self.meetings(model)
+        case .moveMeeting:
+            meetingsBefore = Self.meetings(model)
+            unresolvedBefore = model.unresolved.count
         default: break
         }
         if step.spots.contains(.inspector), model.selectedItem == nil {
@@ -112,7 +117,8 @@ final class TourState: ObservableObject {
         switch step.task {
         case .selectMail: return model.selectedItem?.kind == .mail
         case .archive: return model.unresolved.count < unresolvedBefore
-        case .moveMeeting: return Self.meetings(model) != meetingsBefore
+        // Перенесли встречу — или отложили письмо, бросив его на время.
+        case .moveMeeting: return Self.meetings(model) != meetingsBefore || model.unresolved.count < unresolvedBefore
         case .create: return model.eventEditor != nil || model.draft != nil
         case nil: return false
         }
@@ -175,8 +181,12 @@ enum TourWindow {
         var options = LaunchOptions()
         options.demo = true
         options.tour = true
-        // Для снимков — то же «сейчас», что у главного окна.
+        // В обучении всегда утро: тестовый день расписан с утра до вечера,
+        // и вечером встречи и время для отложенного письма были бы в прошлом —
+        // переносить и откладывать стало бы некуда. Для снимков — «сейчас»
+        // главного окна.
         options.fixedNow = main.options.fixedNow
+            ?? Calendar.current.date(bySettingHour: 10, minute: 15, second: 0, of: Date())
         let model = AppModel(options: options)
         let state = TourState(start: step) { connect in
             connectAfter = connect
@@ -260,12 +270,14 @@ private struct TourOverlay: View {
             let hole = highlight(proxy)
             let size = proxy.size
             ZStack(alignment: .topLeading) {
-                let mask = TourMask(hole: hole ?? CGRect(x: size.width / 2, y: size.height / 2, width: 0, height: 0))
-                mask
+                // Затемнение только рисуется. Форма с дыркой (`contentShape`
+                // с eoFill) ловила мышь и над окошком: у панели в заголовке
+                // «Создать» не нажималась, бросок на таймлайн не доходил.
+                TourMask(hole: hole ?? CGRect(x: size.width / 2, y: size.height / 2, width: 0, height: 0))
                     .fill(Color.black.opacity(0.42), style: FillStyle(eoFill: true))
-                    // Щелчки проходят только сквозь окошко подсветки.
-                    .contentShape(mask, eoFill: true)
-                    .onTapGesture {}
+                    .allowsHitTesting(false)
+                // Мышь вне окошка ловят обычные прямоугольники вокруг него.
+                TourBlockers(hole: hole, size: size)
                 if let hole {
                     RoundedRectangle(cornerRadius: TourMask.radius, style: .continuous)
                         .strokeBorder(Color.accentColor, lineWidth: 2)
@@ -312,6 +324,35 @@ private struct TourOverlay: View {
             return CGPoint(x: hole.maxX + margin + width / 2, y: clampY(hole.midY))
         }
         return middle
+    }
+}
+
+/// Четыре полосы вокруг окошка: щелчки по затемнённому не доходят до окна
+/// (шаги не сбиваются), а потянуть за них можно, как за заголовок, —
+/// окно обучения двигается. Над окошком ничего нет — окно под ним живое.
+private struct TourBlockers: View {
+    let hole: CGRect?
+    let size: CGSize
+
+    var body: some View {
+        ForEach(Array(rects.enumerated()), id: \.offset) { _, rect in
+            Color.clear
+                .frame(width: max(rect.width, 0), height: max(rect.height, 0))
+                .windowDragArea()
+                .onTapGesture {}
+                .offset(x: rect.minX, y: rect.minY)
+        }
+    }
+
+    private var rects: [CGRect] {
+        let bounds = CGRect(origin: .zero, size: size)
+        guard let hole = hole?.intersection(bounds), !hole.isNull, !hole.isEmpty else { return [bounds] }
+        return [
+            CGRect(x: 0, y: 0, width: size.width, height: hole.minY),
+            CGRect(x: 0, y: hole.maxY, width: size.width, height: size.height - hole.maxY),
+            CGRect(x: 0, y: hole.minY, width: hole.minX, height: hole.height),
+            CGRect(x: hole.maxX, y: hole.minY, width: size.width - hole.maxX, height: hole.height),
+        ].filter { $0.width > 0 && $0.height > 0 }
     }
 }
 
