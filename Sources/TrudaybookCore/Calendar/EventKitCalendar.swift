@@ -256,6 +256,16 @@ public final class EventKitCalendar: CalendarProvider {
                 }
             }
             try store.save(reminder, commit: true)
+            // Список мог молча не принять новый срок (часть задач Exchange
+            // хранит только дату) — тогда напоминание «возвращается на
+            // место». Лучше сказать об этом, чем делать вид, что перенесли.
+            let identifier = String(item.id.dropFirst("reminder:".count))
+            store.refreshSourcesIfNecessary()
+            if let saved = store.calendarItem(withIdentifier: identifier) as? EKReminder,
+               let components = saved.dueDateComponents,
+               let due = Calendar.current.date(from: components), abs(due.timeIntervalSince(start)) > 90 {
+                throw CalendarError.notAllowed(String(localized: "Список «\(saved.calendar?.title ?? "")» не сохранил новое время напоминания"))
+            }
 
         case .mail:
             break

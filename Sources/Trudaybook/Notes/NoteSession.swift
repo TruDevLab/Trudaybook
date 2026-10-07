@@ -154,7 +154,7 @@ final class NoteAssistant: ObservableObject {
             case let .failed(code, message):
                 DebugLog.write("Trunook: повестки нет — \(code)")
                 state = .failed(message, offline: true)
-            case .summary, .labels, .text:
+            case .summary, .labels, .text, .reply:
                 state = .failed(String(localized: "Ответ Trunook не разобрался."), offline: true)
             }
         }
@@ -198,7 +198,7 @@ final class NoteAssistant: ObservableObject {
             case let .failed(code, message):
                 DebugLog.write("Trunook: итогов нет — \(code)")
                 state = .failed(message, offline: false)
-            case .summary, .labels, .agenda:
+            case .summary, .labels, .agenda, .reply:
                 state = .failed(String(localized: "Ответ Trunook не разобрался."), offline: false)
             }
         }

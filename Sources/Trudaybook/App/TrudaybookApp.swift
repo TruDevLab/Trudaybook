@@ -107,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             DebugLog.write("данные: на дне \(model.dayItems.count), не разобрано \(model.unresolved.count)")
             if model.options.labelMail { model.labelUnresolved(manual: true) }
+            if model.options.dragProbe != nil, model.options.snapshotPath == nil { model.applyDebugSelection() }
             if let path = model.options.snapshotPath {
                 model.applyDebugSelection()
                 // Дать окну дорисоваться: тело письма и раскладка приходят асинхронно.

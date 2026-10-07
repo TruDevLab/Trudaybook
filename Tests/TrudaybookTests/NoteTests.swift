@@ -115,14 +115,14 @@ struct NoteTests {
         let blocks = DayAgenda.document(input, answer: answer, title: "Повестка", words: .russian, time: hhmm)
         #expect(blocks == [
             .title("Повестка"),
-            .spacer, .heading("Главное"), .bullet("Ответить Андрею по договору"),
+            .spacer, .heading("Главное"), .check("Ответить Андрею по договору", done: false),
             .spacer, .heading("Встречи"), .detail("Весь день: День рождения Марины"),
             .spacer, .subheading("10:00–11:00 · Обзор плана"), .detail("Переговорная 3 · Участники: Ольга"),
             .text("Письма от участников: «Прогноз продаж» — Ольга"),
             .text("К встрече: Цифры за квартал"), .label("Протокол"), .bullet(""),
             .spacer, .subheading("13:00–14:00 · Обед"), .label("Протокол"), .bullet(""),
             .spacer, .heading("Напоминания"), .check("15:00 · Позвонить", done: false),
-            .spacer, .heading("Важные письма"), .bullet("Договор — от Андрей"),
+            .spacer, .heading("Важные письма"), .check("Договор — от Андрей", done: false),
         ])
         // Без Trunook — те же разделы, без «Главного» и «К встрече».
         let plain = DayAgenda.document(input, answer: nil, title: "Повестка", words: .russian, time: hhmm)

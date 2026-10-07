@@ -35,6 +35,52 @@ public enum TrunookModelRequest {
         }
     }
 
+    /// Письмо из прошлой переписки — для шаблона ответа.
+    public struct HistoryLetter: Equatable, Sendable {
+        public var from: String
+        public var date: Date
+        public var text: String
+        /// Письмо написал сам человек.
+        public var mine: Bool
+
+        public init(from: String, date: Date, text: String, mine: Bool) {
+            self.from = from
+            self.date = date
+            self.text = text
+            self.mine = mine
+        }
+    }
+
+    /// Сколько писем прошлой переписки отдавать модели и сколько знаков в них.
+    public static let maxHistoryLetters = 4
+    public static let maxHistoryText = 6_000
+
+    /// Шаблон ответа: последнее письмо и то, что было до него. Модель
+    /// видит, как человек обычно отвечает в этой переписке, и что уже
+    /// решено, — но сама ничего не решает.
+    public static func reply(id: String, language: String, me: String, subject: String, from: String,
+                             date: Date, text: String, history: [HistoryLetter]) -> [String: Any] {
+        let iso = ISO8601DateFormatter()
+        return [
+            "version": version, "id": id, "kind": "reply", "language": language,
+            "me": String(me.prefix(200)),
+            "letter": [
+                "subject": String(subject.prefix(300)),
+                "from": String(from.prefix(200)),
+                "date": iso.string(from: date),
+                "text": String(text.prefix(maxText)),
+            ],
+            "history": history.suffix(maxHistoryLetters).map { letter in
+                [
+                    "from": String(letter.from.prefix(200)),
+                    "date": iso.string(from: letter.date),
+                    "mine": letter.mine,
+                    "text": String(letter.text.prefix(maxHistoryText)),
+                ] as [String: Any]
+            },
+        ]
+    }
+
     public static func summary(id: String, language: String, subject: String, from: String,
                                date: Date, text: String) -> [String: Any] {
         [
@@ -133,6 +179,8 @@ public enum TrunookModelRequest {
         case agenda(DayAgenda.Answer)
         /// Итоги периода — облегчённым Markdown.
         case text(String)
+        /// Шаблон ответа на письмо: простой текст, без темы и подписи.
+        case reply(String)
         case failed(code: String, message: String)
     }
 
@@ -172,6 +220,11 @@ public enum TrunookModelRequest {
                 meetings[key] = String(text.prefix(300))
             }
             return .agenda(DayAgenda.Answer(focus: Array(focus), meetings: meetings))
+        }
+        if let reply = json["reply"] as? String {
+            let trimmed = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? .failed(code: "empty", message: String(localized: "Модель вернула пустой шаблон."))
+                                   : .reply(String(trimmed.prefix(6000)))
         }
         if let text = json["text"] as? String {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

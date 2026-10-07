@@ -78,6 +78,8 @@ struct LaunchOptions {
     var labelMail = false
     /// Погода темы «Небо» для снимка: `--sky-weather rain|snow|clear|…`.
     var skyWeather: SkyScene.Weather?
+    /// Сезонные украшения неба для снимка: `--season winter|spring|summer|autumn`.
+    var season: SkyScene.Season?
     /// Окно заметки перед снимком: `--note day|week|month`.
     var note: NotePeriod?
     /// Сразу подготовить повестку или итоги в окне заметки моделью Trunook:
@@ -99,6 +101,19 @@ struct LaunchOptions {
     var tourStep: Int?
     /// Окошко значка в строке меню перед снимком: `--menubar`.
     var menubar = false
+    /// Все диалоги списка раскрыты: `--open-threads` (с `-groupThreads YES`).
+    var openThreads = false
+    /// Обзор года открыт: `--year`.
+    var year = false
+    /// Ответ сразу просит шаблон у Trunook: `--select mail --reply --template`.
+    var template = false
+    /// `--drag-probe x,y` (только с `--demo`) — нажать и повести мышь в точке
+    /// окна (сверху слева, в точках); в журнале видно, начался ли сеанс
+    /// перетаскивания. Сам бросок так не проверить: сеанс следит за
+    /// настоящим курсором.
+    var dragProbe: String?
+    /// Кнопка поиска для снимка: `--search-scope from|to|cc`.
+    var searchScope: MailSearchQuery.Scope?
 
     static func parse(_ arguments: [String]) -> LaunchOptions {
         var options = LaunchOptions()
@@ -111,6 +126,8 @@ struct LaunchOptions {
             case "--edit": options.edit = true
             case "--weeks": options.weekNumbers = true
             case "--sort-priority": options.sortByPriority = true
+            case "--open-threads": options.openThreads = true
+            case "--year": options.year = true
             case "--aurora": options.aurora = true
             case "--vertical": options.vertical = true
             case "--week": options.week = true
@@ -126,9 +143,13 @@ struct LaunchOptions {
             case "--pretend-version": options.pretendVersion = iterator.next()
             case "--update-preview": options.updatePreview = iterator.next()
             case "--summary": options.summary = true
+            case "--template": options.template = true
+            case "--drag-probe": options.dragProbe = iterator.next()
+            case "--search-scope": options.searchScope = iterator.next().flatMap(MailSearchQuery.Scope.init(rawValue:))
             case "--label-mail": options.labelMail = true
             case "--note": options.note = iterator.next().flatMap(NotePeriod.init(rawValue:)) ?? .day
             case "--agenda": options.agenda = true
+            case "--season": options.season = iterator.next().flatMap(SkyScene.Season.init(rawValue:))
             case "--sky-weather": options.skyWeather = iterator.next().flatMap(SkyScene.Weather.init(rawValue:))
             case "--digest": options.digest = true
             case "--agenda-offline": options.agendaOffline = true
@@ -261,6 +282,17 @@ final class AppModel: ObservableObject {
     /// «Не разобрано» — раскрывающимися разделами по датам.
     @Published var groupByDate = UserDefaults.standard.object(forKey: "groupByDate") as? Bool ?? true {
         didSet { if !options.demo { UserDefaults.standard.set(groupByDate, forKey: "groupByDate") } }
+    }
+    /// Письма одной переписки — одной строкой с раскрытием. Выключено, пока
+    /// человек не включит: привычный плоский список никуда не девается.
+    @Published var groupThreads = UserDefaults.standard.bool(forKey: "groupThreads") {
+        didSet { if !options.demo { UserDefaults.standard.set(groupThreads, forKey: "groupThreads") } }
+    }
+    /// Раскрытые диалоги (`MailThread.key`) — до перезапуска.
+    @Published var expandedThreads: Set<String> = []
+    /// В строке списка — «Кому» или «Копия», если я среди получателей.
+    @Published var showRecipientMarks = UserDefaults.standard.object(forKey: "showRecipientMarks") as? Bool ?? true {
+        didSet { if !options.demo { UserDefaults.standard.set(showRecipientMarks, forKey: "showRecipientMarks") } }
     }
     /// Свёрнутые разделы (`DateSection.key`).
     @Published var collapsedSections: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "collapsedSections") ?? []) {
@@ -410,8 +442,10 @@ final class AppModel: ObservableObject {
         let yesterday = calendar.date(byAdding: .day, value: -1, to: now).map(sun)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: now).map(sun)
         let code = options.skyWeather.map(SkyRules.code(for:)) ?? fresh?.code(at: now, calendar: calendar)
-        return SkyRules.scene(now: now, sunrise: today.sunrise, sunset: today.sunset, code: code,
-                              previousSunset: yesterday?.sunset, nextSunrise: tomorrow?.sunrise)
+        var scene = SkyRules.scene(now: now, sunrise: today.sunrise, sunset: today.sunset, code: code,
+                                   previousSunset: yesterday?.sunset, nextSunrise: tomorrow?.sunrise)
+        if skySeasons || options.season != nil { scene.season = currentSeason }
+        return scene
     }
 
     /// Погода дня — если прогноз свежий.
@@ -558,6 +592,29 @@ final class AppModel: ObservableObject {
             errorMessage = String(localized: "Картинка не подошла: \(error.localizedDescription)")
         }
     }
+    /// Сезонные украшения темы «Небо»: листопад, иней, цветущие деревья, цветы.
+    @Published var skySeasons = UserDefaults.standard.bool(forKey: "skySeasons") {
+        didSet { if !options.demo { UserDefaults.standard.set(skySeasons, forKey: "skySeasons") } }
+    }
+    /// Какой сезон показывать: `nil` — по календарю.
+    @Published var skySeasonChoice = UserDefaults.standard.string(forKey: "skySeason").flatMap(SkyScene.Season.init(rawValue:)) {
+        didSet { if !options.demo { UserDefaults.standard.set(skySeasonChoice?.rawValue, forKey: "skySeason") } }
+    }
+
+    /// Сезон сейчас: выбранный руками или по календарю. Полушарие — по
+    /// выбранному для погоды городу; без него — северное.
+    var currentSeason: SkyScene.Season {
+        if let forced = options.season { return forced }
+        let southern = (directWeather.place?.latitude ?? 1) < 0
+        return skySeasonChoice ?? SkyScene.Season.of(now, calendar: calendar, southern: southern)
+    }
+
+    /// Название сезона для настроек; `auto` — тот, что по календарю.
+    func currentSeasonTitle(auto: Bool) -> String {
+        let southern = (directWeather.place?.latitude ?? 1) < 0
+        return (auto ? SkyScene.Season.of(now, calendar: calendar, southern: southern) : currentSeason).title.lowercased()
+    }
+
     /// Пятна фона плывут; выключено — замирают на одном кадре и не тратят процессор.
     @Published var themeAnimated = UserDefaults.standard.object(forKey: "themeAnimated") as? Bool ?? true {
         didSet { if !options.demo { UserDefaults.standard.set(themeAnimated, forKey: "themeAnimated") } }
@@ -611,14 +668,44 @@ final class AppModel: ObservableObject {
         case folder(String)
     }
 
+    /// Строка списка писем: письмо, а у диалога — ещё и он сам.
+    struct ListRow: Identifiable {
+        let item: TimelineItem
+        /// Диалог, если в нём больше одного письма.
+        let thread: MailThread?
+        /// Письмо раскрытого диалога, не первое (показывается с отступом).
+        let isMember: Bool
+        var id: String { item.id }
+    }
+
     @Published private(set) var listMode: ListMode = .unresolved
     @Published private(set) var folders: [MailFolder] = []
     @Published private(set) var folderItems: [TimelineItem] = []
     @Published private(set) var isLoadingList = false
     /// Строка поиска: по мере набора фильтрует список по теме и людям.
     @Published var searchText = "" {
-        didSet { if searchText != oldValue { searchResults = nil } }
+        didSet {
+            guard searchText != oldValue else { return }
+            searchResults = nil
+            scheduleLiveSearch()
+        }
     }
+    /// Кнопки у поиска: искать везде, только у отправителя, получателей или в копии.
+    @Published var searchScope: MailSearchQuery.Scope = .all {
+        didSet {
+            guard searchScope != oldValue else { return }
+            searchResults = nil
+            scheduleLiveSearch()
+        }
+    }
+    /// Строка поиска с учётом кнопки — её получают и список, и ящики.
+    var effectiveSearch: String {
+        MailSearchQuery.scoped(searchText.trimmingCharacters(in: .whitespaces), searchScope)
+    }
+    /// Совпадения по кэшу писем (тема, отправитель, получатели, копия) во
+    /// всей папке, а не только среди загруженных в список 300 писем.
+    @Published private(set) var liveMatches: [TimelineItem] = []
+    private var liveSearch: Task<Void, Never>?
     /// Найденное на сервере по тексту писем; `nil` — поиска не было.
     @Published private(set) var searchResults: [TimelineItem]?
 
@@ -722,7 +809,7 @@ final class AppModel: ObservableObject {
                 .appendingPathComponent("Library/Caches/TrudaybookDemo/trunook-inbox", isDirectory: true)
             // Пересказ и разметка по флагу — настоящая просьба к Trunook
             // (тестовые письма вымышленные); сводка и заметки остаются в кэше.
-            let asksModel = options.summary || options.labelMail || options.agenda || options.digest
+            let asksModel = options.summary || options.labelMail || options.agenda || options.digest || options.template
             // `--trunook-real-folders`: сводка и команды — в настоящих папках,
             // чтобы живой Trunook увидел тестовую почту (проверка помощника).
             if !options.trunookRealFolders {
@@ -749,6 +836,13 @@ final class AppModel: ObservableObject {
         notifier.onOpen = { [weak self] id in self?.open(itemID: id) }
         notifier.onReplyInApp = { [weak self] id in self?.open(itemID: id, reply: true) }
         notifier.onArchive = { [weak self] id in self?.archiveFromNotification(id) }
+        notifier.onReplyAll = { [weak self] id in self?.openCompose(itemID: id, forward: false) }
+        notifier.onForward = { [weak self] id in self?.openCompose(itemID: id, forward: true) }
+        notifier.onSnooze = { [weak self] id, seconds in self?.snoozeFromNotification(id, for: seconds) }
+        notifier.loadText = { [weak self] id in
+            guard let body = try? await self?.mail.body(of: id) else { return nil }
+            return MailNotifier.previewText(body)
+        }
         notifier.onQuickReply = { [weak self] id, text in
             Task { await self?.quickReply(to: id, text: text) }
         }
@@ -939,7 +1033,7 @@ final class AppModel: ObservableObject {
             .filter { StatusRules.isUnresolved($0, local: states[$0.id], now: now, mailCutoff: mailCutoff) }
             .sorted { StatusRules.effectiveTime(of: $0, local: states[$0.id]) > StatusRules.effectiveTime(of: $1, local: states[$1.id]) }
         // Письма из папок и найденное тоже открываются в правой панели.
-        let listed = folderItems + (searchResults ?? [])
+        let listed = folderItems + (searchResults ?? []) + liveMatches
         byID = Dictionary((allMail + events + weekItems + overdue + listed).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         trunook.publishState()
         publishWidgets()
@@ -1319,7 +1413,32 @@ final class AppModel: ObservableObject {
         multiSelection = []
         listMode = mode
         searchResults = nil
+        scheduleLiveSearch()
         Task { await reloadList() }
+    }
+
+    /// Через четверть секунды после набора — поиск по кэшу писем: он
+    /// мгновенный и находит всё, что синхронизировано, а не только то, что
+    /// сейчас в списке. Текст писем на сервере — по Return (`searchOnServer`).
+    private func scheduleLiveSearch() {
+        liveSearch?.cancel()
+        let text = effectiveSearch
+        guard !text.isEmpty else {
+            if !liveMatches.isEmpty { liveMatches = [] }
+            return
+        }
+        let folder: String? = {
+            if case .folder(let id) = listMode { return id }
+            return nil
+        }()
+        liveSearch = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let self else { return }
+            let found = (try? await mail.search(text, inFolder: folder, fullText: false)) ?? []
+            guard !Task.isCancelled, effectiveSearch == text else { return }
+            for item in found where byID[item.id] == nil { byID[item.id] = item }
+            liveMatches = found
+        }
     }
 
     private func reloadList() async {
@@ -1344,6 +1463,29 @@ final class AppModel: ObservableObject {
         person.normalizedAddress.map { mail.ownAddresses.contains($0) } ?? false
     }
 
+    struct ReplyTemplateError: Error, Equatable {
+        let code: String
+        let message: String
+    }
+
+    enum RecipientRole {
+        /// Письмо только мне: других получателей ни в «Кому», ни в копии.
+        case onlyMe
+        case to, cc
+    }
+
+    /// Моя роль в письме: единственный адресат, один из адресатов или только
+    /// копия. У своего письма и у того, где меня нет в заголовках
+    /// (рассылка, скрытая копия), — `nil`.
+    func recipientRole(of item: TimelineItem) -> RecipientRole? {
+        guard showRecipientMarks, let info = item.mail, !isMine(info.from) else { return nil }
+        if info.to.contains(where: isMine) {
+            return (info.to + info.cc).allSatisfy(isMine) ? .onlyMe : .to
+        }
+        if info.cc.contains(where: isMine) { return .cc }
+        return nil
+    }
+
     /// Подпись строки списка: отправитель, а у своего письма — кому оно ушло.
     func subtitle(of item: TimelineItem) -> String {
         if let info = item.mail, isMine(info.from), let first = info.to.first {
@@ -1359,11 +1501,46 @@ final class AppModel: ObservableObject {
         return sortByPriority ? PrioritySort.sorted(items, priority: priority(of:)) : items
     }
 
-    /// Разделы по датам — только у «Не разобрано» без поиска; иначе `nil`.
-    var listSections: [(section: DateSection, items: [TimelineItem])]? {
-        guard groupByDate, listMode == .unresolved, searchResults == nil,
-              searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return DateSections.group(listItems, time: effectiveTime(of:), now: now, calendar: calendar)
+    /// Диалоги списка: при включённой группировке — письма одной переписки
+    /// вместе, иначе каждое письмо само по себе.
+    var listThreads: [MailThread] {
+        let items = listItems
+        guard groupThreads else { return items.map { MailThread(key: $0.id, items: [$0]) } }
+        return ThreadGrouping.group(items, time: effectiveTime(of:))
+    }
+
+    /// Разделы по датам — у «Не разобрано», папок и результатов поиска;
+    /// `nil`, если разделы выключены. Диалог лежит в разделе своего
+    /// самого свежего письма.
+    var listSections: [(section: DateSection, threads: [MailThread])]? {
+        guard groupByDate else { return nil }
+        let threads = listThreads
+        let byHead = Dictionary(threads.map { ($0.head.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return DateSections.group(threads.map(\.head), time: effectiveTime(of:), now: now, calendar: calendar)
+            .map { group in (group.section, group.items.compactMap { byHead[$0.id] }) }
+    }
+
+    /// Строки списка в порядке показа: у диалога — первое письмо и, если он
+    /// раскрыт, остальные.
+    func rows(of threads: [MailThread]) -> [ListRow] {
+        threads.flatMap { thread -> [ListRow] in
+            guard thread.count > 1 else { return [ListRow(item: thread.head, thread: nil, isMember: false)] }
+            let open = expandedThreads.contains(thread.key) || (options.demo && options.openThreads)
+            var rows = [ListRow(item: thread.head, thread: thread, isMember: false)]
+            if open { rows += thread.items.dropFirst().map { ListRow(item: $0, thread: thread, isMember: true) } }
+            return rows
+        }
+    }
+
+    func toggleThread(_ key: String) {
+        withAnimation(HoverMotion.animation) {
+            if expandedThreads.contains(key) { expandedThreads.remove(key) } else { expandedThreads.insert(key) }
+        }
+    }
+
+    /// В диалоге есть непрочитанное письмо.
+    func hasUnread(_ thread: MailThread) -> Bool {
+        thread.items.contains { $0.kind == .mail && !isRead($0) }
     }
 
     func toggleSection(_ section: DateSection) {
@@ -1376,10 +1553,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Что видно в списке: без писем свёрнутых разделов — по ним ходят стрелки.
+    /// Что видно в списке: без писем свёрнутых разделов и свёрнутых диалогов —
+    /// по ним ходят стрелки.
     var visibleListItems: [TimelineItem] {
-        guard let sections = listSections else { return listItems }
-        return sections.filter { !collapsedSections.contains($0.section.key) }.flatMap(\.items)
+        guard let sections = listSections else { return rows(of: listThreads).map(\.item) }
+        return sections.filter { !collapsedSections.contains($0.section.key) }
+            .flatMap { rows(of: $0.threads).map(\.item) }
     }
 
     private var filteredListItems: [TimelineItem] {
@@ -1388,12 +1567,16 @@ final class AppModel: ObservableObject {
         if listMode == .unresolved, let labelFilter {
             base = base.filter { label(of: $0) == labelFilter }
         }
-        let needle = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return base }
-        return base.filter { item in
-            let people = item.mail.map { ([$0.from] + $0.to).map { "\($0.display) \($0.address ?? "")" } } ?? []
-            return ([item.title, item.subtitle] + people).joined(separator: " ").lowercased().contains(needle)
-        }
+        let query = MailSearchQuery(effectiveSearch)
+        guard !query.isEmpty else { return base }
+        var result = base.filter(query.matches)
+        // К загруженному добавляется найденное по кэшу: в папке — вся папка,
+        // в «Не разобрано» — Входящие, Отправленные и Архив.
+        var known = Set(result.map(\.id))
+        let extra = liveMatches.filter { !trashed.contains($0.id) && query.matches($0) && known.insert($0.id).inserted }
+        if listMode == .unresolved, labelFilter != nil { return result }
+        result += extra
+        return result.sorted { effectiveTime(of: $0) > effectiveTime(of: $1) }
     }
 
     // MARK: - Заметки на день
@@ -1595,9 +1778,70 @@ final class AppModel: ObservableObject {
             case let .failed(code, message):
                 DebugLog.write("Trunook: пересказа нет — \(code)")
                 summaries[item.id] = .failed(code: code, message: message)
-            case .labels, .agenda, .text:
+            case .labels, .agenda, .text, .reply:
                 summaries[item.id] = .failed(code: "unreadable", message: String(localized: "Ответ Trunook не разобрался."))
             }
+        }
+    }
+
+    /// Шаблон ответа: Trunook читает последнее письмо и прошлую переписку
+    /// и готовит черновик, где отвечено на каждый вопрос. Решений за
+    /// человека он не принимает — на их месте пометки в скобках.
+    ///
+    /// Возвращает текст или объяснение, почему его нет. Письма прошлой
+    /// переписки читаются только прочитанные и свои: тело непрочитанного
+    /// письма пометило бы его прочитанным, а это не то, о чём просили.
+    func prepareReplyTemplate(for item: TimelineItem) async -> Result<String, ReplyTemplateError> {
+        guard item.kind == .mail, let info = item.mail else {
+            return .failure(.init(code: "kind", message: String(localized: "Шаблон ответа готовится только на письмо.")))
+        }
+        guard trunookModelAllowed else {
+            return .failure(.init(code: "disabled", message: String(localized: "Включите в настройках Trudaybook → Trunook связь и помощь модели.")))
+        }
+        guard let letter = try? await mail.body(of: item.id) else {
+            return .failure(.init(code: "body", message: String(localized: "Письмо не открылось — шаблон не подготовить.")))
+        }
+        let text = ReplyHistory.stripQuoted(TrunookModelRequest.plainText(letter))
+        guard !text.isEmpty else {
+            return .failure(.init(code: "empty", message: String(localized: "В письме нет текста, на который можно ответить.")))
+        }
+
+        // Переписка: всё известное с теми же ссылками и темой, включая отправленное.
+        var known = allMail + folderItems + liveMatches
+        if let sent = try? await mail.folders().filter({ $0.role == .sent }) {
+            for folder in sent { known += (try? await mail.messages(inFolder: folder.id, limit: 300)) ?? [] }
+        }
+        var seen = Set<String>()
+        known = known.filter { $0.kind == .mail && seen.insert($0.id).inserted }
+        if !seen.contains(item.id) { known.append(item) }
+        let thread = ThreadGrouping.group(known, time: \.time).first { $0.items.contains { $0.id == item.id } }
+        let older = (thread?.items ?? []).filter { $0.id != item.id && $0.time < item.time }.sorted { $0.time < $1.time }
+        var texts: [String: String] = [:]
+        for earlier in older.suffix(TrunookModelRequest.maxHistoryLetters) {
+            guard let earlierInfo = earlier.mail else { continue }
+            if isMine(earlierInfo.from) || isRead(earlier), let body = try? await mail.body(of: earlier.id) {
+                texts[earlier.id] = TrunookModelRequest.plainText(body)
+            } else if !earlierInfo.snippet.isEmpty {
+                texts[earlier.id] = earlierInfo.snippet
+            }
+        }
+        let history = ReplyHistory.letters(older: older, texts: texts, isMine: isMine)
+
+        let id = UUID().uuidString
+        let me = mail.ownAddresses.sorted().first ?? ""
+        let payload = TrunookModelRequest.reply(
+            id: id, language: AppLanguage.code, me: me, subject: item.title, from: info.from.formatted,
+            date: item.time, text: text, history: history)
+        DebugLog.write("Trunook: просим шаблон ответа — писем в истории \(history.count)")
+        switch await trunookModel.ask(payload, id: id, timeout: 300, kind: "reply") {
+        case .reply(let template):
+            DebugLog.write("Trunook: шаблон ответа готов")
+            return .success(template)
+        case let .failed(code, message):
+            DebugLog.write("Trunook: шаблона нет — \(code)")
+            return .failure(.init(code: code, message: message))
+        case .summary, .labels, .agenda, .text:
+            return .failure(.init(code: "unreadable", message: String(localized: "Ответ Trunook не разобрался.")))
         }
     }
 
@@ -1643,7 +1887,7 @@ final class AppModel: ObservableObject {
                     DebugLog.write("Trunook: разметка прервана — \(code)")
                     labeling = .failed(message)
                     return
-                case .summary, .agenda, .text:
+                case .summary, .agenda, .text, .reply:
                     break
                 }
                 done += batch.count
@@ -1666,7 +1910,7 @@ final class AppModel: ObservableObject {
     /// Поиск по тексту писем на сервере — в текущей папке или, из
     /// «Не разобрано», во Входящих, Отправленных и Архиве.
     func searchOnServer() {
-        let text = searchText.trimmingCharacters(in: .whitespaces)
+        let text = effectiveSearch
         guard !text.isEmpty else { return }
         let folder: String? = {
             if case .folder(let id) = listMode { return id }
@@ -1677,7 +1921,7 @@ final class AppModel: ObservableObject {
             defer { isLoadingList = false }
             do {
                 let found = try await mail.search(text, inFolder: folder, fullText: true)
-                guard searchText.trimmingCharacters(in: .whitespaces) == text else { return }
+                guard effectiveSearch == text else { return }
                 searchResults = found
                 recompute()
             } catch {
@@ -1954,21 +2198,12 @@ final class AppModel: ObservableObject {
         switch (action, item.kind) {
         case (.archive, .mail):
             let order = visibleListItems.map(\.id)
-            mark(id) { $0.archivedAt = self.now }
-            selectNeighbour(of: id, leaving: order)
-            // Уже ушло из Входящих (вернули в работу, а теперь снова в архив) —
-            // на сервере переносить нечего.
-            guard item.mail?.movedAway != true else { return }
-            archiving.insert(id)
-            Task {
-                defer { archiving.remove(id) }
-                do {
-                    try await mail.archive(id)
-                } catch {
-                    mark(id) { $0.archivedAt = nil }
-                    errorMessage = String(localized: "Письмо не удалось переложить в архив: \(MailAccounts.describe(error))")
-                }
-            }
+            // Первое письмо диалога уходит в архив вместе со всей цепочкой.
+            let chain = threadTail(ofHead: id)
+            archiveLetter(item)
+            for letter in chain { archiveLetter(letter) }
+            selectNeighbour(of: id, leaving: order, gone: Set(chain.map(\.id)))
+            if !chain.isEmpty { DebugLog.write("в архив диалогом: \(chain.count + 1)") }
         case (.archive, .event):
             mark(id) { $0.doneAt = self.now }
         case (.archive, .reminder):
@@ -2012,7 +2247,7 @@ final class AppModel: ObservableObject {
 
     func sendDraft() {
         guard let draft, !isSending else { return }
-        guard !draft.to.isEmpty else {
+        guard !(draft.to + draft.cc + draft.bcc).isEmpty else {
             errorMessage = String(localized: "Не указан получатель")
             return
         }
@@ -2203,7 +2438,11 @@ final class AppModel: ObservableObject {
     /// Бросили элемент на шкалу — перенести на это время. Письмо — только
     /// вперёд: вернуть его в прошлое значило бы оставить неразобранным.
     func dropItem(_ id: String, at date: Date) {
-        guard let item = item(id) else { return }
+        guard let item = item(id) else {
+            DebugLog.write("бросок на шкалу: элемент не найден")
+            return
+        }
+        DebugLog.write("бросок на шкалу: \(item.kind.rawValue)")
         if item.kind == .mail, date <= now { return }
         let when = Self.dropTime(date)
         if item.kind == .event, when == item.time { return }
@@ -2232,12 +2471,10 @@ final class AppModel: ObservableObject {
             } else if let link = MailtoLink.parse(url) {
                 startNewMail(to: link.to)
                 draft?.cc = link.cc
+                draft?.bcc = link.bcc
                 draft?.subject = link.subject
                 draft?.text = link.body
-                if !link.bcc.isEmpty {
-                    errorMessage = String(localized: "В ссылке была скрытая копия — её в окне письма нет, добавьте адреса сами.")
-                }
-                DebugLog.write("открыта ссылка mailto: адресатов \(link.to.count + link.cc.count)")
+                DebugLog.write("открыта ссылка mailto: адресатов \(link.to.count + link.cc.count + link.bcc.count)")
             } else if url.isFileURL, EmailFile.isEmailFile(url) {
                 LetterWindow.open(file: url, model: self)
             } else if url.isFileURL {
@@ -2645,11 +2882,42 @@ final class AppModel: ObservableObject {
         selectionAnchor = nil
     }
 
+    /// Письмо — в архив: отметка сразу, перенос на сервере — следом.
+    private func archiveLetter(_ item: TimelineItem) {
+        let id = item.id
+        mark(id) { $0.archivedAt = self.now }
+        // Уже ушло из Входящих (вернули в работу, а теперь снова в архив) —
+        // на сервере переносить нечего.
+        guard item.mail?.movedAway != true else { return }
+        archiving.insert(id)
+        Task {
+            defer { archiving.remove(id) }
+            do {
+                try await mail.archive(id)
+            } catch {
+                mark(id) { $0.archivedAt = nil }
+                errorMessage = String(localized: "Письмо не удалось переложить в архив: \(MailAccounts.describe(error))")
+            }
+        }
+    }
+
+    /// Остальные письма диалога, если `id` — его первое (видимое) письмо.
+    /// Свои письма не трогаются: их «архив» перенёс бы их из «Отправленных».
+    func threadTail(ofHead id: String) -> [TimelineItem] {
+        guard groupThreads, let thread = listThreads.first(where: { $0.head.id == id }), thread.count > 1 else { return [] }
+        return thread.items.dropFirst().filter { letter in
+            guard let info = letter.mail, !isMine(info.from) else { return false }
+            return availability(of: .archive, for: letter).isEnabled
+        }
+    }
+
     /// Выделенное — в архив: письма, встречи и напоминания, что можно разобрать.
     func archiveSelection() {
         let items = selectionItems.filter { availability(of: .archive, for: $0).isEnabled }
         clearMultiSelection()
-        for item in items { perform(.archive, on: item.id) }
+        // Проверка — на каждом шаге: письмо диалога могло уйти в архив вместе
+        // с первым письмом, и второй раз о нём сообщать незачем.
+        for item in items where availability(of: .archive, for: item).isEnabled { perform(.archive, on: item.id) }
         DebugLog.write("в архив пачкой: \(items.count)")
     }
 
@@ -2709,6 +2977,41 @@ final class AppModel: ObservableObject {
             await reload()
             selectedID = itemID
             if reply, let item = item(itemID) { startReply(to: item, all: false, prefill: prefill) }
+        }
+    }
+
+    /// «Ответить всем» или «Переслать» из превью письма в Trunook: день
+    /// письма, его карточка и черновик.
+    func openCompose(itemID: String, forward: Bool) {
+        Task {
+            if let item = item(itemID) { show(day: effectiveTime(of: item)) }
+            await reload()
+            selectedID = itemID
+            guard let item = item(itemID) else { return }
+            if forward { startForward(of: item) } else { startReply(to: item, all: true) }
+        }
+    }
+
+    /// Черновик пересылки: получателей вписывает человек.
+    func startForward(of item: TimelineItem) {
+        let id = item.id
+        Task {
+            let body = try? await mail.body(of: id)
+            guard selectedID == id else { return }
+            var forward = ReplyBuilder.forward(item, body: body)
+            forward?.accountID = senderAccount(for: item)
+            draft = forward
+            draftReplyTo = nil
+        }
+    }
+
+    /// «Напомнить через час» из превью: письмо откладывается, как переносом.
+    private func snoozeFromNotification(_ id: String, for seconds: TimeInterval) {
+        Task {
+            if item(id) == nil { await reload() }
+            guard let item = item(id) else { return }
+            reschedule(item, to: now.addingTimeInterval(seconds))
+            DebugLog.write("уведомления: письмо отложено на \(Int(seconds / 60)) мин")
         }
     }
 
@@ -2815,6 +3118,18 @@ final class AppModel: ObservableObject {
         return start...max(min(workEnd, 24), start + 1)
     }
 
+    /// Дни с встречами за год — для обзора года; грузятся при его открытии.
+    @Published private(set) var yearBusy: (year: Int, days: Set<Date>)?
+
+    func loadYearBusy(_ year: Int) async {
+        guard yearBusy?.year != year || calendar.component(.year, from: now) == year,
+              let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
+              let end = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1)) else { return }
+        let items = await calendarSource.items(from: start, to: end)
+        guard !Task.isCancelled else { return }
+        yearBusy = (year, Set(items.filter { $0.kind == .event }.map { calendar.startOfDay(for: $0.time) }))
+    }
+
     private func loadBusyDays() async {
         guard let interval = calendar.dateInterval(of: .month, for: monthAnchor) else { return }
         let items = await calendarSource.items(from: interval.start, to: interval.end)
@@ -2825,7 +3140,30 @@ final class AppModel: ObservableObject {
 
     /// Подготовить окно к снимку: выбрать элемент, открыть ответ.
     func applyDebugSelection() {
+        if options.demo, let probe = options.dragProbe {
+            let parts = probe.split(separator: ",").compactMap { Double($0) }
+            if parts.count == 2 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+                          let height = window.contentView?.bounds.height else { return }
+                    let start = NSPoint(x: parts[0], y: height - parts[1])
+                    func send(_ type: NSEvent.EventType, _ point: NSPoint) {
+                        guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { return }
+                        DebugLog.write("проба: \(type.rawValue) в \(Int(point.x)),\(Int(point.y))")
+                        // В очередь, а не `sendEvent`: вложенный цикл слежения
+                        // таблицы берёт события из очереди.
+                        NSApp.postEvent(event, atStart: false)
+                    }
+                    send(.mouseMoved, start)
+                    send(.leftMouseDown, start)
+                    for step in 1...12 { send(.leftMouseDragged, NSPoint(x: start.x + Double(step) * 6, y: start.y + Double(step) * 4)) }
+                    send(.leftMouseUp, NSPoint(x: start.x + 72, y: start.y + 48))
+                }
+            }
+        }
         if let list = options.list { show(list: .folder(list)) }
+        if let scope = options.searchScope { searchScope = scope }
         if let search = options.search { searchText = search }
         switch options.new {
         case "mail": startNewMail(to: [Demo.people[0]])

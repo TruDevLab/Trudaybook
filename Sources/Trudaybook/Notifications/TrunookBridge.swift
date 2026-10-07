@@ -107,13 +107,55 @@ final class TrunookBridge: ObservableObject {
         var title = "\(who) — \(invitation.summary), \(when(invitation.start, allDay: invitation.isAllDay))"
         if let clash { title += " · " + String(localized: "пересекается с «\(clash.title)»") }
         let itemID = letter.id
+        // Как у письма: решать по одной строке нельзя — на плашке «Открыть»
+        // и «Показать превью», а в превью Trunook рисует, когда встреча
+        // и что в этот день рядом с ней, и даёт «Принять» и «Отклонить».
+        let iso = ISO8601DateFormatter()
+        let window = (invitation.start.addingTimeInterval(-3 * 3600))...(invitation.end.addingTimeInterval(3 * 3600))
+        let nearby = dayEvents
+            .filter { item in
+                guard item.kind == .event, !item.isAllDay else { return false }
+                // Сама эта встреча, уже лежащая в календаре, — не соседка.
+                if item.title == invitation.summary, abs(item.time.timeIntervalSince(invitation.start)) < 60 { return false }
+                let end = item.end ?? item.time.addingTimeInterval(1800)
+                return item.time < window.upperBound && end > window.lowerBound
+            }
+            .prefix(12)
+            .map { item -> [String: Any] in
+                ["title": item.title, "start": iso.string(from: item.time),
+                 "end": iso.string(from: item.end ?? item.time.addingTimeInterval(1800))]
+            }
+        let meeting: [String: Any] = [
+            "start": iso.string(from: invitation.start),
+            "end": iso.string(from: invitation.end),
+            "allDay": invitation.isAllDay,
+            "location": invitation.location ?? "",
+            "events": Array(nearby),
+        ]
+        let preview: [String: Any] = [
+            "from": invitation.organizer?.formatted ?? letter.mail?.from.formatted ?? "",
+            "subject": invitation.summary,
+            "date": when(invitation.start, allDay: invitation.isAllDay),
+            "text": String((invitation.notes ?? letter.mail?.snippet ?? "").prefix(1500)),
+            "meeting": meeting,
+        ]
         link.send(source: String(localized: "Приглашение"), title: title, icon: "calendar", hold: 30, buttons: [
+            .init(id: "open", title: String(localized: "Открыть в Trudaybook"), positive: true, icon: "open", opens: true),
+            .init(id: "preview", title: String(localized: "Показать превью"), icon: "eye"),
+        ], previewFull: preview, previewActions: [
             .init(id: "accept", title: InvitationResponse.accept.title, positive: true, icon: "check"),
             .init(id: "decline", title: InvitationResponse.decline.title, icon: "cross"),
         ]) { [weak self] answer in
-            guard let response = InvitationResponse(rawValue: answer) else { return }
-            self?.model?.respond(response, comment: "", to: itemID, invitation: invitation)
-            DebugLog.write("Trunook: на приглашение ответили «\(response.title)»")
+            switch answer {
+            // «preview» — от прежнего Trunook, превью не умеющего.
+            case "open", "preview":
+                NSApp.activate()
+                self?.model?.open(itemID: itemID)
+            default:
+                guard let response = InvitationResponse(rawValue: answer) else { return }
+                self?.model?.respond(response, comment: "", to: itemID, invitation: invitation)
+                DebugLog.write("Trunook: на приглашение ответили «\(response.title)»")
+            }
         }
         DebugLog.write("Trunook: плашка приглашения" + (clash == nil ? "" : ", с пересечением"))
     }

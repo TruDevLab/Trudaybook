@@ -47,6 +47,8 @@ final class TrunookLink {
         let title: String
         var positive = false
         var icon: String?
+        /// Кнопка открывает окно Trudaybook — Trunook выведет его вперёд.
+        var opens = false
     }
 
     /// Плашки, ждущие нажатия: файл ответа → что с ним делать.
@@ -59,6 +61,9 @@ final class TrunookLink {
     func send(source: String, title: String, icon: String = "message", hold: TimeInterval? = nil,
               buttons: [Button] = [], optional: Bool = true, celebrate: Bool = false,
               event: (title: String, start: Date)? = nil,
+              preview: [String: String]? = nil,
+              previewFull: [String: Any]? = nil,
+              previewActions: [Button] = [],
               onAnswer: ((String) -> Void)? = nil) {
         let buttons = Array(buttons.prefix(2))
         var notice: [String: Any] = [
@@ -71,21 +76,35 @@ final class TrunookLink {
         if let event {
             notice["event"] = ["title": event.title, "start": ISO8601DateFormatter().string(from: event.start)]
         }
+        // Письмо для превью в вырезе (`from`, `subject`, `text`, `date`):
+        // кнопка «preview» открывает его там, а не отвечает нам.
+        // Быстрые действия превью («Ответить всем», «В архив»…) уходят
+        // внутри него и исполняются так же, как кнопки плашки.
+        if let preview = previewFull ?? preview {
+            var full: [String: Any] = preview
+            if !previewActions.isEmpty {
+                full["actions"] = previewActions.map(Self.json(of:))
+            }
+            notice["preview"] = full
+        }
         if !buttons.isEmpty, let onAnswer {
             let reply = Self.repliesFolder.appendingPathComponent("\(UUID().uuidString).reply")
-            notice["actions"] = buttons.map { button -> [String: Any] in
-                var action: [String: Any] = ["id": button.id, "title": button.title, "positive": button.positive]
-                if let icon = button.icon { action["icon"] = icon }
-                return action
-            }
+            notice["actions"] = buttons.map(Self.json(of:))
             notice["optional"] = optional
             notice["reply"] = reply.path
             // Не нажали, пока плашка жила, и ещё пять минут сверху, — ждать нечего.
             let wait = optional ? (hold ?? 12) + 300 : 3600
-            pending[reply] = (Set(buttons.map(\.id)), Date().addingTimeInterval(wait), onAnswer)
+            pending[reply] = (Set((buttons + previewActions).map(\.id)), Date().addingTimeInterval(wait), onAnswer)
             watchReplies()
         }
         write(notice)
+    }
+
+    private static func json(of button: Button) -> [String: Any] {
+        var action: [String: Any] = ["id": button.id, "title": button.title, "positive": button.positive]
+        if let icon = button.icon { action["icon"] = icon }
+        if button.opens { action["opens"] = true }
+        return action
     }
 
     /// Файл пишется во временный и переносится — иначе Trunook может

@@ -59,12 +59,14 @@ final class SkyLayerView: NSView {
     private let sunHalo = CAGradientLayer()
     private let sun = CAGradientLayer()
     private let weather = CALayer()
+    /// Сезонные украшения — над погодой: листья летят и сквозь дождь.
+    private let seasonal = SeasonDecorLayer()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         guard let root = layer else { return }
-        for sub in [sky, glow, stars, twinkles, moonHalo, moon, sunHalo, sun, weather] as [CALayer] {
+        for sub in [sky, glow, stars, twinkles, moonHalo, moon, sunHalo, sun, weather, seasonal] as [CALayer] {
             root.addSublayer(sub)
         }
         twinkles.addSublayer(twinkleInner)
@@ -167,6 +169,8 @@ final class SkyLayerView: NSView {
             weatherKey = key
             rebuildWeather(scene)
         }
+        seasonal.update(season: scene.season, daylight: scene.daylight, animated: animated,
+                        size: bounds.size, scale: window?.backingScaleFactor ?? 2)
     }
 
     /// Облака и осадки пересобираются, когда сменилась погода или заметно —
@@ -507,7 +511,7 @@ final class SkyLayerView: NSView {
 }
 
 /// Повторяемый случайный ряд: одно и то же небо при каждом запуске.
-private struct SeededRandom {
+struct SeededRandom {
     private var state: UInt64
 
     init(_ seed: UInt64) { state = seed | 1 }
@@ -518,7 +522,7 @@ private struct SeededRandom {
     }
 }
 
-private extension RGB {
+extension RGB {
     var cgColor: CGColor { NSColor(srgbRed: red, green: green, blue: blue, alpha: 1).cgColor }
 
     func nsColor(alpha: Double) -> NSColor { NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha) }

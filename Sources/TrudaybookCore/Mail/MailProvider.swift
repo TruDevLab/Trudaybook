@@ -57,6 +57,9 @@ public struct OutgoingMail: Hashable, Sendable {
 
     public var to: [Person]
     public var cc: [Person]
+    /// Скрытая копия: адреса уходят получателями конверта, но в заголовках
+    /// письма для остальных их нет (только в копии «Отправленных»).
+    public var bcc: [Person]
     public var subject: String
     /// Свой текст простым текстом — для текстовой копии письма.
     public var text: String
@@ -72,12 +75,13 @@ public struct OutgoingMail: Hashable, Sendable {
     /// Прикреплённые файлы (с содержимым).
     public var attachments: [MailBody.Attachment]
 
-    public init(to: [Person], cc: [Person] = [], subject: String, text: String, html: String? = nil,
+    public init(to: [Person], cc: [Person] = [], bcc: [Person] = [], subject: String, text: String, html: String? = nil,
                 quote: Quote? = nil, inReplyTo: String? = nil, references: [String] = [],
                 accountID: String? = nil, attachments: [MailBody.Attachment] = []) {
         self.attachments = attachments
         self.to = to
         self.cc = cc
+        self.bcc = bcc
         self.subject = subject
         self.text = text
         self.html = html
@@ -239,6 +243,50 @@ public enum ReplyBuilder {
         case .reminder:
             return nil
         }
+    }
+
+    /// Черновик пересылки: получателей нет — их вписывает человек, тема
+    /// с «Fwd: », исходное письмо — цитатой с его заголовками, вложения —
+    /// те, что загружены. Не ответ: `In-Reply-To` не ставится, и исходное
+    /// письмо отвеченным не помечается.
+    public static func forward(
+        _ item: TimelineItem,
+        body: MailBody?,
+        calendar: Calendar = .current
+    ) -> OutgoingMail? {
+        guard case .mail(let info) = item.detail else { return nil }
+        let formatter = AppLanguage.formatter(ru: "d MMMM yyyy, HH:mm", template: "dMMMMyyyyHHmm", timeZone: calendar.timeZone)
+        formatter.calendar = calendar
+        var header = [
+            String(localized: "От: \(info.from.formatted)"),
+            String(localized: "Дата: \(formatter.string(from: item.time))"),
+            String(localized: "Тема: \(item.title)"),
+        ]
+        if !info.to.isEmpty {
+            header.append(String(localized: "Кому: \(info.to.map(\.formatted).joined(separator: ", "))"))
+        }
+        let quote = OutgoingMail.Quote(
+            attribution: String(localized: "Пересланное письмо") + "\n" + header.joined(separator: "\n"),
+            html: body?.html,
+            text: body?.plainText ?? info.snippet
+        )
+        return OutgoingMail(
+            to: [],
+            subject: forwardSubject(item.title),
+            text: "",
+            quote: quote,
+            attachments: (body?.attachments ?? []).filter { $0.data != nil }
+        )
+    }
+
+    /// «Fwd: » в начале темы, если там уже нет пересылочной приставки.
+    public static func forwardSubject(_ subject: String) -> String {
+        let trimmed = subject.trimmingCharacters(in: .whitespaces)
+        let lower = trimmed.lowercased()
+        for prefix in ["fwd:", "fw:", "пересл:", "переслать:"] where lower.hasPrefix(prefix) {
+            return trimmed
+        }
+        return "Fwd: " + trimmed
     }
 
     /// «Re: » в начале темы, если его там ещё нет. Учитываются и русские

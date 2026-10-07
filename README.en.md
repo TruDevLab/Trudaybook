@@ -75,9 +75,14 @@ the count of unhandled emails. Meetings you haven't answered, or answered
 **Mail**
 - iCloud, Gmail, Yandex, Mail.ru and any IMAP/SMTP server; corporate
   Exchange directly over EWS (NTLM sign-in). Several mailboxes at once.
-- Mailbox folders; search by subject, people and full text on the server.
+- Mailbox folders with date sections. Search by subject, sender, recipients
+  and Cc; the “From”, “To”, “Cc” buttons (or `from:`, `to:`, `cc:`) narrow it
+  to one field; Return searches the full text on the server.
+- Conversations: emails of one thread in a single expandable row (turn it on
+  in Settings); archiving the first email archives the whole thread. Each row
+  shows whether you are a recipient (“Me”, red if only you) or in Cc.
 - Replies and new emails with formatting, quotes and attachments; recipients
-  as chips with address book suggestions; a signature per mailbox.
+  as chips with address book suggestions, Bcc on demand; a signature per mailbox.
 - Priorities (yours and the sender's); swipe actions on list rows — which
   ones is up to you in Settings.
 - Meeting invitations: a card with that day's calendar and answer buttons.
@@ -101,6 +106,8 @@ the count of unhandled emails. Meetings you haven't answered, or answered
 - Double-click a meeting to edit it — the editor is its own window you can
   move aside to keep the timeline in view.
 - macOS reminders on the timeline, checked off with one click.
+- The month title expands into the whole year by quarters, with week numbers;
+  click a day to open it on the timeline.
 - A note for every day under the month calendar, and in its own window (⌘J)
   with formatting, lists and checklists; notes for the week and the month.
 
@@ -126,7 +133,9 @@ right in the notification sends the answer without opening the window.
 **Look** — Liquid Glass on macOS 26, light and dark, calm gradients and
 texture backgrounds, your own picture as a background. The Sky theme follows
 the time of day and the weather: the moon in its phase and stars at night,
-the sun, clouds, rain, snow, fog and storms by day. Russian, English
+the sun, clouds, rain, snow, fog and storms by day; optionally the seasons:
+falling leaves in autumn, frost on the glass in winter, trees in bloom in
+spring, flowers in summer. Russian, English
 and Chinese interface.
 
 **Tutorial** — on first launch Trudaybook walks you through the essentials on
@@ -136,7 +145,9 @@ Trudaybook Tutorial or Settings → Appearance.
 **Together with [Trunook](https://github.com/TruDevLab/Trunook)** — a MacBook
 notch app by the same author (optional, all off by default):
 - emails, invitations, upcoming meetings and snoozed emails coming back —
-  as banners in the notch, with answer buttons;
+  as banners in the notch; an email can be read as a preview right there —
+  Reply All, Archive, Forward, In 1 hour — and an invitation shows what it
+  overlaps with;
 - a Mail tile and emails on Trunook's day timeline;
 - while a Trunook timer runs, Trudaybook stays quiet and then sends one
   summary notification;
@@ -150,6 +161,9 @@ notch app by the same author (optional, all off by default):
   model, meetings with a Minutes section and emails from attendees,
   reminders, important emails;
 - week and month summaries from your daily notes;
+- “Prepare reply template” in the reply window: the model reads the email and
+  the earlier conversation and drafts a reply that answers every question;
+  it makes no decisions for you — those are left as [placeholders];
 - a shared day note;
 - weather in the calendar and for the Sky theme comes from Trunook.
 
@@ -193,7 +207,7 @@ notch app by the same author (optional, all off by default):
 - **Weather** comes from Trunook, if installed. Without it — only if you turn it
   on in Settings → Calendars → Weather: then the forecast is requested from
   Open-Meteo with coordinates rounded to about 10 km, or by city name.
-- **Summaries, labels, agendas and week summaries** come only from a model on
+- **Summaries, labels, agendas, week summaries and reply templates** come only from a model on
   this Mac: if Trunook uses a cloud model, it refuses, and neither emails nor
   notes go anywhere.
 - Trudaybook talks to Trunook only through files in `~/Library/Application Support`

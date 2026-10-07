@@ -370,13 +370,20 @@ private struct CursorDragSource: ViewModifier {
     @EnvironmentObject private var model: AppModel
     let item: TimelineItem
     /// Где курсор внутри элемента — последнее положение перед нажатием.
-    @ViewState private var grab: CGPoint?
+    /// Лежит в ящике, а не в состоянии вида: оно меняется при каждом
+    /// движении мыши, и перерисовка строки на каждый шаг курсора (особенно
+    /// в системном списке) срывала начавшееся перетаскивание.
+    @ViewState private var grab = GrabPoint()
     @ViewState private var size: CGSize = .zero
+
+    final class GrabPoint {
+        var point: CGPoint?
+    }
 
     func body(content: Content) -> some View {
         content
             .onContinuousHover(coordinateSpace: .local) { phase in
-                if case .active(let point) = phase { grab = point }
+                if case .active(let point) = phase { grab.point = point }
             }
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
             // `onDrag`, а не `draggable`: замыкание зовётся в начале
@@ -384,9 +391,10 @@ private struct CursorDragSource: ViewModifier {
             // какое время оно встанет (строку с номером до броска не прочесть).
             .onDrag {
                 model.dragging = item
+                DebugLog.write("перетаскивание начато: \(item.kind.rawValue)")
                 return NSItemProvider(object: item.id as NSString)
             } preview: {
-                DragCanvas(item: item, size: size, grab: grab)
+                DragCanvas(item: item, size: size, grab: grab.point)
             }
     }
 }

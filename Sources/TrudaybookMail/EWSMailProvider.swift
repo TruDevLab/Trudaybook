@@ -328,9 +328,11 @@ public actor EWSMailProvider: AccountMailProvider {
 
     public func send(_ mail: OutgoingMail, replyingTo itemID: String?) async throws {
         let messageID = MessageBuilder.newMessageID(for: account.email)
-        let data = MessageBuilder.build(mail, from: account.me, messageID: messageID)
+        // Exchange берёт скрытых получателей из заголовка Bcc и сам убирает
+        // его из уходящего письма, оставляя в копии «Отправленных».
+        let data = MessageBuilder.build(mail, from: account.me, messageID: messageID, includeBcc: true)
         try EWSRequest.requireSuccess(try await call("CreateItem", EWSRequest.send(mime: data)))
-        log("отправлено: \((mail.to + mail.cc).count) получателям")
+        log("отправлено: \((mail.to + mail.cc + mail.bcc).count) получателям")
 
         if let itemID, let (folder, uid) = try? locate(itemID), let remote = cache.remoteID(uid: uid, account: account.id) {
             let marked: Void? = try? EWSRequest.requireSuccess(try await call(
@@ -428,8 +430,8 @@ public actor EWSMailProvider: AccountMailProvider {
     }
 
     public func search(_ text: String, inFolder folderID: String?, fullText: Bool) async throws -> [TimelineItem] {
-        let needle = text.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return [] }
+        let query = MailSearchQuery(text)
+        guard !query.isEmpty else { return [] }
         let targets: [String]
         if let folderID {
             targets = [folderID]
@@ -445,17 +447,14 @@ public actor EWSMailProvider: AccountMailProvider {
         for folder in targets {
             for message in cache.latest(mailbox: folder, account: account.id, limit: 5000) {
                 let candidate = item(message)
-                let people = candidate.mail.map { ([$0.from] + $0.to + $0.cc).map { "\($0.display) \($0.address ?? "")" } } ?? []
-                if ([candidate.title] + people).joined(separator: " ").lowercased().contains(needle) {
-                    found[candidate.id] = candidate
-                }
+                if query.matches(candidate) { found[candidate.id] = candidate }
             }
         }
         // Затем, если просили, — поиск Exchange по тексту писем.
-        if fullText {
+        if fullText, !query.serverText.isEmpty {
             for folder in targets {
                 let hits = try EWSRequest.parseFind(try await call(
-                    "FindItem", EWSRequest.findItems(in: folder, query: text, limit: 200))).items
+                    "FindItem", EWSRequest.findItems(in: folder, query: query.serverText, limit: 200))).items
                 var missing: [EWSItem] = []
                 var uids: [UInt32] = []
                 for hit in hits {
@@ -467,7 +466,7 @@ public actor EWSMailProvider: AccountMailProvider {
                 for uid in uids {
                     if let message = cache.message(uid: uid, mailbox: folder, account: account.id) {
                         let candidate = item(message)
-                        found[candidate.id] = candidate
+                        if query.matchesFields(candidate) { found[candidate.id] = candidate }
                     }
                 }
             }

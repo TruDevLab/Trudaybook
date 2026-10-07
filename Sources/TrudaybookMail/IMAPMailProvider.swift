@@ -322,7 +322,7 @@ public actor IMAPMailProvider: MailProvider {
         }
         let messageID = MessageBuilder.newMessageID(for: account.email)
         let data = MessageBuilder.build(mail, from: account.me, messageID: messageID)
-        let recipients = (mail.to + mail.cc).compactMap(\.address)
+        let recipients = (mail.to + mail.cc + mail.bcc).compactMap(\.address)
         try await SMTPClient.send(data, from: account.email, to: recipients, account: account,
                                   password: password, log: log)
         log("отправлено: \(recipients.count) получателям")
@@ -344,7 +344,11 @@ public actor IMAPMailProvider: MailProvider {
                 try await Task.sleep(for: .seconds(2))
                 try await client.select(sent)
                 let found = try await client.uidSearch("HEADER Message-ID \(IMAPArgument.quoted("<\(messageID)>"))")
-                if found.isEmpty { try await client.append(data, to: sent) }
+                // В своей копии скрытые адресаты видны — как в любой почте.
+                if found.isEmpty {
+                    let copy = mail.bcc.isEmpty ? data : MessageBuilder.build(mail, from: account.me, messageID: messageID, includeBcc: true)
+                    try await client.append(copy, to: sent)
+                }
             }
         }
         changeHandler?()
@@ -380,26 +384,25 @@ public actor IMAPMailProvider: MailProvider {
     }
 
     public func search(_ text: String, inFolder folderID: String?, fullText: Bool) async throws -> [TimelineItem] {
-        let needle = text.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return [] }
+        let query = MailSearchQuery(text)
+        guard !query.isEmpty else { return [] }
         let targets = folderID.map { [$0] } ?? ["INBOX", mailbox(for: .sent), mailbox(for: .archive)].compactMap { $0 }
 
         var found: [String: TimelineItem] = [:]
-        // Сначала кэш: тема, отправитель, получатели — мгновенно.
+        // Сначала кэш: тема, отправитель, получатели и копия — мгновенно.
         for folder in targets {
             for message in cache.latest(mailbox: folder, account: account.id, limit: 5000) {
                 let candidate = item(message)
-                let people = candidate.mail.map { ([$0.from] + $0.to + $0.cc).map { "\($0.display) \($0.address ?? "")" } } ?? []
-                let haystack = ([candidate.title] + people).joined(separator: " ").lowercased()
-                if haystack.contains(needle) { found[candidate.id] = candidate }
+                if query.matches(candidate) { found[candidate.id] = candidate }
             }
         }
-        // Затем, если просили, — текст писем на сервере.
-        if fullText {
+        // Затем, если просили, — текст писем на сервере. Уточнения «от:»
+        // сервер по тексту не поймёт, их проверяем на найденном сами.
+        if fullText, !query.serverText.isEmpty {
             for folder in targets {
                 let uids: [UInt32] = try await perform {
                     try await select(folder)
-                    return try await client.uidSearchText(text)
+                    return try await client.uidSearchText(query.serverText)
                 }
                 let recent = Array(uids.suffix(200))
                 let missing = recent.filter { cache.message(uid: $0, mailbox: folder, account: account.id) == nil }
@@ -407,7 +410,7 @@ public actor IMAPMailProvider: MailProvider {
                 for uid in recent {
                     if let message = cache.message(uid: uid, mailbox: folder, account: account.id) {
                         let candidate = item(message)
-                        found[candidate.id] = candidate
+                        if query.matchesFields(candidate) { found[candidate.id] = candidate }
                     }
                 }
             }

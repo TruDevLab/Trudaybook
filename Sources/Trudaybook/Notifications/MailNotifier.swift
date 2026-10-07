@@ -12,7 +12,9 @@ final class MailNotifier: NSObject, ObservableObject, UNUserNotificationCenterDe
     /// Отправитель и тема в тексте. Выключено — просто «Новое письмо».
     @Published var showPreview: Bool { didSet { save(showPreview, "notifyPreview") } }
     @Published var playSound: Bool { didSet { save(playSound, "notifySound") } }
-    /// Кнопки «Ответить» и «В архив» на плашке Trunook.
+    /// Кнопки «Открыть в Trudaybook» и «Показать превью» на плашке Trunook.
+    /// Прежде были «Ответить» и «В архив» — решение о письме, которого
+    /// человек ещё не видел.
     @Published var trunookButtons: Bool { didSet { save(trunookButtons, "notifyTrunookButtons") } }
     /// Разрешение macOS: `nil` — ещё не узнавали.
     @Published private(set) var macStatus: UNAuthorizationStatus?
@@ -24,6 +26,13 @@ final class MailNotifier: NSObject, ObservableObject, UNUserNotificationCenterDe
     /// «Ответить» без текста (плашка Trunook) — открыть ответ в окне.
     var onReplyInApp: ((String) -> Void)?
     var onArchive: ((String) -> Void)?
+    /// Текст письма для превью в вырезе Trunook — начало тела письма.
+    var loadText: ((String) async -> String?)?
+    /// Быстрые действия превью в Trunook: ответить всем, переслать,
+    /// напомнить через час (архив — `onArchive`).
+    var onReplyAll: ((String) -> Void)?
+    var onForward: ((String) -> Void)?
+    var onSnooze: ((String, TimeInterval) -> Void)?
     /// В тестовом режиме настройки не записываются.
     var persists = true
 
@@ -102,7 +111,7 @@ final class MailNotifier: NSObject, ObservableObject, UNUserNotificationCenterDe
             let sender = letter.mail?.from.display ?? String(localized: "Новое письмо")
             if showPreview {
                 deliver(id: letter.id, title: sender, subtitle: account(letter), body: letter.title, itemID: letter.id,
-                        skipTrunook: ownPlaque.contains(letter.id))
+                        skipTrunook: ownPlaque.contains(letter.id), letter: letter)
             } else {
                 deliver(id: letter.id, title: String(localized: "Новое письмо"), subtitle: account(letter), body: "", itemID: letter.id,
                         skipTrunook: ownPlaque.contains(letter.id))
@@ -130,29 +139,112 @@ final class MailNotifier: NSObject, ObservableObject, UNUserNotificationCenterDe
     }
 
     private func deliver(id: String, title: String, subtitle: String?, body: String, itemID: String?,
-                         skipTrunook: Bool = false) {
+                         skipTrunook: Bool = false, letter: TimelineItem? = nil) {
         if toTrunook, !skipTrunook {
             let text = body.isEmpty ? title : "\(title): \(body)"
             let source = subtitle ?? String(localized: "Почта")
             if trunookButtons, let itemID, !id.hasPrefix("batch"), !id.hasPrefix("test") {
-                TrunookLink.shared.send(source: source, title: text, buttons: [
-                    .init(id: "reply", title: String(localized: "Ответить"), positive: true, icon: "message"),
-                    .init(id: "archive", title: String(localized: "В архив"), icon: "check"),
-                ]) { [weak self] answer in
+                // Решать, отвечать ли и в архив ли, можно только прочитав
+                // письмо: на плашке — открыть его здесь или прочитать
+                // превью прямо в вырезе. Превью — только когда разрешено
+                // показывать отправителя и тему.
+                var buttons: [TrunookLink.Button] = [
+                    .init(id: "open", title: String(localized: "Открыть в Trudaybook"), positive: true, icon: "open", opens: true),
+                ]
+                // Под текстом превью — быстрые действия: решать их можно,
+                // уже прочитав письмо.
+                let quick: [TrunookLink.Button] = [
+                    .init(id: "replyAll", title: String(localized: "Ответить всем"), icon: "replyAll", opens: true),
+                    .init(id: "archive", title: String(localized: "В архив"), icon: "archive"),
+                    .init(id: "forward", title: String(localized: "Переслать"), icon: "forward", opens: true),
+                    .init(id: "snooze1h", title: String(localized: "Через 1 час"), icon: "snooze"),
+                ]
+                if showPreview, letter != nil {
+                    buttons.append(.init(id: "preview", title: String(localized: "Показать превью"), icon: "eye"))
+                }
+                let handler: (String) -> Void = { [weak self] answer in
                     switch answer {
-                    case "reply":
+                    // «preview» приходит от прежнего Trunook, который превью
+                    // показывать не умеет, — тогда письмо открывается здесь.
+                    case "open", "preview":
                         NSApp.activate()
-                        self?.onReplyInApp?(itemID)
+                        self?.onOpen?(itemID)
+                    case "replyAll":
+                        NSApp.activate()
+                        self?.onReplyAll?(itemID)
+                    case "forward":
+                        NSApp.activate()
+                        self?.onForward?(itemID)
                     case "archive":
                         self?.onArchive?(itemID)
+                    case "snooze1h":
+                        self?.onSnooze?(itemID, 3600)
                     default:
                         break
                     }
+                }
+                guard showPreview, let letter else {
+                    TrunookLink.shared.send(source: source, title: text, buttons: buttons, onAnswer: handler)
+                    return deliverMac(id: id, title: title, subtitle: subtitle, body: body, itemID: itemID)
+                }
+                // Текст письма — тело с сервера, но не дольше трёх секунд:
+                // плашка о новом письме не должна опаздывать. Не успело —
+                // начало письма из списка.
+                Task { [weak self] in
+                    let loaded = await self?.previewText(of: itemID)
+                    let preview = Self.preview(of: letter, text: loaded)
+                    TrunookLink.shared.send(source: source, title: text, buttons: buttons, preview: preview,
+                                            previewActions: quick, onAnswer: handler)
                 }
             } else {
                 TrunookLink.shared.send(source: source, title: text)
             }
         }
+        deliverMac(id: id, title: title, subtitle: subtitle, body: body, itemID: itemID)
+    }
+
+    /// Начало тела письма, не дольше трёх секунд.
+    private func previewText(of itemID: String) async -> String? {
+        guard let loadText else { return nil }
+        return await withTaskGroup(of: String?.self) { group in
+            group.addTask { await loadText(itemID) }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(3))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// Поле `preview` плашки: от кого, тема, текст, когда пришло.
+    static func preview(of letter: TimelineItem, text: String?) -> [String: String] {
+        let date = DateFormatter()
+        date.dateStyle = .short
+        date.timeStyle = .short
+        date.doesRelativeDateFormatting = true
+        let body = (text?.isEmpty == false ? text : letter.mail?.snippet) ?? ""
+        return [
+            "from": letter.mail?.from.formatted ?? "",
+            "subject": letter.title,
+            "text": String(body.prefix(3000)),
+            "date": date.string(from: letter.time),
+        ]
+    }
+
+    /// Текст тела для превью: абзацы сохраняются, пустые строки — не больше
+    /// одной подряд.
+    static func previewText(_ body: MailBody) -> String {
+        let text = body.plainText
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: #"[ \t]+\n"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(text.prefix(3000))
+    }
+
+    private func deliverMac(id: String, title: String, subtitle: String?, body: String, itemID: String?) {
         guard toMac, let center else { return }
         let content = UNMutableNotificationContent()
         content.title = title

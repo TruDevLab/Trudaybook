@@ -55,6 +55,19 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
         storage.setAttributedString(NSAttributedString(string: text, attributes: attributes))
     }
 
+    /// Шаблон ответа — в начало письма, над уже написанным и подписью,
+    /// с отменой по ⌘Z: человек может вернуть всё как было.
+    func insertTemplate(_ text: String) {
+        guard let textView, let storage = textView.textStorage, !text.isEmpty else { return }
+        let attributes: [NSAttributedString.Key: Any] = [.font: Self.bodyFont, .foregroundColor: NSColor.textColor]
+        // Пустое письмо с подписью начинается с «\n\n» подписи — отступ уже есть.
+        let separator = storage.length == 0 || storage.string.hasPrefix("\n") ? "" : "\n\n"
+        let range = NSRange(location: 0, length: 0)
+        edit(range) { storage.replaceCharacters(in: range, with: NSAttributedString(string: text + separator, attributes: attributes)) }
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        textView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+    }
+
     /// Заменить весь текст — заметка другого дня. Без отмены: ⌘Z не должен
     /// возвращать заметку соседнего дня.
     func load(_ text: NSAttributedString) {

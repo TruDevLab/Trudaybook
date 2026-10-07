@@ -5,15 +5,38 @@ import TrudaybookCore
 struct ItemRow: View {
     @EnvironmentObject private var model: AppModel
     let item: TimelineItem
+    /// Диалог, у которого это первое письмо; `nil` — обычная строка.
+    var thread: MailThread?
+    /// Письмо раскрытого диалога, не первое: с отступом.
+    var isMember = false
     var onSelect: (() -> Void)?
 
     var body: some View {
         let status = model.status(of: item)
         let selected = model.isSelected(item.id)
-        let unread = item.kind == .mail && !model.isRead(item)
+        // Свёрнутый диалог жирный, пока в нём есть непрочитанное.
+        let unread = item.kind == .mail && (thread.map { !model.expandedThreads.contains($0.key) && model.hasUnread($0) } ?? false
+                                            || !model.isRead(item))
         let priority = model.priority(of: item)
 
         HStack(spacing: 8) {
+            if let thread {
+                // Стрелка раскрытия диалога — отдельная кнопка: сама строка
+                // открывает письмо.
+                let open = model.expandedThreads.contains(thread.key) || (model.options.demo && model.options.openThreads)
+                Button { model.toggleThread(thread.key) } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 14, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(open ? String(localized: "Свернуть диалог") : String(localized: "Показать весь диалог"))
+            } else if isMember {
+                Color.clear.frame(width: 14)
+            }
             // Прочитанное — открытый конверт, новое — закрытый.
             Image(systemName: item.kind == .mail && !unread ? "envelope.open" : item.symbol)
                 .foregroundStyle(item.kind == .reminder ? Color.orange : Color.accentColor)
@@ -28,6 +51,18 @@ struct ItemRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
+            if let thread {
+                let hasUnread = model.hasUnread(thread)
+                Text("\(thread.count)")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(hasUnread ? Color.orange.opacity(0.25) : Color.primary.opacity(0.08)))
+                    .help("Писем в диалоге: \(thread.count)")
+            }
+            if let role = model.recipientRole(of: item) {
+                RecipientMark(role: role)
+            }
             if let label = model.label(of: item) {
                 LabelChip(label: label, source: model.labelSource(of: item))
             }
@@ -51,6 +86,7 @@ struct ItemRow: View {
             }
         }
         .padding(.horizontal, 8)
+        .padding(.leading, isMember ? 22 : 0)
         .padding(.vertical, 5)
         .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.accentColor.opacity(0.18) : .clear))
         .contentShape(Rectangle())
@@ -70,8 +106,71 @@ struct ItemRow: View {
             model.click(item, extend: flags.contains(.shift), toggle: flags.contains(.command))
             onSelect?()
         }
-        .itemDraggable(item)
+        .modifier(ListDragSource(item: item))
         .contextMenu { ItemContextMenu(item: item) }
+    }
+}
+
+/// Где искать набранное: везде, у отправителя, у получателей или в копии.
+struct SearchScopeBar: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 4) {
+            chip(.all, String(localized: "Везде"), "magnifyingglass")
+            chip(.from, String(localized: "От кого"), "person")
+            chip(.to, String(localized: "Кому"), "person.2")
+            chip(.cc, String(localized: "Копия"), "person.2.wave.2")
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func chip(_ scope: MailSearchQuery.Scope, _ title: String, _ symbol: String) -> some View {
+        let selected = model.searchScope == scope
+        return Button {
+            withAnimation(HoverMotion.animation) { model.searchScope = scope }
+        } label: {
+            Label(title, systemImage: symbol)
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .foregroundStyle(selected ? Color.accentColor : .primary)
+                .background(Capsule().fill(selected ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+    }
+}
+
+/// «Мне» или «Копия» в строке списка: я среди адресатов или только в копии.
+/// Письмо только мне — «Мне» красным: его, кроме меня, никто не прочтёт.
+struct RecipientMark: View {
+    let role: AppModel.RecipientRole
+
+    var body: some View {
+        let tint: Color = switch role {
+        case .onlyMe: .red
+        case .to: .accentColor
+        case .cc: .secondary
+        }
+        Text(role == .cc ? String(localized: "Копия") : String(localized: "Мне"))
+            .font(.system(size: 9.5, weight: role == .onlyMe ? .semibold : .medium))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .foregroundStyle(tint)
+            .background(Capsule().fill(role == .cc ? Color.primary.opacity(0.07) : tint.opacity(0.14)))
+            .help(help)
+    }
+
+    private var help: String {
+        switch role {
+        case .onlyMe: String(localized: "Письмо только вам — других получателей нет")
+        case .to: String(localized: "Письмо адресовано вам")
+        case .cc: String(localized: "Вы только в копии")
+        }
     }
 }
 
@@ -136,6 +235,8 @@ struct PriorityPicker: View {
 /// ищет и в тексте писем на сервере: это дольше, поэтому только по просьбе.
 struct MailListPanel: View {
     @EnvironmentObject private var model: AppModel
+    /// В поле поиска стоит курсор: оно раздвигается, чтобы был виден весь запрос.
+    @FocusState private var searchFocused: Bool
 
     /// Папки на вкладках — в порядке и выборе из настроек; остальные — в меню «Ещё».
     private var primary: [MailFolder] {
@@ -212,6 +313,7 @@ struct MailListPanel: View {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Поиск", text: $model.searchText)
                         .textFieldStyle(.plain)
+                        .focused($searchFocused)
                         .onSubmit { model.searchOnServer() }
                     if !model.searchText.isEmpty {
                         Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
@@ -222,8 +324,17 @@ struct MailListPanel: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.06)))
-                .frame(minWidth: 80, maxWidth: 210)
-                .help("Набор ищет по теме и людям, Return — ещё и в тексте писем на сервере")
+                // Нажали в поле — оно занимает всё место, что есть: вкладки
+                // уступают (они прокручиваются), и запрос виден целиком.
+                .frame(minWidth: searchFocused ? 260 : 80, maxWidth: searchFocused ? .infinity : 210)
+                .layoutPriority(searchFocused ? 2 : 0)
+                .animation(HoverMotion.animation, value: searchFocused)
+                .help("Набор ищет по теме, отправителю, получателям и копии; «от:иван», «кому:анна», «копия:анна» — по одному полю. Return — ещё и в тексте писем на сервере")
+            }
+
+            // Где искать — кнопками, а не «от:» руками. Видны, пока ищут.
+            if searchFocused || !model.searchText.isEmpty || model.searchScope != .all {
+                SearchScopeBar()
             }
 
             if model.listMode == .unresolved, model.searchResults == nil, !model.unresolved.isEmpty {
@@ -239,7 +350,7 @@ struct MailListPanel: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
-            } else if !model.searchText.isEmpty {
+            } else if !model.searchText.isEmpty, model.searchScope == .all {
                 Button("Искать «\(model.searchText)» в тексте писем на сервере  ⏎") { model.searchOnServer() }
                     .buttonStyle(.link)
                     .font(.caption)
@@ -263,18 +374,18 @@ struct MailListPanel: View {
                         if let sections = model.listSections {
                             ForEach(sections, id: \.section) { group in
                                 let collapsed = model.collapsedSections.contains(group.section.key)
-                                SectionHeader(title: title(of: group.section), count: group.items.count,
+                                SectionHeader(title: title(of: group.section), count: group.threads.reduce(0) { $0 + $1.count },
                                               collapsed: collapsed) { model.toggleSection(group.section) }
                                     .plainListRow()
                                 if !collapsed {
-                                    ForEach(group.items) { item in
-                                        row(item)
+                                    ForEach(model.rows(of: group.threads)) { entry in
+                                        row(entry)
                                     }
                                 }
                             }
                         } else {
-                            ForEach(items) { item in
-                                row(item)
+                            ForEach(model.rows(of: model.listThreads)) { entry in
+                                row(entry)
                             }
                         }
                     }
@@ -296,8 +407,9 @@ struct MailListPanel: View {
     }
 
     /// Строка со свайпами: влево — действие справа, вправо — слева.
-    private func row(_ item: TimelineItem) -> some View {
-        ItemRow(item: item)
+    private func row(_ entry: AppModel.ListRow) -> some View {
+        let item = entry.item
+        return ItemRow(item: item, thread: entry.isMember ? nil : entry.thread, isMember: entry.isMember)
             .id(item.id)
             .plainListRow()
             .swipeActions(edge: .trailing, allowsFullSwipe: true) { swipeButton(model.swipeLeft, item) }
@@ -387,28 +499,31 @@ struct MailListPanel: View {
 struct MonthCalendarView: View {
     @EnvironmentObject private var model: AppModel
 
-    private var days: [Date?] {
-        let calendar = model.calendar
-        guard let interval = calendar.dateInterval(of: .month, for: model.monthAnchor) else { return [] }
-        // Неделя с понедельника, как принято в России, независимо от настроек.
-        let weekday = calendar.component(.weekday, from: interval.start)
-        let leading = (weekday + 5) % 7
-        var result: [Date?] = Array(repeating: nil, count: leading)
-        var day = interval.start
-        while day < interval.end {
-            result.append(day)
-            day = calendar.date(byAdding: .day, value: 1, to: day) ?? interval.end
-        }
-        while result.count % 7 != 0 { result.append(nil) }
-        return result
-    }
+    private var days: [Date?] { MonthGrid.days(of: model.monthAnchor, calendar: model.calendar) }
+
+    /// Год целиком — окошком от названия месяца.
+    @ViewState private var showYear = false
 
     var body: some View {
         VStack(spacing: 6) {
             HStack {
                 Button { model.shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
                 Spacer()
-                Text(Format.month(model.monthAnchor)).font(.headline)
+                Button { showYear.toggle() } label: {
+                    HStack(spacing: 4) {
+                        Text(Format.month(model.monthAnchor)).font(.headline)
+                        Image(systemName: "square.grid.3x3")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Показать весь год")
+                .popover(isPresented: $showYear, arrowEdge: .bottom) {
+                    YearCalendarView { showYear = false }
+                }
+
                 Spacer()
                 Button { model.showWeekNumbers.toggle() } label: {
                     Image(systemName: "number")

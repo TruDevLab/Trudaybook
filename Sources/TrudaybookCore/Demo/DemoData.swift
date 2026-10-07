@@ -233,13 +233,14 @@ public actor DemoMailProvider: MailProvider {
     }
 
     public func search(_ text: String, inFolder folderID: String?, fullText: Bool) -> [TimelineItem] {
-        let needle = text.lowercased()
+        let query = MailSearchQuery(text)
+        guard !query.isEmpty else { return [] }
         let pool = (folderID.map { [$0] } ?? folders().map(\.id))
             .flatMap { messages(inFolder: $0, limit: 500) }
         return pool.filter { item in
-            item.title.lowercased().contains(needle)
-                || item.subtitle.lowercased().contains(needle)
-                || (fullText && (item.mail?.snippet.lowercased().contains(needle) ?? false))
+            query.matches(item)
+                || (fullText && !query.serverText.isEmpty && query.matchesFields(item)
+                    && (item.mail?.snippet.lowercased().contains(query.serverText.lowercased()) ?? false))
         }
     }
 
@@ -351,8 +352,9 @@ public actor DemoMailProvider: MailProvider {
                 detail: .mail(MailInfo(
                     accountID: accountID,
                     from: sender,
-                    to: [me],
-                    cc: copies.filter { $0 != sender },
+                    // Иногда я только в копии — видно метку «Копия» в списке.
+                    to: index % 6 == 3 ? [Demo.people[(index + 1) % Demo.people.count]] : [me],
+                    cc: (index % 6 == 3 ? [me] : []) + copies.filter { $0 != sender },
                     messageID: "\(id)@company.test",
                     snippet: String(localized: "Добрый день! Высылаю материалы, о которых договаривались…"),
                     isRead: !isToday || index % 3 == 0,

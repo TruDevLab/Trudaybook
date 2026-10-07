@@ -92,6 +92,8 @@ EXCLUDE = {
     ('EWSCalendarRequest.swift', '"<t:Subject>\\(XMLEscape.text(draft.title.isEmpty ? "Новая встреча" : draft.title))</t:Subject>"'),
     ('EWSCalendarRequest.swift', '"<t:Subject>\\(XMLEscape.text(subject.isEmpty ? "Новая встреча" : subject))</t:Subject>"'),
     ('EWSMailProvider.swift', '"Архив"'),
+    ('MailProvider.swift', '"пересл:"'),
+    ('MailProvider.swift', '"переслать:"'),
     ('EWSMailProvider.swift', '"архив"'),
     ('EventKitCalendar.swift', '"Exchange через macOS · календарь коллеги: \\(title)"'),
     ('EventKitCalendar.swift', '"Exchange через macOS · учётная запись «\\(title)»"'),
@@ -122,6 +124,17 @@ EXCLUDE = {
     ('MeetingCancellation.swift', '"отмена:"'),
     ('MeetingLink.swift', '"Встреча"'),
     ('MeetingLink.swift', '"Телемост"'),
+    ('MailSearch.swift', '"от:"'),
+    ('MailSearch.swift', '"кому:"'),
+    ('MailSearch.swift', '"копия:"'),
+    ('MailSearch.swift', '"ё"'),
+    ('MailSearch.swift', '"е"'),
+    ('ThreadGrouping.swift', '"отв:"'),
+    ('ThreadGrouping.swift', '"ответ:"'),
+    ('ThreadGrouping.swift', '"пересл:"'),
+    ('ReplyHistory.swift', '"^.{0,120}\\\\s(пишет|писал|писала|wrote)\\\\s*:\\\\s*$"'),
+    ('ReplyHistory.swift', '"^-{2,}\\\\s*(original message|исходное сообщение|пересылаемое сообщение|forwarded message).*$"'),
+    ('ReplyHistory.swift', '"^(от|from)\\\\s*:.{0,200}$"'),
 }
 SKIP_FILES = {"DemoData.swift"}
 total = 0

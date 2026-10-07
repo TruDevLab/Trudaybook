@@ -102,3 +102,22 @@ struct SkyTests {
         #expect(weather.code(at: try #require(ISO8601DateFormatter().date(from: "2026-09-27T13:30:00Z")), calendar: calendar) == 3)
     }
 }
+
+@Suite("Сезоны неба")
+struct SkySeasonTests {
+    private func date(_ month: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        return calendar.date(from: DateComponents(year: 2026, month: month, day: 15))!
+    }
+
+    @Test func monthsGiveSeasons() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        let seasons = (1...12).map { SkyScene.Season.of(date($0), calendar: calendar) }
+        #expect(seasons == [.winter, .winter, .spring, .spring, .spring, .summer, .summer, .summer,
+                            .autumn, .autumn, .autumn, .winter])
+        #expect(SkyScene.Season.of(date(10), calendar: calendar, southern: true) == .spring)
+        #expect(SkyScene.Season.of(date(1), calendar: calendar, southern: true) == .summer)
+    }
+}

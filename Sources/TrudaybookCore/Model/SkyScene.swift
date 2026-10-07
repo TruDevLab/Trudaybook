@@ -10,6 +10,30 @@ public struct SkyScene: Equatable, Sendable {
         case clear, partlyCloudy, overcast, fog, drizzle, rain, snow, thunder
     }
 
+    /// Время года для сезонных украшений неба.
+    public enum Season: String, CaseIterable, Sendable {
+        case winter, spring, summer, autumn
+
+        /// По календарю: зима — декабрь–февраль, весна — март–май и так
+        /// далее; в южном полушарии — наоборот.
+        public static func of(_ date: Date, calendar: Calendar, southern: Bool = false) -> Season {
+            let month = calendar.component(.month, from: date)
+            let north: Season = switch month {
+            case 3...5: .spring
+            case 6...8: .summer
+            case 9...11: .autumn
+            default: .winter
+            }
+            guard southern else { return north }
+            return switch north {
+            case .winter: .summer
+            case .spring: .autumn
+            case .summer: .winter
+            case .autumn: .spring
+            }
+        }
+    }
+
     /// Точка на небе: `x` — слева направо, `y` — сверху вниз, доли окна.
     public struct Spot: Equatable, Sendable {
         public var x: Double
@@ -33,6 +57,9 @@ public struct SkyScene: Equatable, Sendable {
     public var bottom: RGB
     /// Окно — тёмное: ночь, поздние сумерки или гроза.
     public var isDark: Bool
+    /// Сезонные украшения: листопад, иней, цветущие деревья, цветы;
+    /// `nil` — выключены.
+    public var season: Season? = nil
 
     /// Звёзды видны ночью и сквозь редкие облака.
     public var starVisibility: Double { max(0, 1 - daylight * 1.6) * max(0, 1 - cloudCover * 1.2) }

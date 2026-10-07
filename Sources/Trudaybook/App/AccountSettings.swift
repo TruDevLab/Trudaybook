@@ -244,11 +244,21 @@ struct AccountSettingsView: View {
                 }
                 FolderOrderCard()
             }
-            SettingsCard(title: String(localized: "Список «Не разобрано»"), icon: "tray.full") {
+            SettingsCard(title: String(localized: "Список писем"), icon: "tray.full") {
                 Toggle("Разделы по датам: Сегодня, Вчера, дни недели, старше 7 и 30 дней", isOn: $model.groupByDate)
                     .toggleStyle(.switch)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                SettingsHint(String(localized: "Разделы сворачиваются щелчком по заголовку. При поиске список идёт одной лентой."))
+                SettingsHint(String(localized: "В «Не разобрано», в папках и в найденном. Разделы сворачиваются щелчком по заголовку."))
+                Divider()
+                Toggle("Диалоги: письма одной переписки — одной строкой", isOn: $model.groupThreads)
+                    .toggleStyle(.switch)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SettingsHint(String(localized: "Ответы собираются под самым свежим письмом переписки; стрелка слева раскрывает весь диалог."))
+                Divider()
+                Toggle("Отмечать «Мне» и «Копия»", isOn: $model.showRecipientMarks)
+                    .toggleStyle(.switch)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SettingsHint(String(localized: "Метка в строке письма: вы среди адресатов или только в копии. «Мне» красным — письмо только вам."))
             }
             SettingsCard(title: String(localized: "Свайпы в списке писем"), icon: "hand.draw") {
                 swipeRow(String(localized: "Свайп влево"), systemImage: "arrow.left", selection: $model.swipeLeft)
@@ -513,6 +523,18 @@ struct AppearanceSettingsView: View {
                 details
                 if model.background == .sky {
                     SkyWeatherPrompt(weather: model.directWeather)
+                    Toggle("Времена года: осенью листопад, зимой иней на стекле, весной цветущие деревья, летом цветы", isOn: $model.skySeasons)
+                        .toggleStyle(.switch)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if model.skySeasons {
+                        Picker("Сезон", selection: $model.skySeasonChoice) {
+                            Text("По календарю (сейчас — \(model.currentSeasonTitle(auto: true)))").tag(SkyScene.Season?.none)
+                            ForEach(SkyScene.Season.allCases, id: \.self) { season in
+                                Text(season.title).tag(Optional(season))
+                            }
+                        }
+                        .frame(maxWidth: 360, alignment: .leading)
+                    }
                 }
                 if model.background == .aurora || model.background == .sky {
                     Toggle(model.background == .sky ? String(localized: "Облака плывут, идёт дождь и снег") : String(localized: "Пятна света плывут"),
@@ -1040,7 +1062,7 @@ struct NotificationSettingsView: View {
                         }
                         if notifier.toTrunook {
                             TrunookStatus()
-                            Toggle("Кнопки «Ответить» и «В архив» на плашке", isOn: $notifier.trunookButtons)
+                            Toggle("Кнопки «Открыть» и «Показать превью» на плашке", isOn: $notifier.trunookButtons)
                                 .font(.callout)
                         }
                     }

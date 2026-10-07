@@ -741,15 +741,27 @@ private struct ComposerView: View {
     @StateObject private var editor = RichTextController()
     @ViewState private var to: [Person] = []
     @ViewState private var cc: [Person] = []
+    @ViewState private var bcc: [Person] = []
+    /// Строка скрытой копии свёрнута, пока её не раскроют (или пока в ней нет адресов).
+    @ViewState private var showBcc = false
     /// Набранное в полях адресов и ещё не ставшее плашкой.
     @ViewState private var toText = ""
     @ViewState private var ccText = ""
+    @ViewState private var bccText = ""
     @ViewState private var subject = ""
     @ViewState private var includeQuote = true
     @ViewState private var linkAddress = ""
     /// Подпись, которая сейчас стоит в тексте, — чтобы заменить её при смене ящика.
     @ViewState private var appliedSignature: String?
     @ViewState private var showLink = false
+    /// Шаблон ответа от Trunook: готовится, не вышел или ещё не просили.
+    @ViewState private var assist: ReplyAssist = .idle
+
+    enum ReplyAssist: Equatable {
+        case idle
+        case loading
+        case failed(code: String, message: String)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -783,7 +795,21 @@ private struct ComposerView: View {
                 }
                 GridRow {
                     Text("Копия").foregroundStyle(.secondary)
-                    PeopleField(people: $cc, text: $ccText, placeholder: String(localized: "имя или адрес"))
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        PeopleField(people: $cc, text: $ccText, placeholder: String(localized: "имя или адрес"))
+                        if !showBcc {
+                            Button("Скрытая") { withAnimation(HoverMotion.animation) { showBcc = true } }
+                                .buttonStyle(.link)
+                                .font(.caption)
+                                .help("Добавить скрытую копию: эти получатели не видны остальным")
+                        }
+                    }
+                }
+                if showBcc {
+                    GridRow {
+                        Text("Скрытая").foregroundStyle(.secondary)
+                        PeopleField(people: $bcc, text: $bccText, placeholder: String(localized: "имя или адрес — другим не видно"))
+                    }
                 }
                 GridRow {
                     Text("Тема").foregroundStyle(.secondary)
@@ -797,6 +823,12 @@ private struct ComposerView: View {
             formatBar
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
+
+            if let item, item.kind == .mail, model.trunookModelAllowed {
+                templateBar(item)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+            }
 
             RichTextEditorView(controller: editor)
                 .frame(minHeight: 150, maxHeight: .infinity)
@@ -847,7 +879,12 @@ private struct ComposerView: View {
             }
             .padding(16)
         }
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            if model.options.template, model.options.snapshotPath != nil, let item, item.kind == .mail {
+                requestTemplate(item)
+            }
+        }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             AttachmentFiles.dropped(providers) { addAttachments($0) }
         }
@@ -910,6 +947,54 @@ private struct ComposerView: View {
         .buttonStyle(.borderless)
     }
 
+    /// «Подготовить шаблон ответа»: только с включённой связью с Trunook.
+    /// Модель пишет черновик, где отвечено на каждый вопрос письма; решения,
+    /// сроки и суммы она оставляет пометками в скобках — их вписывает человек.
+    @ViewBuilder
+    private func templateBar(_ item: TimelineItem) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                requestTemplate(item)
+            } label: {
+                Label("Подготовить шаблон ответа", systemImage: "sparkles")
+                    .font(.callout)
+            }
+            .buttonStyle(.borderless)
+            .disabled(assist == .loading)
+            .help("Trunook прочтёт письмо и прошлую переписку и подготовит черновик, где отвечено на каждый вопрос. Решений за вас он не принимает — на их месте пометки в [скобках]. Модель — только на этом Mac.")
+            switch assist {
+            case .loading:
+                ProgressView().controlSize(.small)
+                Text("Trunook читает переписку…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case let .failed(code, message):
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .help(SummaryPlaque.advice(code) ?? message)
+            case .idle:
+                EmptyView()
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func requestTemplate(_ item: TimelineItem) {
+        assist = .loading
+        Task {
+            switch await model.prepareReplyTemplate(for: item) {
+            case .success(let text):
+                editor.insertTemplate(text)
+                assist = .idle
+            case .failure(let error):
+                assist = .failed(code: error.code, message: error.message)
+            }
+        }
+    }
+
     private func applyLink() {
         showLink = false
         editor.applyLink(linkAddress)
@@ -920,6 +1005,8 @@ private struct ComposerView: View {
         guard let draft = model.draft else { return }
         to = draft.to
         cc = draft.cc
+        bcc = draft.bcc
+        showBcc = !draft.bcc.isEmpty
         subject = draft.subject
         // Поле текста появляется чуть позже — текст и подпись после него.
         let text = draft.text
@@ -934,6 +1021,7 @@ private struct ComposerView: View {
         let text = editor.attributed
         draft.to = PeopleField.merged(to, typed: toText)
         draft.cc = PeopleField.merged(cc, typed: ccText)
+        draft.bcc = PeopleField.merged(bcc, typed: bccText)
         draft.subject = subject
         draft.text = text.string
         draft.html = RichTextHTML.html(from: text)

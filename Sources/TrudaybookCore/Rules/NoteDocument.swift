@@ -268,7 +268,8 @@ public enum DayAgenda {
         let focus = answer?.focus.filter { !$0.isEmpty } ?? []
         if !focus.isEmpty {
             blocks += [.spacer, .heading(words.focus)]
-            blocks += focus.map { .bullet($0) }
+            // Главное — дела на день: с галочкой, чтобы отмечать сделанное.
+            blocks += focus.map { .check($0, done: false) }
         }
 
         blocks += [.spacer, .heading(words.meetings)]
@@ -315,8 +316,9 @@ public enum DayAgenda {
         let important = input.letters.filter(\.important)
         if !important.isEmpty {
             blocks += [.spacer, .heading(words.letters)]
+            // Важное письмо — это «ответить»: тоже с галочкой.
             blocks += important.map { letter in
-                .bullet(letter.from.isEmpty ? letter.subject : "\(letter.subject) — \(words.from) \(letter.from)")
+                .check(letter.from.isEmpty ? letter.subject : "\(letter.subject) — \(words.from) \(letter.from)", done: false)
             }
         }
         return blocks

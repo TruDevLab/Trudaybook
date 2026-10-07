@@ -57,6 +57,22 @@ struct ReplyBuilderTests {
         #expect(ReplyBuilder.quotedLines("Привет\n\nТекст") == "> Привет\n>\n> Текст")
     }
 
+    @Test("Пересылка: без получателей и без ответа, тема Fwd:, заголовки и вложения")
+    func forwardKeepsOriginal() throws {
+        let file = MailBody.Attachment(name: "смета.xlsx", size: 3, mimeType: "application/octet-stream", data: Data([1, 2, 3]))
+        let unloaded = MailBody.Attachment(name: "большое.zip", size: 9_000_000, mimeType: "application/zip")
+        let draft = try #require(ReplyBuilder.forward(mail(), body: MailBody(text: "Текст", attachments: [file, unloaded])))
+        #expect(draft.to.isEmpty)
+        #expect(draft.subject == "Fwd: Договор")
+        #expect(draft.inReplyTo == nil)
+        #expect(draft.references.isEmpty)
+        #expect(draft.quote?.text == "Текст")
+        #expect(draft.quote?.attribution.contains("anna@x.ru") == true)
+        #expect(draft.attachments.map(\.name) == ["смета.xlsx"])
+        #expect(ReplyBuilder.forwardSubject("FW: Счёт") == "FW: Счёт")
+        #expect(ReplyBuilder.forwardSubject("Re: Счёт") == "Fwd: Re: Счёт")
+    }
+
     @Test func replyAllSkipsMeAndSender() throws {
         let draft = try #require(ReplyBuilder.reply(to: mail(), body: nil, all: true, ownAddresses: [me]))
         #expect(draft.cc == [ivan])

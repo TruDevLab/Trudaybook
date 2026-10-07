@@ -45,7 +45,7 @@ final class TrunookModel {
             return .failed(code: "offline", message: String(localized: "Trunook не запущен."))
         }
         if let kind, !understands(kind) {
-            return .failed(code: "outdated", message: String(localized: "Этот Trunook не умеет повестку и итоги — обновите Trunook."))
+            return .failed(code: "outdated", message: String(localized: "Этот Trunook не умеет такую просьбу — обновите Trunook."))
         }
         let answer = answers.appendingPathComponent("\(id).json")
         do {

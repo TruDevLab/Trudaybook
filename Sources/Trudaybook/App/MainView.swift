@@ -62,6 +62,14 @@ struct MainView: View {
                 .background(WindowAppearanceSetter(appearance: model.windowAppearance))
         }
         .environment(\.auroraTheme, model.customBackground)
+        // Снимок обзора года: окошко popover в захват своего окна не
+        // попадает, поэтому для `--year` он рисуется поверх окна.
+        .overlay {
+            if model.options.year, model.options.snapshotPath != nil {
+                YearCalendarView {}
+                    .background(RoundedRectangle(cornerRadius: 14).fill(.regularMaterial))
+            }
+        }
         .sheet(item: $model.rescheduleTarget) { item in
             RescheduleSheet(item: item)
         }
@@ -728,6 +736,7 @@ enum Format {
     private static let short = formatter("d MMM, HH:mm", "dMMMHHmm")
     private static let weekdayTime = formatter("EE, HH:mm", "EEHHmm")
     private static let month = formatter("LLLL yyyy", "LLLLyyyy")
+    private static let monthOnly = formatter("LLLL", "LLLL")
 
     static func dayTitle(_ date: Date) -> String {
         let sameYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
@@ -745,6 +754,12 @@ enum Format {
         guard let first = days.first, let last = days.last else { return "" }
         let sameMonth = Calendar.current.isDate(first, equalTo: last, toGranularity: .month)
         return "\((sameMonth ? dayOnly : dayMonth).string(from: first)) – \(dayMonth.string(from: last))"
+    }
+
+    /// «Сентябрь» — без года, для года целиком.
+    static func monthName(_ date: Date) -> String {
+        let text = monthOnly.string(from: date)
+        return text.prefix(1).uppercased() + text.dropFirst()
     }
 
     static func month(_ date: Date) -> String {

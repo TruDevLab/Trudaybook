@@ -11,13 +11,21 @@ public enum MessageBuilder {
         from: Person,
         date: Date = Date(),
         messageID: String,
-        boundary: String = "trudaybook-" + UUID().uuidString
+        boundary: String = "trudaybook-" + UUID().uuidString,
+        includeBcc: Bool = false
     ) -> Data {
         var headers: [String] = []
         headers.append("From: \(formatAddress(from))")
-        headers.append("To: \(mail.to.map(formatAddress).joined(separator: ", "))")
+        // Только скрытая копия: у письма нет видимых адресатов.
+        headers.append("To: " + (mail.to.isEmpty ? "undisclosed-recipients:;" : mail.to.map(formatAddress).joined(separator: ", ")))
         if !mail.cc.isEmpty {
             headers.append("Cc: \(mail.cc.map(formatAddress).joined(separator: ", "))")
+        }
+        // Скрытая копия в уходящее по SMTP письмо не попадает — иначе её
+        // увидят все. Заголовок нужен для копии «Отправленных» и для
+        // Exchange, который сам снимает его при отправке.
+        if includeBcc, !mail.bcc.isEmpty {
+            headers.append("Bcc: \(mail.bcc.map(formatAddress).joined(separator: ", "))")
         }
         headers.append("Subject: \(encodeHeader(mail.subject))")
         headers.append("Date: \(dateHeader(date))")
