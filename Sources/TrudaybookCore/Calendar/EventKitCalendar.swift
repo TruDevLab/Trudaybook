@@ -76,6 +76,15 @@ public protocol CalendarProvider: AnyObject {
     /// передать правку.
     func owns(itemID: String) -> Bool
     func owns(calendarID: String) -> Bool
+
+    /// Описание встречи с оформлением, картинками и файлами — для правой
+    /// панели. `nil` — у календаря есть только текст (`EventInfo.notes`).
+    func richDescription(of item: TimelineItem) async throws -> MailBody?
+}
+
+public extension CalendarProvider {
+    /// EventKit отдаёт описание только текстом.
+    func richDescription(of item: TimelineItem) async throws -> MailBody? { nil }
 }
 
 public enum CalendarError: LocalizedError {

@@ -142,18 +142,15 @@ struct ReplyTemplateTests {
         #expect(history.reduce(0) { $0 + $1.text.count } <= 4000)
     }
 
-    @Test func requestAndAnswerRoundTrip() throws {
-        let payload = TrunookModelRequest.reply(
-            id: "x", language: "ru", me: "me@x.ru", subject: "Договор", from: "Анна <anna@x.ru>",
-            date: Date(timeIntervalSince1970: 0), text: "Когда?",
-            history: [.init(from: "me@x.ru", date: Date(timeIntervalSince1970: -60), text: "Пришлю", mine: true)])
-        #expect(payload["kind"] as? String == "reply")
-        #expect((payload["history"] as? [[String: Any]])?.first?["mine"] as? Bool == true)
-        #expect(JSONSerialization.isValidJSONObject(payload))
-        let answer = Data(#"{"ok":true,"reply":"  Анна, добрый день!\n[дата]  "}"#.utf8)
-        #expect(TrunookModelRequest.parseAnswer(answer) == .reply("Анна, добрый день!\n[дата]"))
-        let empty = Data(#"{"ok":true,"reply":"  "}"#.utf8)
-        if case .failed(let code, _)? = TrunookModelRequest.parseAnswer(empty) { #expect(code == "empty") } else { Issue.record("пустой шаблон принят") }
+    @Test func promptAndAnswer() {
+        let prompt = ModelPrompts.reply(
+            subject: "Договор", from: "Анна <anna@x.ru>", text: "Когда?",
+            history: [.init(from: "me@x.ru", date: Date(timeIntervalSince1970: -60), text: "Пришлю", mine: true)],
+            date: { _ in "вчера" }, language: "ru")
+        #expect(prompt.contains("=== Я · вчера\nПришлю"))
+        #expect(prompt.contains("Решений не принимай"))
+        #expect(ModelPrompts.replyText("```\nТема: Re: Договор\n  Анна, добрый день!\n[дата]  \n```") == "Анна, добрый день!\n[дата]")
+        #expect(ModelPrompts.replyText("  ") == nil)
     }
 }
 

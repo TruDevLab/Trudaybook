@@ -10,8 +10,8 @@ struct MainView: View {
     @AppStorage("inspectorWidth") private var inspectorWidth: Double = MainView.defaultInspectorWidth
     /// Насколько таймлайн выше обычного — тянется ручкой под ним.
     @AppStorage("timelineExtra") private var timelineExtra: Double = 0
-    /// Ширина вертикального таймлайна — тянется ручкой справа от него.
-    @AppStorage("verticalTimelineWidth") private var verticalWidth: Double = 440
+    /// Доля чата с ассистентом в правой колонке, когда под ним открыто письмо.
+    @AppStorage("assistantShare") private var assistantShare: Double = 0.5
     /// Таймлайн тащат за ручку — насколько он сдвинут сейчас.
     @ViewState private var timelineDrag: Double = 0
 
@@ -39,13 +39,13 @@ struct MainView: View {
                 // папок, строка состояния) не может её раздвинуть и сдвинуть
                 // панели, даже если после загрузки писем стало шире.
                 let columnWidth = max(0, geometry.size.width - width - Self.gap)
-                timelineColumn(height: geometry.size.height, width: columnWidth)
+                timelineColumn(height: geometry.size.height)
                     .frame(width: columnWidth)
-                PanelDivider(width: $inspectorWidth, current: width, range: Self.minInspectorWidth...limit)
+                ResizeHandle(value: $inspectorWidth, current: width, range: Self.minInspectorWidth...limit, dimension: .width,
+                             growsTowardStart: true, reset: Self.defaultInspectorWidth, name: String(localized: "ширина правой панели"))
                 // Правая панель — такая же карточка, как остальные: те же
                 // скругления и те же промежутки до соседей и до края окна.
-                InspectorView()
-                    .clipShape(RoundedRectangle(cornerRadius: Panel.radius, style: .continuous))
+                rightColumn(height: geometry.size.height - Self.gap * 2)
                     .frame(width: width - Self.gap)
                     .frame(maxHeight: .infinity)
                     .tourSpot(.inspector)
@@ -67,7 +67,7 @@ struct MainView: View {
         .overlay {
             if model.options.year, model.options.snapshotPath != nil {
                 YearCalendarView {}
-                    .background(RoundedRectangle(cornerRadius: 14).fill(.regularMaterial))
+                    .background(RoundedRectangle(cornerRadius: Radius.lg).fill(.regularMaterial))
             }
         }
         .sheet(item: $model.rescheduleTarget) { item in
@@ -146,92 +146,87 @@ struct MainView: View {
         return max(0, height - fixed)
     }
 
-    /// Левая часть: действия, день, таймлайн, «Не разобрано», месяц и заметка.
-    @ViewBuilder
-    private func timelineColumn(height: Double, width: Double) -> some View {
-        if model.timelineVertical {
-            verticalColumn(width: width)
-        } else {
-            horizontalColumn(height: height)
-        }
-    }
+    /// Части колонки — сверху вниз, в порядке на экране.
+    private enum ColumnPart: Hashable { case timeline, handle, panels }
 
-    /// Вертикальный таймлайн колонкой слева, справа — список писем,
-    /// под ним месяц и заметка.
-    private func verticalColumn(width: Double) -> some View {
-        // Справе нужно место под месяц (290) и хоть сколько-то под заметку.
-        let range = 360.0...max(360, width - Self.gap * 2 - 290 - 140 - Self.gap)
-        let timelineWidth = min(max(verticalWidth, range.lowerBound), range.upperBound)
-        return VStack(spacing: Self.gap) {
-            ActionBar()
-                .tourSpot(.actionBar)
-            DayHeader()
-                .frame(height: Self.dayHeaderHeight)
-            HStack(spacing: 0) {
-                VerticalTimelineView()
-                    .frame(width: timelineWidth)
-                    .tourSpot(.timeline)
-                PanelDivider(width: $verticalWidth, current: timelineWidth, range: range, grows: .right,
-                             defaultWidth: 440)
-                VStack(spacing: Self.gap) {
-                    MailListPanel()
-                        .tourSpot(.mailList)
-                    HStack(alignment: .top, spacing: Self.gap) {
-                        MonthCalendarView()
-                            .frame(width: model.showWeekNumbers ? 290 : 270)
-                            .tourSpot(.month)
-                        DayNotePanel()
-                            .tourSpot(.note)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding([.leading, .top, .bottom], Self.gap)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func horizontalColumn(height: Double) -> some View {
+    /// Левая часть: действия, таймлайн со строкой дня, список писем, месяц
+    /// и заметка. Вертикальный таймлайн — в той же панели и того же размера:
+    /// остальное от него не двигается.
+    private func timelineColumn(height: Double) -> some View {
         let limit = maxTimelineExtra(height)
         let metrics = TimelineMetrics(extra: CGFloat(min(timelineExtra, limit)))
         let atBottom = model.timelineAtBottom
+        // Высоты частей — чтобы, пока таймлайн тащат, знать, куда ему ехать
+        // и где поднять список ему навстречу.
+        let inner = height - Self.gap * 3 - Self.barHeight
+        let timelineHeight = Self.dayHeaderHeight + Self.gap + Double(metrics.panelHeight)
+        let travel = max(0, inner - timelineHeight)
+        let swapAt = TimelineMoveHandle.swapPoint(travel: travel)
+        // Протянули дальше середины — список уже встаёт на место таймлайна,
+        // не дожидаясь, пока отпустят: видно, чем кончится перетаскивание.
+        let swapping = abs(timelineDrag) > swapAt
+        let panelsShift = swapping ? (atBottom ? 1 : -1) * (timelineHeight + Self.gap) : 0
+        let parts: [ColumnPart] = atBottom ? [.panels, .handle, .timeline] : [.timeline, .handle, .panels]
         return VStack(spacing: Self.gap) {
             ActionBar()
                 .tourSpot(.actionBar)
             // Таймлайн со строкой дня — сверху или, по настройке, внизу окна:
             // тогда список писем, месяц и заметка над ним, ближе к панели.
-            // Ручка между ними — промежуток высотой `gap`.
+            // Ручка между ними — промежуток высотой `gap`. `ForEach`, а не
+            // `if`: части сохраняют себя при перестановке — таймлайн доезжает
+            // на новое место, а не появляется там заново.
             VStack(spacing: 0) {
-                if atBottom {
-                    panelsRow
-                    RowDivider(extra: $timelineExtra, current: Double(metrics.extra), range: 0...limit, grows: .up)
-                    timelineBlock(metrics: metrics)
-                        .offset(y: timelineDrag)
-                        .zIndex(1)
-                } else {
-                    timelineBlock(metrics: metrics)
-                        .offset(y: timelineDrag)
-                        .zIndex(1)
-                    RowDivider(extra: $timelineExtra, current: Double(metrics.extra), range: 0...limit)
-                    panelsRow
+                ForEach(parts, id: \.self) { part in
+                    switch part {
+                    case .timeline:
+                        timelineBlock(metrics: metrics, travel: travel, swapAt: swapAt)
+                            // Поднятый таймлайн — на своей подложке: строка дня
+                            // лежит не на панели, и без неё дата наезжала бы
+                            // на строки списка, над которыми едет.
+                            .background {
+                                if timelineDrag != 0 {
+                                    RoundedRectangle(cornerRadius: Panel.radius + Space.xs, style: .continuous)
+                                        .fill(Color(nsColor: .windowBackgroundColor))
+                                        .padding(-Space.xs)
+                                        .shadow(color: .black.opacity(0.2), radius: Space.xl, y: Space.xs)
+                                }
+                            }
+                            .offset(y: timelineDrag)
+                            .zIndex(1)
+                    case .handle:
+                        ResizeHandle(value: $timelineExtra, current: Double(metrics.extra), range: 0...limit, dimension: .height,
+                                     growsTowardStart: atBottom, reset: 0, name: String(localized: "высота таймлайна"))
+                            .opacity(timelineDrag == 0 ? 1 : 0)
+                    case .panels:
+                        panelsRow
+                            .offset(y: panelsShift)
+                            .animation(Motion.move, value: swapping)
+                    }
                 }
             }
         }
         .padding([.leading, .top, .bottom], Self.gap)
         .frame(minWidth: Self.minTimelineWidth, maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            if model.options.demo, let drag = model.options.timelineDrag {
+                timelineDrag = atBottom ? max(-drag, -travel) : min(drag, travel)
+            }
+        }
     }
 
     /// Строка дня и сам таймлайн (или неделя).
-    private func timelineBlock(metrics: TimelineMetrics) -> some View {
+    private func timelineBlock(metrics: TimelineMetrics, travel: Double, swapAt: Double) -> some View {
         VStack(spacing: Self.gap) {
-            HStack(spacing: 4) {
-                TimelineMoveHandle(drag: $timelineDrag)
+            HStack(spacing: Space.xs) {
+                TimelineMoveHandle(drag: $timelineDrag, travel: travel, swapAt: swapAt)
                 DayHeader()
             }
             .frame(height: Self.dayHeaderHeight)
             Group {
                 if model.showsWeek {
                     WeekView()
+                } else if model.timelineVertical {
+                    VerticalTimelineView()
                 } else {
                     TimelineView()
                 }
@@ -262,20 +257,28 @@ struct MainView: View {
 
 /// Ручка слева от строки дня: таймлайн перетаскивают вниз — под список
 /// писем, месяц и заметку, — или обратно наверх. Пока тянут, таймлайн едет
-/// за мышью; отпустили дальше порога — переезжает, иначе возвращается.
+/// за мышью, а за серединой пути список встаёт на его место; отпустили
+/// там — переезжает, раньше — возвращается.
 /// То же, что «Таймлайн в окне» в настройках и ⌥⌘B.
 struct TimelineMoveHandle: View {
     @EnvironmentObject private var model: AppModel
     @Binding var drag: Double
+    /// Сколько ехать таймлайну до другого края: высота списка с промежутком.
+    let travel: Double
+    /// С какого сдвига список уже поменялся местами с таймлайном.
+    let swapAt: Double
     @ViewState private var hovering = false
 
-    /// Сколько протянуть, чтобы таймлайн переехал.
-    static let threshold: Double = 90
+    /// Середина пути, но не меньше 90: короткого рывка мало, чтобы
+    /// таймлайн переехал случайно.
+    static func swapPoint(travel: Double) -> Double {
+        max(90, travel / 2)
+    }
 
     var body: some View {
         let atBottom = model.timelineAtBottom
         Image(systemName: "line.3.horizontal")
-            .font(.system(size: 12, weight: .semibold))
+            .font(.app(.text, weight: .semibold))
             .foregroundStyle(hovering || drag != 0 ? Color.accentColor : Color.secondary)
             .frame(width: 18, height: 26)
             .contentShape(Rectangle())
@@ -285,14 +288,17 @@ struct TimelineMoveHandle: View {
             }
             .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
                 .onChanged { value in
-                    // Тянуть можно только туда, куда таймлайн может уехать.
+                    // Тянуть можно только туда, куда таймлайн может уехать,
+                    // и не дальше другого края.
                     let height = value.translation.height
-                    drag = atBottom ? min(height, 0) : max(height, 0)
+                    drag = atBottom ? max(min(height, 0), -travel) : min(max(height, 0), travel)
                 }
-                .onEnded { value in
-                    let moved = atBottom ? -value.translation.height : value.translation.height
-                    withAnimation(.spring(duration: 0.35, bounce: 0.1)) {
-                        if moved > Self.threshold { model.timelineAtBottom.toggle() }
+                .onEnded { _ in
+                    // Решает то, что уже на экране: список встал на место
+                    // таймлайна — значит, переезд.
+                    let swap = abs(drag) > swapAt
+                    withAnimation(Motion.move) {
+                        if swap { model.timelineAtBottom.toggle() }
                         drag = 0
                     }
                 })
@@ -301,82 +307,71 @@ struct TimelineMoveHandle: View {
     }
 }
 
-/// Ручка между таймлайном и нижним рядом: тянется вниз — таймлайн выше,
-/// дорожки и карточки писем растут; двойной щелчок — обычная высота.
-struct RowDivider: View {
-    @Binding var extra: Double
-    let current: Double
-    let range: ClosedRange<Double>
-    /// Куда растёт таймлайн: таймлайн внизу окна растёт, когда ручку тянут вверх.
-    enum Direction { case down, up }
-    var grows: Direction = .down
-    @ViewState private var dragStart: Double?
-    @ViewState private var hovering = false
+extension MainView {
+    /// Чату и письму под ним — не меньше этого: иначе ни ответа, ни письма не прочесть.
+    static let minSplitPart: Double = 180
 
-    var body: some View {
-        Capsule()
-            .fill(Color.accentColor.opacity(hovering || dragStart != nil ? 0.6 : 0))
-            .frame(width: 60, height: 3)
-            .frame(maxWidth: .infinity)
-            .frame(height: MainView.gap)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                hovering = inside
-                if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-            }
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { value in
-                    let start = dragStart ?? current
-                    if dragStart == nil { dragStart = start }
-                    let delta = grows == .down ? value.translation.height : -value.translation.height
-                    extra = min(max(start + delta, range.lowerBound), range.upperBound)
+    /// Правая колонка. Чат открыт и есть что показать под ним (письмо,
+    /// встреча, ответ, выделение) — чат сверху, выбранное снизу, между ними
+    /// ручка; нечего — чат на всю высоту.
+    ///
+    /// Правая панель — один и тот же вид при открытом и закрытом чате: так
+    /// при открытии письмо плавно уезжает вниз, а чат вырастает сверху
+    /// (`ChatReveal`), а не подменяет одно другим.
+    func rightColumn(height: Double) -> some View {
+        let open = model.assistantOpen
+        let split = model.inspectorHasContent && height - Self.gap > Self.minSplitPart * 2
+        let total = height - Self.gap
+        let upper = total - Self.minSplitPart
+        let chat = split ? min(max(total * assistantShare, Self.minSplitPart), upper) : height
+        return VStack(spacing: 0) {
+            if open {
+                assistantCard
+                    .transition(.asymmetric(
+                        insertion: .modifier(active: ChatReveal(height: 0), identity: ChatReveal(height: chat)),
+                        removal: .modifier(active: ChatReveal(height: 0), identity: ChatReveal(height: chat))))
+                    .frame(height: chat, alignment: .top)
+                if split {
+                    ResizeHandle(value: Binding(get: { assistantShare * total }, set: { assistantShare = $0 / total }),
+                                 current: chat, range: Self.minSplitPart...upper, dimension: .height,
+                                 reset: total / 2, name: String(localized: "высота чата с ассистентом"))
+                        .transition(.opacity)
                 }
-                .onEnded { _ in dragStart = nil })
-            .onTapGesture(count: 2) { extra = 0 }
-            .help("Потяните, чтобы изменить высоту таймлайна; двойной щелчок — обычная высота")
+            }
+            if !open || split {
+                panelCard(InspectorView())
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .animation(Motion.move, value: open)
+    }
+
+    private var assistantCard: some View {
+        panelCard(AssistantChatView(session: model.assistant, ai: model.ai)
+            .background(GlassPanelBackground(fallback: Color(nsColor: .textBackgroundColor))))
+    }
+
+    private func panelCard(_ content: some View) -> some View {
+        content.clipShape(RoundedRectangle(cornerRadius: Panel.radius, style: .continuous))
     }
 }
 
-/// Разделитель между таймлайном и правой панелью: тянется мышью,
-/// ширина запоминается, двойной щелчок возвращает ширину по умолчанию.
-struct PanelDivider: View {
-    @Binding var width: Double
-    /// Ширина, которая сейчас на экране (с учётом пределов окна).
-    let current: Double
-    let range: ClosedRange<Double>
-    /// С какой стороны панель: правая растёт, когда ручку тянут влево,
-    /// левая (вертикальный таймлайн) — когда вправо.
-    enum Side { case left, right }
-    var grows: Side = .left
-    var defaultWidth: Double = MainView.defaultInspectorWidth
-    @ViewState private var dragStart: Double?
-
-    @ViewState private var hovering = false
+/// «Чат с ИИ-ассистентом»: чат открывается в правой колонке над выбранным.
+struct AssistantButton: View {
+    @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        // Сам промежуток между карточками и есть ручка: линия видна
-        // только под курсором.
-        Capsule()
-            .fill(Color.accentColor.opacity(hovering || dragStart != nil ? 0.6 : 0))
-            .frame(width: 3)
-            .padding(.vertical, 40)
-            .frame(width: MainView.gap)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                hovering = inside
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { value in
-                    let start = dragStart ?? current
-                    if dragStart == nil { dragStart = start }
-                    let delta = grows == .left ? -value.translation.width : value.translation.width
-                    width = min(max(start + delta, range.lowerBound), range.upperBound)
-                }
-                .onEnded { _ in dragStart = nil })
-            .onTapGesture(count: 2) { width = defaultWidth }
-            .help("Потяните, чтобы изменить ширину панели; двойной щелчок — ширина по умолчанию")
+        Button {
+            withAnimation(Motion.move) { model.assistantOpen.toggle() }
+        } label: {
+            Label("Ассистент", systemImage: "bubble.left.and.text.bubble.right")
+                .foregroundStyle(model.assistantOpen ? Palette.violet : Color.primary)
+        }
+        .buttonStyle(.plain)
+        .glassCapsule()
+        .labelHelp(model.assistantOpen ? String(localized: "Закрыть чат с ИИ-ассистентом (⌥⌘A)")
+                                       : String(localized: "Чат с ИИ-ассистентом (⌥⌘A)"))
     }
 }
 
@@ -386,7 +381,7 @@ struct ActionBar: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Space.lg) {
             // Только значки: подпись — при наведении. Кнопки — стеклянные
             // капсулы на фоне окна, как панель инструментов macOS 26.
             GlassGroup {
@@ -395,19 +390,19 @@ struct ActionBar: View {
             .layoutPriority(1)
             Spacer(minLength: 0)
             if let problem = model.accessProblem, !model.options.demo {
-                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                InlineNotice(problem)
                     .font(.callout)
-                    .foregroundStyle(.orange)
                     .help("Разрешите доступ в Системных настройках → Конфиденциальность и безопасность")
             }
             UpdateCapsule(updates: model.updates)
             MailStatus()
                 .glassCapsule()
+            AssistantButton()
             // «Создать» — отдельно от действий над выбранным, в правом краю.
             CreateButton()
                 .tourSpot(.create)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, Space.sm)
         .padding(.leading, MainView.windowButtonsWidth)
         .frame(height: MainView.barHeight)
         // Пустые места панели двигают окно — как заголовок, которого больше нет.
@@ -416,7 +411,7 @@ struct ActionBar: View {
 
     private func buttons(compact: Bool) -> some View {
         // Набор и порядок — из настроек («Оформление → Кнопки панели»).
-        HStack(spacing: 6) {
+        HStack(spacing: Space.sm) {
             ForEach(model.toolbarButtons) { button in
                 if let action = button.action {
                     ActionDropButton(action: action, compact: compact)
@@ -452,21 +447,21 @@ private struct MailStatus: View {
             // Места мало — сначала уходит «обновлено в …», потом адрес;
             // всё это остаётся в подсказке. Переносов по буквам не бывает.
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
+                HStack(spacing: Space.md) {
                     Label(model.mailName, systemImage: icon).fixedSize()
                     SyncStatusText(status: status).lineLimit(1).fixedSize()
                     refreshButton(status)
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: Space.md) {
                     Label(model.mailName, systemImage: icon).fixedSize()
                     if status?.error != nil {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warning)
                     }
                     refreshButton(status)
                 }
-                HStack(spacing: 6) {
+                HStack(spacing: Space.sm) {
                     Image(systemName: status?.error != nil ? "exclamationmark.triangle.fill" : icon)
-                        .foregroundStyle(status?.error != nil ? Color.orange : .secondary)
+                        .foregroundStyle(status?.error != nil ? Palette.warning : .secondary)
                     refreshButton(status)
                 }
             }
@@ -474,7 +469,7 @@ private struct MailStatus: View {
             .font(.callout)
             .foregroundStyle(.secondary)
         } else {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.md) {
                 Text("Письма тестовые")
                     .lineLimit(1)
                     .fixedSize()
@@ -569,10 +564,10 @@ struct DayHeader: View {
 
     var body: some View {
         let week = model.showsWeek
-        HStack(spacing: 8) {
+        HStack(spacing: Space.md) {
             Button { model.shiftDay(-1) } label: { Image(systemName: "chevron.left") }
-                .help(week ? String(localized: "Предыдущая неделя (⌘[)") : String(localized: "Предыдущий день (⌘[)"))
-            HStack(spacing: 8) {
+                .labelHelp(week ? String(localized: "Предыдущая неделя (⌘[)") : String(localized: "Предыдущий день (⌘[)"))
+            HStack(spacing: Space.md) {
                 Text(week ? Format.weekTitle(model.weekDays) : Format.dayTitle(model.day))
                     .font(.title3.weight(.semibold))
                     .fixedSize()
@@ -583,7 +578,7 @@ struct DayHeader: View {
             .frame(minWidth: 210, alignment: .leading)
             .fixedSize(horizontal: true, vertical: false)
             Button { model.shiftDay(1) } label: { Image(systemName: "chevron.right") }
-                .help(week ? String(localized: "Следующая неделя (⌘])") : String(localized: "Следующий день (⌘])"))
+                .labelHelp(week ? String(localized: "Следующая неделя (⌘])") : String(localized: "Следующий день (⌘])"))
             // Не гаснет и на сегодня: тогда возвращает шкалу к «сейчас».
             // `Color.primary`: у `.borderless` подпись серая и похожа на выключенную.
             Button { model.showToday() } label: {
@@ -593,7 +588,7 @@ struct DayHeader: View {
 
             // В неделе события на весь день — в шапках дней.
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: Space.sm) {
                     if !week {
                         ForEach(allDay) { item in
                             AllDayChip(item: item)
@@ -603,16 +598,14 @@ struct DayHeader: View {
             }
             .frame(maxWidth: .infinity)
 
-            if !model.timelineVertical {
-                Picker("", selection: $model.timelineSpan) {
-                    Text("День").tag(AppModel.TimelineSpan.day)
-                    Text("Неделя").tag(AppModel.TimelineSpan.week)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .help("День или неделя (⌥⌘1 / ⌥⌘2)")
+            Picker("", selection: $model.timelineSpan) {
+                Text("День").tag(AppModel.TimelineSpan.day)
+                Text("Неделя").tag(AppModel.TimelineSpan.week)
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .help("День или неделя (⌥⌘1 / ⌥⌘2)")
 
             // Разобранные письма — прятать с таймлайна или показывать с галочкой.
             Button {
@@ -621,21 +614,26 @@ struct DayHeader: View {
                 Image(systemName: model.hideResolvedMail ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                     .foregroundStyle(model.hideResolvedMail ? Color.accentColor : .primary)
             }
-            .help(model.hideResolvedMail
+            .labelHelp(model.hideResolvedMail
                   ? String(localized: "Разобранные письма скрыты — показать (⇧⌘H)")
                   : String(localized: "Скрыть разобранные письма с таймлайна (⇧⌘H)"))
             Button {
                 withAnimation(HoverMotion.animation) { model.timelineVertical.toggle() }
             } label: {
-                Image(systemName: model.timelineVertical ? "rectangle.split.1x2" : "rectangle.split.2x1")
+                // Повёрнутый прямоугольник — каким станет таймлайн: стрелки ↕/↔
+                // читались как сортировка, а она рядом, у списка писем.
+                Image(systemName: model.timelineVertical ? "rectangle.landscape.rotate" : "rectangle.portrait.rotate")
             }
-            .help(model.timelineVertical ? String(localized: "Таймлайн слева направо (⌥⌘L)") : String(localized: "Таймлайн сверху вниз (⌥⌘L)"))
+            // У недели дни и так колонками — повернуть можно только день.
+            .disabled(week)
+            .labelHelp(week ? String(localized: "Поворачивается только день: в неделе дни и так колонками")
+                       : model.timelineVertical ? String(localized: "Таймлайн слева направо (⌥⌘L)") : String(localized: "Таймлайн сверху вниз (⌥⌘L)"))
             Button { SettingsWindow.show(model: model, tab: .calendars) } label: { Image(systemName: "calendar.badge.checkmark") }
-                .help("Какие календари показывать")
+                .labelHelp(String(localized: "Какие календари показывать"))
             Button { model.zoom(by: 0.8) } label: { Image(systemName: "minus.magnifyingglass") }
-                .help("Мельче (⌘−)")
+                .labelHelp(String(localized: "Мельче (⌘−)"))
             Button { model.zoom(by: 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
-                .help("Крупнее (⌘=)")
+                .labelHelp(String(localized: "Крупнее (⌘=)"))
         }
         .buttonStyle(.borderless)
     }
@@ -647,7 +645,7 @@ struct AllDayChip: View {
 
     var body: some View {
         let done = model.status(of: item).isDone
-        HStack(spacing: 4) {
+        HStack(spacing: Space.xs) {
             // Напоминание на весь день отмечается тут же, кружком.
             if item.kind == .reminder {
                 ReminderCheckbox(item: item, size: 12)
@@ -658,13 +656,14 @@ struct AllDayChip: View {
         }
             .font(.callout)
             .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(item.swiftUIColor.opacity(0.18)))
+            .padding(.horizontal, Space.md)
+            .padding(.vertical, Space.xxs)
+            .background(Capsule().fill(item.swiftUIColor.opacity(Alpha.tint)))
             .overlay(Capsule().strokeBorder(model.selectedID == item.id ? Color.accentColor : .clear, lineWidth: 2))
             .opacity(done ? 0.5 : 1)
             .contentShape(Capsule())
             .onTapGesture { model.selectedID = item.id }
+            .actsAsButton { model.selectedID = item.id }
             .draggable(item.id)
     }
 }
@@ -708,8 +707,8 @@ extension TimelineItem {
         guard let color else {
             switch kind {
             case .mail: return .accentColor
-            case .event: return .blue
-            case .reminder: return .orange
+            case .event: return Palette.info
+            case .reminder: return Palette.reminder
             }
         }
         return Color(red: color.red, green: color.green, blue: color.blue)
@@ -745,6 +744,14 @@ enum Format {
     }
 
     static func time(_ date: Date) -> String { time.string(from: date) }
+
+    private static let shortDay = formatter("EE, d MMM", "EEdMMM")
+
+    /// «Чт, 24 сент.» — над колонкой дня, где длинная дата не помещается.
+    static func shortDayTitle(_ date: Date) -> String {
+        let text = shortDay.string(from: date)
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
 
     private static let dayMonth = formatter("d MMMM", "dMMMM")
     private static let dayOnly = formatter("d", "d")
@@ -784,5 +791,18 @@ enum Format {
     static func range(_ start: Date, _ end: Date?) -> String {
         guard let end else { return time(start) }
         return "\(time(start))–\(time(end))"
+    }
+}
+
+/// Чат вырастает сверху: высота от нуля до своей, содержимое прижато
+/// к верху и обрезано — а не выезжает целиком и не проявляется.
+private struct ChatReveal: ViewModifier {
+    let height: Double
+
+    func body(content: Content) -> some View {
+        content
+            .frame(height: height, alignment: .top)
+            .clipped()
+            .opacity(height > 0 ? 1 : 0)
     }
 }

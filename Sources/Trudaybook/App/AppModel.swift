@@ -53,6 +53,14 @@ struct LaunchOptions {
     /// Заготовка новой встречи, как будто «+» держат над этим временем
     /// выбранного дня: `--drop-preview 15:30` — для снимка.
     var dropPreview: String?
+    /// Таймлайн «тащат» за ручку на столько точек: `--timeline-drag 300` — для снимка.
+    var timelineDrag: Double?
+    /// Окно встречи сразу с выбором ссылки на созвон: `--link-picker` — для снимка.
+    var linkPicker = false
+    /// Чат с ассистентом открыт: `--assistant`; `--ask "вопрос"` — и задан вопрос
+    /// (настоящая просьба к местной модели; снимок ждёт ответа).
+    var assistant = false
+    var ask: String?
     /// Связь с Trunook в тестовом режиме: плашки ложатся в папку
     /// `~/Library/Caches/TrudaybookDemo/trunook-inbox`, а не в вырез.
     var trunookProbe = false
@@ -90,6 +98,12 @@ struct LaunchOptions {
     var agendaOffline = false
     /// Выбранное письмо — в отдельном окне перед снимком: `--select mail --letter`.
     var letter = false
+    /// Письмо из карточки ассистента — в отдельном окне: `--compose-window`.
+    var composeWindow = false
+    /// Набранное в поле чата — для снимка: `--assistant --chat-input "текст"`.
+    var chatInput: String?
+    /// Нажатая плитка чата — для снимка: `--tile retell` (снимок ждёт ответа).
+    var tile: String?
     /// Письмо из файла `.eml` — отдельным окном: `--open-file /путь/письмо.eml`.
     var openFile: String?
     /// Выделить первые N строк списка, как ⇧-щелчком: `--multi 3`.
@@ -132,6 +146,12 @@ struct LaunchOptions {
             case "--vertical": options.vertical = true
             case "--week": options.week = true
             case "--drop-preview": options.dropPreview = iterator.next()
+            case "--timeline-drag": options.timelineDrag = iterator.next().flatMap(Double.init)
+            case "--link-picker": options.linkPicker = true
+            case "--assistant": options.assistant = true
+            case "--ask":
+                options.assistant = true
+                options.ask = iterator.next()
             case "--work-week": options.week = true; options.workWeek = true
             case "--trunook-probe": options.trunookProbe = true
             case "--prefill": options.prefill = iterator.next()
@@ -154,6 +174,13 @@ struct LaunchOptions {
             case "--digest": options.digest = true
             case "--agenda-offline": options.agendaOffline = true
             case "--letter": options.letter = true
+            case "--compose-window": options.composeWindow = true
+            case "--tile":
+                options.assistant = true
+                options.tile = iterator.next()
+            case "--chat-input":
+                options.assistant = true
+                options.chatInput = iterator.next()
             case "--open-file": options.openFile = iterator.next()
             case "--multi": options.multi = iterator.next().flatMap(Int.init)
             case "--tour": options.tourStep = iterator.next().flatMap(Int.init) ?? 0
@@ -273,11 +300,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var labels: [String: StoredLabel] = [:]
     /// Фильтр «Не разобрано» по метке; `nil` — все.
     @Published var labelFilter: MailLabel?
-    /// Пересказы писем моделью Trunook — только в памяти: это производное
+    /// Пересказы писем местной моделью — только в памяти: это производное
     /// от письма, и хранить его на диске незачем.
     @Published private(set) var summaries: [String: SummaryState] = [:]
     @Published private(set) var labeling: LabelingState = .idle
-    let trunookModel = TrunookModel()
+    /// Местная модель (Ollama на этом Mac) — для всего ИИ в приложении.
+    let ai: LocalAI
+    /// Чат с ассистентом в правой панели.
+    let assistant = AssistantSession()
+    /// Правая панель показывает чат, а не выбранное. Ответ или новое письмо
+    /// из карточки открываются поверх, закрыли — снова чат.
+    @Published var assistantOpen = false
     private var lastAutoLabel: Date?
     /// «Не разобрано» — раскрывающимися разделами по датам.
     @Published var groupByDate = UserDefaults.standard.object(forKey: "groupByDate") as? Bool ?? true {
@@ -364,7 +397,8 @@ final class AppModel: ObservableObject {
             Task { await reload() }
         }
     }
-    /// Встречи и напоминания всей недели — для недельного вида.
+    /// Встречи и напоминания нескольких дней: всей недели для недельного
+    /// вида, выбранного и следующего дня — для вертикального.
     @Published private(set) var weekItems: [TimelineItem] = []
 
     /// Что недельный вид показывает на календаре.
@@ -469,8 +503,21 @@ final class AppModel: ObservableObject {
         item.kind == .mail && StatusRules.status(of: item, local: states[item.id], now: now).isDone
     }
 
-    /// Неделя показывается только в горизонтальном виде.
-    var showsWeek: Bool { timelineSpan == .week && !timelineVertical }
+    /// Неделя — одна в обоих видах: в ней дни и так колонками, часы сверху
+    /// вниз. Поворот (`timelineVertical`) — только у дня.
+    var showsWeek: Bool { timelineSpan == .week }
+
+    /// Дни вертикального таймлайна: выбранный и следующий. Второй виден,
+    /// если хватает ширины, но грузятся оба — ширина меняется без перезагрузки.
+    var verticalDays: [Date] {
+        [day] + (calendar.date(byAdding: .day, value: 1, to: day).map { [$0] } ?? [])
+    }
+
+    /// Встречи и напоминания дня из загруженных нескольких дней.
+    func events(on date: Date) -> [TimelineItem] {
+        guard let end = calendar.date(byAdding: .day, value: 1, to: date) else { return [] }
+        return weekItems.filter { $0.time < end && ($0.end ?? $0.time.addingTimeInterval(1)) > date }
+    }
 
     /// Дни недели выбранного дня: с понедельника, 7 или 5.
     var weekDays: [Date] {
@@ -487,8 +534,9 @@ final class AppModel: ObservableObject {
     @Published var timelineVertical = UserDefaults.standard.bool(forKey: "timelineVertical") {
         didSet {
             if !options.demo { UserDefaults.standard.set(timelineVertical, forKey: "timelineVertical") }
-            // Неделя есть только у горизонтального — встречи грузятся заново.
-            if timelineSpan == .week, timelineVertical != oldValue { Task { await reload() } }
+            // У вертикального дня свои дни (выбранный и следующий): встречи
+            // грузятся заново. Неделе поворот не нужен.
+            if timelineVertical != oldValue, !showsWeek { Task { await reload() } }
         }
     }
     // MARK: Фон окна (см. `Backgrounds.swift`)
@@ -528,6 +576,17 @@ final class AppModel: ObservableObject {
     @Published var joinHotKey: Bool = UserDefaults.standard.object(forKey: "joinHotKey") as? Bool ?? true {
         didSet { if !options.demo { UserDefaults.standard.set(joinHotKey, forKey: "joinHotKey") } }
     }
+    /// В начале встречи открыть её ссылку — для всех встреч (`MeetingAutoJoin`);
+    /// у встречи может быть своя отметка (`autoJoinOverrides`).
+    @Published var autoJoinMeetings: Bool = UserDefaults.standard.bool(forKey: "autoJoinMeetings") {
+        didSet { if !options.demo { UserDefaults.standard.set(autoJoinMeetings, forKey: "autoJoinMeetings") } }
+    }
+    /// Своя отметка встреч: ключи — `AutoJoinRules.keys`, в state.sqlite.
+    @Published private(set) var autoJoinOverrides: [String: Bool] = [:]
+    /// Свои постоянные ссылки на созвон (личная комната Zoom, Телемост…) —
+    /// для окна встречи. В state.sqlite, а не в настройках: в ссылке бывает
+    /// пароль встречи, место ему — рядом с остальными данными, не в plist.
+    @Published private(set) var ownMeetingLinks: [MeetingLink] = []
     /// Панели полупрозрачные — фон не системный.
     var customBackground: Bool { background != .system }
 
@@ -633,12 +692,16 @@ final class AppModel: ObservableObject {
     let notifier = MailNotifier()
     /// Плашки в вырезе Trunook сверх писем: приглашения, встречи, отложенное.
     let trunook = TrunookBridge()
+    let autoJoin = MeetingAutoJoin()
     /// Проверка и установка новых версий с GitHub.
     private(set) var updates = UpdateService()
     /// Письма, о которых уже известно, — новые сверх них и есть «пришло письмо».
     private var knownMailIDs: Set<String>?
     /// Тело выбранного письма.
     @Published private(set) var body: MailBody?
+    /// Описание выбранной встречи с оформлением и картинками (Exchange);
+    /// `nil` — есть только текст из календаря.
+    @Published private(set) var eventBody: MailBody?
     /// Открытый черновик ответа и письмо, на которое отвечаем.
     @Published var draft: OutgoingMail?
     private(set) var draftReplyTo: String?
@@ -740,6 +803,7 @@ final class AppModel: ObservableObject {
 
     init(options: LaunchOptions) {
         self.options = options
+        ai = LocalAI(demo: options.demo)
         let offset = options.fixedNow.map { $0.timeIntervalSinceNow } ?? 0
         clockOffset = offset
         let clock: @Sendable () -> Date = { Date().addingTimeInterval(offset) }
@@ -767,6 +831,9 @@ final class AppModel: ObservableObject {
         priorities = store.allPriorities()
         labels = store.allLabels()
         noteDays = store.daysWithNotes()
+        autoJoinOverrides = store.allAutoJoin()
+        ownMeetingLinks = (store.meta(Self.ownLinksKey) ?? "")
+            .split(separator: "\n").compactMap { MeetingLinkHistory.parse(String($0)) }
         if options.demo {
             sortByPriority = options.sortByPriority
             if options.aurora { background = .aurora }
@@ -794,6 +861,9 @@ final class AppModel: ObservableObject {
                                     pretendVersion: options.pretendVersion, firstCheckDelay: 1)
         }
         trunook.model = self
+        autoJoin.model = self
+        assistant.app = self
+        assistant.persists = !options.demo
         directWeather.trunookFresh = { [weak self] in self?.trunookWeatherFresh ?? false }
         directWeather.onUpdate = { [weak self] in self?.loadWeather() }
         if options.demo {
@@ -807,31 +877,23 @@ final class AppModel: ObservableObject {
             // Кроме обучения: оно живёт рядом с настоящей почтой, а папка — общая.
             TrunookLink.shared.inbox = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Caches/TrudaybookDemo/trunook-inbox", isDirectory: true)
-            // Пересказ и разметка по флагу — настоящая просьба к Trunook
+            // Пересказ и разметка по флагу — настоящая просьба к местной модели
             // (тестовые письма вымышленные); сводка и заметки остаются в кэше.
             let asksModel = options.summary || options.labelMail || options.agenda || options.digest || options.template
-            // `--trunook-real-folders`: сводка и команды — в настоящих папках,
-            // чтобы живой Trunook увидел тестовую почту (проверка помощника).
+            ai.enabled = true
+            ai.autoLabel = false
+            // `--trunook-real-folders`: сводка — в настоящих папках, чтобы
+            // живой Trunook увидел тестовую почту.
             if !options.trunookRealFolders {
                 trunook.stateFolder = FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent("Library/Caches/TrudaybookDemo/trunook-state", isDirectory: true)
                 trunook.focusFile = trunook.stateFolder.appendingPathComponent("focus.json")
-                trunook.commands.folder = trunook.stateFolder.appendingPathComponent("commands", isDirectory: true)
             }
-            trunook.acceptCommands = options.trunookProbe
             trunook.shareDayNotes = options.trunookProbe
-            if !options.trunookRealFolders && !asksModel {
-                let cache = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Library/Caches/TrudaybookDemo", isDirectory: true)
-                trunookModel.requests = cache.appendingPathComponent("trunook-model-requests", isDirectory: true)
-                trunookModel.answers = cache.appendingPathComponent("trunook-model-answers", isDirectory: true)
-            }
-            trunook.modelHelp = true
-            trunook.autoLabel = false
             // Включается последним: включение сразу пишет сводку, и до смены
             // папок она легла бы в настоящую папку Trudaybook поверх сводки
             // живой почты — так и случилось 27 сентября.
-            trunook.isEnabled = options.trunookProbe || asksModel
+            trunook.isEnabled = options.trunookProbe
         }
         notifier.onOpen = { [weak self] id in self?.open(itemID: id) }
         notifier.onReplyInApp = { [weak self] id in self?.open(itemID: id, reply: true) }
@@ -928,9 +990,10 @@ final class AppModel: ObservableObject {
         // перехватила бы у неё ответы из уведомлений и из выреза.
         if !options.tour {
             notifier.activate()
-            trunook.start()
         }
         loadWeather()
+        // Есть ли Ollama и какие модели — чтобы кнопки ИИ знали, что сказать.
+        Task { await ai.refresh() }
         await calendarSource.requestAccess()
         loadCalendarSources()
         for account in accounts {
@@ -955,11 +1018,15 @@ final class AppModel: ObservableObject {
                 }
                 self.recompute()
                 self.loadWeather()
-                if !self.options.tour { Task { await self.trunook.tick() } }
+                if !self.options.tour {
+                    Task { await self.trunook.tick() }
+                    Task { await self.autoJoin.tick() }
+                }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        if !options.tour { await autoJoin.tick() }
         if options.trunookProbe { await trunook.probe() }
     }
 
@@ -977,8 +1044,11 @@ final class AppModel: ObservableObject {
         // Почта — от порога «Не разобрано» (или от выбранного дня, если он
         // раньше): отложенное письмо могло приехать на этот день из прошлого.
         // В неделе — от её понедельника: письма показываются на всех днях.
-        let mailFrom = min(showsWeek ? (weekDays.first ?? day) : day, mailCutoff)
-        let mailTo = max(dayEnd, now.addingTimeInterval(60))
+        // Несколько дней: неделя или два дня вертикального вида.
+        let span: [Date]? = showsWeek ? weekDays : timelineVertical ? verticalDays : nil
+        let spanEnd = span?.last.flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
+        let mailFrom = min(span?.first ?? day, mailCutoff)
+        let mailTo = max(spanEnd ?? dayEnd, now.addingTimeInterval(60))
         do {
             allMail = try await mail.messages(from: mailFrom, to: mailTo)
             clearFalseArchiveMarks()
@@ -986,10 +1056,9 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = String(localized: "Почта не загрузилась: \(error.localizedDescription)")
         }
-        if showsWeek, let first = weekDays.first, let last = weekDays.last,
-           let weekEnd = calendar.date(byAdding: .day, value: 1, to: last) {
-            // Неделя одним запросом; день — из неё же.
-            weekItems = await calendarSource.items(from: first, to: weekEnd)
+        if let first = span?.first, let spanEnd {
+            // Все дни одним запросом; выбранный — из них же.
+            weekItems = await calendarSource.items(from: first, to: spanEnd)
             events = weekItems.filter { $0.time < dayEnd && ($0.end ?? $0.time.addingTimeInterval(1)) > day }
         } else {
             weekItems = []
@@ -1318,6 +1387,16 @@ final class AppModel: ObservableObject {
             error: error,
             isSyncing: known.contains { $0.1.isSyncing }
         )
+    }
+
+    /// Почта с запуска ещё ни разу не обновилась: пустое «Не разобрано» —
+    /// это «ещё не знаем», а не «всё разобрано». Ящик с ошибкой не ждём —
+    /// о ней скажет строка состояния.
+    var isAwaitingFirstMail: Bool {
+        accounts.contains { account in
+            guard let status = syncStatuses[account.id] else { return true }
+            return status.lastSync == nil && status.error == nil
+        }
     }
 
     /// Подпись почты: адрес единственного ящика или «2 ящика».
@@ -1745,46 +1824,40 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Можно ли просить модель Trunook: связь включена и разрешена помощь модели.
-    var trunookModelAllowed: Bool { trunook.isEnabled && trunook.modelHelp }
+    /// Включён ли ИИ: кнопки пересказа, шаблона, повестки видны. Почему
+    /// модель всё же не ответит (нет Ollama, нет модели), скажет сама просьба.
+    var aiEnabled: Bool { ai.enabled }
 
-    /// Пересказ открытого письма моделью Trunook.
+    /// Пересказ открытого письма местной моделью.
     func summarize(_ item: TimelineItem, again: Bool = false) {
         guard item.kind == .mail, let body, selectedID == item.id else { return }
         // Готовый или идущий пересказ не просим заново; неудавшийся — можно.
         if !again, let state = summaries[item.id] {
             if case .failed = state {} else { return }
         }
-        guard trunookModelAllowed else {
-            summaries[item.id] = .failed(code: "disabled", message: String(localized: "Включите в настройках Trudaybook → Trunook связь и помощь модели."))
-            return
-        }
-        let text = TrunookModelRequest.plainText(body)
+        let text = MailModel.plainText(body)
         guard !text.isEmpty else {
             summaries[item.id] = .failed(code: "empty", message: String(localized: "В письме нет текста для пересказа."))
             return
         }
         summaries[item.id] = .loading
-        let id = UUID().uuidString
-        let payload = TrunookModelRequest.summary(
-            id: id, language: AppLanguage.code, subject: item.title,
-            from: item.mail?.from.display ?? "", date: item.time, text: text)
-        DebugLog.write("Trunook: просим пересказ письма (\(text.count) знаков)")
+        let prompt = ModelPrompts.summary(subject: item.title, from: item.mail?.from.display ?? "",
+                                          text: text, language: AppLanguage.code)
         Task {
-            let answer = await trunookModel.ask(payload, id: id, timeout: 240)
-            switch answer {
-            case .summary(let summary):
-                summaries[item.id] = .ready(summary)
-            case let .failed(code, message):
-                DebugLog.write("Trunook: пересказа нет — \(code)")
-                summaries[item.id] = .failed(code: code, message: message)
-            case .labels, .agenda, .text, .reply:
-                summaries[item.id] = .failed(code: "unreadable", message: String(localized: "Ответ Trunook не разобрался."))
+            switch await ai.complete(prompt, purpose: "пересказ письма, \(text.count) знаков") {
+            case .success(let answer):
+                if let summary = ModelPrompts.summaryText(answer) {
+                    summaries[item.id] = .ready(summary)
+                } else {
+                    summaries[item.id] = .failed(code: "empty", message: String(localized: "Модель вернула пустой ответ."))
+                }
+            case .failure(let failure):
+                summaries[item.id] = .failed(code: failure.code, message: failure.message)
             }
         }
     }
 
-    /// Шаблон ответа: Trunook читает последнее письмо и прошлую переписку
+    /// Шаблон ответа: модель читает последнее письмо и прошлую переписку
     /// и готовит черновик, где отвечено на каждый вопрос. Решений за
     /// человека он не принимает — на их месте пометки в скобках.
     ///
@@ -1795,13 +1868,13 @@ final class AppModel: ObservableObject {
         guard item.kind == .mail, let info = item.mail else {
             return .failure(.init(code: "kind", message: String(localized: "Шаблон ответа готовится только на письмо.")))
         }
-        guard trunookModelAllowed else {
-            return .failure(.init(code: "disabled", message: String(localized: "Включите в настройках Trudaybook → Trunook связь и помощь модели.")))
+        if let problem = ai.problem {
+            return .failure(.init(code: "disabled", message: problem))
         }
         guard let letter = try? await mail.body(of: item.id) else {
             return .failure(.init(code: "body", message: String(localized: "Письмо не открылось — шаблон не подготовить.")))
         }
-        let text = ReplyHistory.stripQuoted(TrunookModelRequest.plainText(letter))
+        let text = ReplyHistory.stripQuoted(MailModel.plainText(letter))
         guard !text.isEmpty else {
             return .failure(.init(code: "empty", message: String(localized: "В письме нет текста, на который можно ответить.")))
         }
@@ -1817,43 +1890,38 @@ final class AppModel: ObservableObject {
         let thread = ThreadGrouping.group(known, time: \.time).first { $0.items.contains { $0.id == item.id } }
         let older = (thread?.items ?? []).filter { $0.id != item.id && $0.time < item.time }.sorted { $0.time < $1.time }
         var texts: [String: String] = [:]
-        for earlier in older.suffix(TrunookModelRequest.maxHistoryLetters) {
+        for earlier in older.suffix(MailModel.maxHistoryLetters) {
             guard let earlierInfo = earlier.mail else { continue }
             if isMine(earlierInfo.from) || isRead(earlier), let body = try? await mail.body(of: earlier.id) {
-                texts[earlier.id] = TrunookModelRequest.plainText(body)
+                texts[earlier.id] = MailModel.plainText(body)
             } else if !earlierInfo.snippet.isEmpty {
                 texts[earlier.id] = earlierInfo.snippet
             }
         }
         let history = ReplyHistory.letters(older: older, texts: texts, isMine: isMine)
 
-        let id = UUID().uuidString
-        let me = mail.ownAddresses.sorted().first ?? ""
-        let payload = TrunookModelRequest.reply(
-            id: id, language: AppLanguage.code, me: me, subject: item.title, from: info.from.formatted,
-            date: item.time, text: text, history: history)
-        DebugLog.write("Trunook: просим шаблон ответа — писем в истории \(history.count)")
-        switch await trunookModel.ask(payload, id: id, timeout: 300, kind: "reply") {
-        case .reply(let template):
-            DebugLog.write("Trunook: шаблон ответа готов")
+        let prompt = ModelPrompts.reply(subject: item.title, from: info.from.formatted, text: text, history: history,
+                                        date: { ISO8601DateFormatter().string(from: $0) }, language: AppLanguage.code)
+        switch await ai.complete(prompt, purpose: "шаблон ответа, писем в истории \(history.count)") {
+        case .success(let answer):
+            guard let template = ModelPrompts.replyText(answer) else {
+                return .failure(.init(code: "empty", message: String(localized: "Модель вернула пустой шаблон.")))
+            }
             return .success(template)
-        case let .failed(code, message):
-            DebugLog.write("Trunook: шаблона нет — \(code)")
-            return .failure(.init(code: code, message: message))
-        case .summary, .labels, .agenda, .text:
-            return .failure(.init(code: "unreadable", message: String(localized: "Ответ Trunook не разобрался.")))
+        case .failure(let failure):
+            return .failure(.init(code: failure.code, message: failure.message))
         }
     }
 
-    /// Разметить неразобранные письма моделью Trunook.
+    /// Разметить неразобранные письма местной моделью.
     ///
     /// Берутся письма без метки от человека или Trunook и без метки по
     /// правилу: рассылку по `List-Unsubscribe` модель не угадает лучше
     /// заголовка. Пачками по 25, по очереди — местная модель одна.
     func labelUnresolved(manual: Bool) {
         if case .running = labeling { return }
-        guard trunookModelAllowed else {
-            if manual { labeling = .failed(String(localized: "Включите в настройках Trudaybook → Trunook связь и помощь модели.")) }
+        if let problem = ai.problem {
+            if manual { labeling = .failed(problem) }
             return
         }
         let pending = unresolved.filter { item in
@@ -1865,44 +1933,43 @@ final class AppModel: ObservableObject {
             return
         }
         labeling = .running(done: 0, total: pending.count)
-        DebugLog.write("Trunook: разметка — писем \(pending.count)")
+        DebugLog.write("ИИ: разметка — писем \(pending.count)")
         Task {
             var done = 0
             var labelled = 0
-            for start in stride(from: 0, to: pending.count, by: TrunookModelRequest.batchSize) {
-                let batch = Array(pending[start ..< min(start + TrunookModelRequest.batchSize, pending.count)])
-                let (letters, ids) = TrunookModelRequest.letters(batch)
-                let id = UUID().uuidString
-                let answer = await trunookModel.ask(
-                    TrunookModelRequest.labels(id: id, language: AppLanguage.code, letters: letters),
-                    id: id, timeout: 300)
-                switch answer {
-                case .labels(let found):
-                    for (key, label) in found {
+            for start in stride(from: 0, to: pending.count, by: MailModel.batchSize) {
+                let batch = Array(pending[start ..< min(start + MailModel.batchSize, pending.count)])
+                let (letters, ids) = MailModel.letters(batch)
+                let prompt = ModelPrompts.labels(letters, language: AppLanguage.code)
+                switch await ai.complete(prompt, purpose: "метки, писем \(letters.count)") {
+                case .success(let answer):
+                    // Источник `.trunook` — имя метки «от модели» в базе; переименовать
+                    // значило бы потерять уже поставленные.
+                    for (key, label) in ModelPrompts.labels(in: answer, keys: Set(ids.keys)) {
                         guard let itemID = ids[key], MailLabelRules.trunookMayWrite(over: labels[itemID]) else { continue }
                         setLabel(label, for: itemID, source: .trunook)
                         labelled += 1
                     }
-                case let .failed(code, message):
-                    DebugLog.write("Trunook: разметка прервана — \(code)")
-                    labeling = .failed(message)
+                case .failure(let failure):
+                    DebugLog.write("ИИ: разметка прервана — \(failure.code)")
+                    labeling = .failed(failure.message)
                     return
-                case .summary, .agenda, .text, .reply:
-                    break
                 }
                 done += batch.count
                 labeling = .running(done: done, total: pending.count)
             }
-            DebugLog.write("Trunook: разметка готова — метки у \(labelled)")
+            DebugLog.write("ИИ: разметка готова — метки у \(labelled)")
             labeling = .finished(count: labelled)
         }
     }
 
     /// Сама — не чаще раза в десять минут и только если это разрешено.
     private func autoLabel() {
-        guard trunookModelAllowed, trunook.autoLabel, !options.demo || options.labelMail else { return }
+        guard ai.enabled, ai.autoLabel || options.labelMail, !options.demo || options.labelMail else { return }
         if let lastAutoLabel, now.timeIntervalSince(lastAutoLabel) < 600 { return }
-        guard trunookModel.isTrunookRunning else { return }
+        // Сама разметка Ollama не будит: модель на гигабайты в памяти ради
+        // меток в фоне — не то, чего ждут от почты.
+        guard ai.isRunning, ai.activeModel != nil else { return }
         lastAutoLabel = now
         labelUnresolved(manual: false)
     }
@@ -1936,6 +2003,10 @@ final class AppModel: ObservableObject {
 
     var selectedItem: TimelineItem? { item(selectedID) }
 
+    /// Есть ли что показать в правой панели — тогда чат с ассистентом
+    /// делит колонку с ней, а не занимает её целиком.
+    var inspectorHasContent: Bool { draft != nil || multiSelection.count > 1 || selectedItem != nil }
+
     func status(of item: TimelineItem) -> ItemStatus {
         StatusRules.status(of: item, local: states[item.id], now: now)
     }
@@ -1950,8 +2021,25 @@ final class AppModel: ObservableObject {
 
     private func loadBody() {
         body = nil
+        eventBody = nil
         invitation = nil
         invitationDayEvents = []
+        if let item = selectedItem, item.kind == .event {
+            let id = item.id
+            Task {
+                let loaded: MailBody?
+                do {
+                    loaded = try await calendarSource.richDescription(of: item)
+                } catch {
+                    // Текст из календаря остаётся — без оформления, но описание есть.
+                    DebugLog.write("описание встречи не загрузилось: \(MailAccounts.describe(error))")
+                    loaded = nil
+                }
+                guard selectedID == id else { return }
+                eventBody = loaded
+            }
+            return
+        }
         guard let item = selectedItem, item.kind == .mail else { return }
         let id = item.id
         Task {
@@ -2172,6 +2260,88 @@ final class AppModel: ObservableObject {
         return Set(items.filter { $0.kind == .event }.map { calendar.startOfDay(for: $0.time) })
     }
 
+    /// Сейчас — с учётом `--now`: точный таймер автоподключения срабатывает
+    /// между тиками часов, когда `now` ещё старое.
+    var currentTime: Date { Date().addingTimeInterval(clockOffset) }
+
+    /// Встречи вокруг этой минуты — для автоподключения: начавшиеся не позже
+    /// `AutoJoinRules.grace` назад и начинающиеся в ближайшую минуту.
+    /// Отменённые письмом — помечены, их правило пропустит.
+    func autoJoinCandidates(now: Date) async -> [TimelineItem] {
+        markCancelled(await calendarSource.items(from: now.addingTimeInterval(-AutoJoinRules.grace),
+                                                 to: now.addingTimeInterval(90)))
+            .filter { $0.kind == .event }
+    }
+
+    /// Откроется ли ссылка встречи в её начале.
+    func autoJoins(_ item: TimelineItem) -> Bool {
+        AutoJoinRules.isEnabled(item, overrides: autoJoinOverrides, global: autoJoinMeetings)
+    }
+
+    /// Своя отметка встречи. Совпала с общей настройкой — отметка не нужна:
+    /// встреча и дальше будет как все.
+    func setAutoJoin(_ enabled: Bool, for item: TimelineItem) {
+        let stored: Bool? = enabled == autoJoinMeetings ? nil : enabled
+        do {
+            for key in AutoJoinRules.keys(of: item) {
+                try store.setAutoJoin(stored, for: key)
+                autoJoinOverrides[key] = stored
+            }
+        } catch {
+            errorMessage = String(localized: "Настройка встречи не сохранилась: \(error.localizedDescription)")
+        }
+        Task { await autoJoin.tick() }
+    }
+
+    private static let ownLinksKey = "own_meeting_links"
+
+    /// Добавить свою ссылку; `false` — в тексте нет ссылки на созвон.
+    @discardableResult
+    func addOwnMeetingLink(_ text: String) -> Bool {
+        guard let link = MeetingLinkHistory.parse(text) else { return false }
+        guard !ownMeetingLinks.contains(where: { $0.url == link.url }) else { return true }
+        saveOwnMeetingLinks(ownMeetingLinks + [link])
+        return true
+    }
+
+    func removeOwnMeetingLink(_ link: MeetingLink) {
+        saveOwnMeetingLinks(ownMeetingLinks.filter { $0.url != link.url })
+    }
+
+    private func saveOwnMeetingLinks(_ links: [MeetingLink]) {
+        do {
+            try store.setMeta(Self.ownLinksKey, links.map(\.url.absoluteString).joined(separator: "\n"))
+            ownMeetingLinks = links
+        } catch {
+            errorMessage = String(localized: "Ссылка не сохранилась: \(error.localizedDescription)")
+        }
+    }
+
+    /// Ссылки из своих прошедших встреч за три месяца — для окна новой
+    /// встречи. Будущие повторения не берём: у них та же ссылка, а дата
+    /// «через месяц» в списке прошлых встреч путает.
+    /// Своя: без организатора или организатор — я.
+    func recentMeetingLinks() async -> [MeetingLinkHistory.Entry] {
+        let events = await calendarSource.items(from: now.addingTimeInterval(-90 * 86_400), to: now)
+        return MeetingLinkHistory.recent(events) { [weak self] item in
+            guard let self, let info = item.event else { return false }
+            guard let organizer = info.organizer else { return true }
+            return self.isMine(organizer) || info.attendees.contains { $0.isMe && $0.person.normalizedAddress == organizer.normalizedAddress }
+        }
+    }
+
+    /// Новая встреча: календарь не возвращает её номер, поэтому ищем
+    /// только что созданную по началу и теме.
+    private func setAutoJoin(_ enabled: Bool, forCreated draft: EventDraft) async {
+        let created = await calendarSource.items(from: draft.start.addingTimeInterval(-1), to: draft.start.addingTimeInterval(60))
+            .first { $0.kind == .event && $0.title == draft.title && abs($0.time.timeIntervalSince(draft.start)) < 1 }
+        if let created {
+            setAutoJoin(enabled, for: created)
+        } else {
+            DebugLog.write("автоподключение: новая встреча не нашлась — отметка не сохранена")
+        }
+    }
+
     /// Встречи, начинающиеся с этой минуты до `until`.
     /// Отменённые — нет: о них не напоминают.
     func upcomingEvents(until: Date) async -> [TimelineItem] {
@@ -2347,10 +2517,10 @@ final class AppModel: ObservableObject {
     /// Письмо, на которое отвечаем, — `nil` у нового письма.
     var draftItem: TimelineItem? { draftReplyTo.flatMap(item) ?? (draft != nil ? selectedItem : nil) }
 
-    func startNewMail(to people: [Person] = []) {
+    func startNewMail(to people: [Person] = [], subject: String = "", text: String = "") {
         selectedID = nil
         draftReplyTo = nil
-        draft = OutgoingMail(to: people, subject: "", text: "", accountID: newMailAccountID)
+        draft = OutgoingMail(to: people, subject: subject, text: text, accountID: newMailAccountID)
     }
 
     /// Ящик для нового письма: выбранный по умолчанию, если он ещё подключён.
@@ -2391,6 +2561,126 @@ final class AppModel: ObservableObject {
         let draft = EventDraft(start: begin, end: begin.addingTimeInterval(Double(newEventMinutes) * 60),
                                calendarID: newEventCalendarID, attendees: attendees)
         eventEditor = EventEditorRequest(draft: draft, editing: nil)
+    }
+
+    /// Новая встреча с заполненными полями — из карточки ассистента.
+    /// Сохраняет и рассылает приглашения человек сам, в окне встречи.
+    func startNewEvent(title: String, start: Date, end: Date?, attendees: [Person], location: String) {
+        let draft = EventDraft(title: title, start: start,
+                               end: end ?? start.addingTimeInterval(Double(newEventMinutes) * 60),
+                               location: location, calendarID: newEventCalendarID, attendees: attendees)
+        eventEditor = EventEditorRequest(draft: draft, editing: nil)
+        eventEditor?.reminderListID = newReminderListID
+    }
+
+    // MARK: - Ассистенту
+
+    /// Дописать в конец заметки дня (`nil` — сегодня). Открытые редакторы
+    /// этой заметки перечитают её сами (`noteEdited`).
+    func appendToNote(_ addition: String, day: Date? = nil) {
+        let key = noteKey(.day, for: day ?? now)
+        let content = noteContent(key)
+        let text = NSMutableAttributedString(attributedString: NoteRichText.load(text: content.text, rich: content.rich))
+        if !content.text.isEmpty, !content.text.hasSuffix("\n") { text.append(NoteRichText.plain("\n")) }
+        text.append(NoteRichText.plain(addition))
+        saveNote(text.string, rich: NoteRichText.rtf(text), key: key)
+    }
+
+    /// Текст заметки дня — ассистенту, чтобы видел, что уже записано.
+    func noteText(for day: Date) -> String {
+        noteContent(noteKey(.day, for: day)).text
+    }
+
+    /// Текст письма из кэша или с сервера — для приложенного к вопросу.
+    func letterText(_ id: String) async -> String? {
+        guard let body = try? await mail.body(of: id) else { return nil }
+        return MailModel.plainText(body)
+    }
+
+    /// Письма из кэша, где встречаются слова вопроса. Отправитель весит
+    /// больше всего («что писал Орлов»), потом тема, потом остальное.
+    func letters(matching words: [String], limit: Int = 10) -> [TimelineItem] {
+        guard !words.isEmpty else { return [] }
+        let scored: [(TimelineItem, Int)] = allMail.compactMap { item in
+            guard let mail = item.mail else { return nil }
+            let from = mail.from.formatted.lowercased()
+            let subject = item.title.lowercased()
+            let rest = ([mail.snippet] + mail.to.map(\.formatted) + mail.cc.map(\.formatted)).joined(separator: " ").lowercased()
+            let score = words.reduce(0) { sum, word in
+                sum + (from.contains(word) ? 3 : subject.contains(word) ? 2 : rest.contains(word) ? 1 : 0)
+            }
+            return score > 0 ? (item, score) : nil
+        }
+        return scored.sorted { ($0.1, $0.0.time) > ($1.1, $1.0.time) }.prefix(limit).map(\.0)
+    }
+
+    /// Письма для `/mail слова`: все слова — в теме или у отправителя,
+    /// свежие сверху. Без слов — неразобранные, потом свежие.
+    func searchLetters(_ query: String, limit: Int = 8) -> [TimelineItem] {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+            var seen = Set<String>()
+            return (unresolved.filter { $0.kind == .mail } + recentLetters(limit: limit))
+                .filter { seen.insert($0.id).inserted }.prefix(limit).map { $0 }
+        }
+        return allMail
+            .filter { item in ChatCommand.matches(query, in: [item.title, item.mail?.from.formatted ?? ""]) }
+            .sorted { $0.time > $1.time }
+            .prefix(limit).map { $0 }
+    }
+
+    /// Последние письма из кэша — свежие сверху.
+    func recentLetters(limit: Int = 20) -> [TimelineItem] {
+        Array(allMail.sorted { $0.time > $1.time }.prefix(limit))
+    }
+
+    /// Отправить письмо из отдельного окна (не черновик правой панели).
+    /// Ошибку — словами, для самого окна.
+    func send(_ draft: OutgoingMail) async -> String? {
+        guard !(draft.to + draft.cc + draft.bcc).isEmpty else { return String(localized: "Не указан получатель") }
+        do {
+            try await mail.send(draft, replyingTo: nil)
+            return nil
+        } catch {
+            return String(localized: "Письмо не отправлено: \(MailAccounts.describe(error))")
+        }
+    }
+
+    /// Черновик нового письма для отдельного окна — с ящиком по умолчанию.
+    func newDraft(to people: [Person], subject: String, text: String) -> OutgoingMail {
+        OutgoingMail(to: people, subject: subject, text: text, accountID: newMailAccountID)
+    }
+
+    /// Свои адреса во всех ящиках — ассистенту, чтобы знал, кто «я».
+    var ownAddresses: [String] { mail.ownAddresses.sorted() }
+
+    /// Встречи и напоминания за период — для контекста ассистента.
+    func calendarItems(from: Date, to: Date) async -> [TimelineItem] {
+        markCancelled(await calendarSource.items(from: from, to: to))
+    }
+
+    /// Человек по тому, как его назвала модель: адрес («Имя <a@b>» или
+    /// просто адрес) — как есть; имя — только если оно однозначно находится
+    /// среди отправителей известных писем. Выдуманный адрес из имени не
+    /// собираем: письмо ушло бы не тому.
+    func person(matching text: String) -> Person? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if let open = trimmed.lastIndex(of: "<"), let close = trimmed.lastIndex(of: ">"), open < close {
+            let address = String(trimmed[trimmed.index(after: open)..<close]).trimmingCharacters(in: .whitespaces)
+            let name = String(trimmed[..<open]).trimmingCharacters(in: CharacterSet(charactersIn: " \""))
+            return address.contains("@") ? Person(name: name.isEmpty ? nil : name, address: address) : nil
+        }
+        if trimmed.contains("@") { return Person(name: nil, address: trimmed) }
+        let lower = trimmed.lowercased()
+        var found: [String: Person] = [:]
+        for item in allMail {
+            guard let mail = item.mail else { continue }
+            for person in [mail.from] + mail.to + mail.cc {
+                guard let address = person.normalizedAddress, let name = person.name?.lowercased(),
+                      name == lower || name.hasPrefix(lower + " ") else { continue }
+                found[address] = person
+            }
+        }
+        return found.count == 1 ? found.values.first : nil
     }
 
     /// Длительность новой встречи — из настроек, по умолчанию полчаса.
@@ -2590,17 +2880,21 @@ final class AppModel: ObservableObject {
     }
 
     /// Сохранить встречу. `true` — получилось, редактор можно закрыть.
-    func saveEvent(_ request: EventEditorRequest, draft: EventDraft, scope: RecurrenceScope) async -> Bool {
+    /// `autoJoin` — своя отметка «открыть ссылку в начале», если её меняли.
+    func saveEvent(_ request: EventEditorRequest, draft: EventDraft, scope: RecurrenceScope,
+                   autoJoin: Bool? = nil) async -> Bool {
         isSavingEvent = true
         defer { isSavingEvent = false }
         do {
             if let item = request.editing {
                 try await calendarSource.update(item, to: draft, scope: scope)
+                if let autoJoin { setAutoJoin(autoJoin, for: item) }
                 // Идентификатор вхождения содержит время начала — после правки
                 // это уже другой элемент.
                 if selectedID == item.id { selectedID = nil }
             } else {
                 try await calendarSource.create(draft)
+                if let autoJoin { await setAutoJoin(autoJoin, forCreated: draft) }
             }
             eventEditor = nil
             show(day: draft.start)
@@ -2895,10 +3189,31 @@ final class AppModel: ObservableObject {
             do {
                 try await mail.archive(id)
             } catch {
-                mark(id) { $0.archivedAt = nil }
-                errorMessage = String(localized: "Письмо не удалось переложить в архив: \(MailAccounts.describe(error))")
+                // Письмо могла уже убрать другая программа: Outlook, приняв
+                // приглашение, кладёт его в «Удалённые», и перенос отсюда его
+                // не находит. Свежий список с сервера — сразу, не ждать опроса.
+                let gone = await refreshAfterFailure(of: item, error: error)
+                if gone {
+                    DebugLog.write("архив: письма уже нет во Входящих — убрано другой программой")
+                } else {
+                    mark(id) { $0.archivedAt = nil }
+                    errorMessage = String(localized: "Письмо не удалось переложить в архив: \(MailAccounts.describe(error))")
+                }
             }
         }
+    }
+
+    /// После отказа сервера — обновить ящик письма. `true` — письма там
+    /// больше нет (сервер так и ответил или оно пропало из списка): человеку
+    /// не о чем сообщать, оно уже разобрано.
+    private func refreshAfterFailure(of item: TimelineItem, error: Error) async -> Bool {
+        let reportedGone: Bool = if case MailNetworkError.gone = error { true } else { false }
+        if let accountID = item.mail?.accountID, let provider = providers[accountID] {
+            try? await provider.refresh()
+        }
+        await reload()
+        if case .folder = listMode { await reloadList() }
+        return reportedGone || self.item(item.id) == nil
     }
 
     /// Остальные письма диалога, если `id` — его первое (видимое) письмо.

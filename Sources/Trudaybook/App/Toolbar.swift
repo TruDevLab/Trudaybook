@@ -197,13 +197,13 @@ struct CreateButton: View {
     @ViewState private var returning = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.sm) {
             Image(systemName: returning ? "xmark" : "plus")
             Text(returning ? String(localized: "Отмена") : String(localized: "Создать")).lineLimit(1).fixedSize()
         }
         .font(.body.weight(.semibold))
         .foregroundStyle(.white)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Space.xl)
         .frame(height: 28)
         .modifier(ProminentSurface(hovered: isHovered, returning: returning))
         .contentShape(Rectangle())
@@ -212,6 +212,7 @@ struct CreateButton: View {
             if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
         }
         .onTapGesture(perform: showMenu)
+        .actsAsButton(String(localized: "Создать"), action: showMenu)
         .draggable(AppModel.newItemURL) { NewItemDragPreview() }
         // Место возврата — чуть шире самой кнопки, чтобы попасть было легко.
         .background(
@@ -220,7 +221,7 @@ struct CreateButton: View {
                 .contentShape(Rectangle())
                 .onDrop(of: [.url], isTargeted: $returning) { _ in true }
         )
-        .animation(.easeOut(duration: 0.15), value: returning)
+        .animation(Motion.quick, value: returning)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(String(localized: "Создать"))
         .help(returning ? String(localized: "Отпустите здесь — ничего не создастся")
@@ -248,8 +249,8 @@ private struct ProminentSurface: ViewModifier {
     var returning = false
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
-        let tint = returning ? Color.red : Color.accentColor
+        let shape = RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+        let tint = returning ? Palette.danger : Color.accentColor
         if #available(macOS 26, *) {
             content.glassEffect(.regular.tint(tint.opacity(hovered || returning ? 1 : 0.85)).interactive(), in: shape)
         } else {
@@ -270,7 +271,7 @@ struct ToolbarSettingsCard: View {
                                 summary: String(localized: "видно: \(model.toolbarButtons.count) из \(model.toolbarOrder.count)")) {
             List {
                 ForEach(model.toolbarOrder) { button in
-                    HStack(spacing: 8) {
+                    HStack(spacing: Space.md) {
                         Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary)
                         Toggle(isOn: Binding(get: { model.isShown(button) }, set: { model.setShown(button, $0) })) {
                             EmptyView()
@@ -283,7 +284,7 @@ struct ToolbarSettingsCard: View {
                             Text("можно бросить письмо").font(.caption).foregroundStyle(.tertiary)
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, Space.xxs)
                 }
                 .onMove(perform: model.moveToolbarButtons)
             }

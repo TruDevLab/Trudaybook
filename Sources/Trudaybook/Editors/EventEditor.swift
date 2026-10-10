@@ -6,9 +6,9 @@ struct EditorCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) { content }
+        VStack(alignment: .leading, spacing: Space.lg) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
+            .padding(Space.xl)
             .background(GlassPanelBackground(cornerRadius: Panel.radius))
     }
 }
@@ -17,7 +17,7 @@ extension View {
     /// Поле ввода на стекле: лёгкая заливка вместо системной рамки.
     func editorField(padding: CGFloat = 6) -> some View {
         self.padding(padding)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.07)))
+            .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous).fill(Fill.subtle))
     }
 }
 
@@ -36,6 +36,12 @@ final class EventEditorState: ObservableObject {
     @Published var dueHasTime = true
     /// Набранный в «Участники», но не подтверждённый адрес.
     @Published var attendeeText = ""
+    /// Открыть ссылку в начале встречи; `nil` — ещё не взято из модели
+    /// (общая настройка или своя отметка встречи).
+    @Published var autoJoin: Bool?
+    var autoJoinInitial: Bool?
+    /// Выбор ссылки на созвон под «Местом» (`MeetingLinkPicker`).
+    @Published var showLinkPicker = false
     let original: EventDraft
 
     init(request: EventEditorRequest) {
@@ -52,6 +58,7 @@ struct EventEditorSheet: View {
     @EnvironmentObject private var model: AppModel
     let request: EventEditorRequest
     @StateObject private var state: EventEditorState
+    @FocusState private var locationFocused: Bool
 
     init(request: EventEditorRequest) {
         self.request = request
@@ -68,7 +75,7 @@ struct EventEditorSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Space.xl) {
                     if request.editing == nil {
                         // Тема и описание общие — при переключении не теряются.
                         Picker("", selection: $state.kind) {
@@ -87,16 +94,19 @@ struct EventEditorSheet: View {
                         meetingFields
                     }
                 }
-                .padding(18)
+                .padding(Space.xxl)
             }
             footer
         }
         .frame(width: 720, height: sheetHeight)
-        .animation(.easeOut(duration: 0.2), value: showsPlanner)
+        .animation(Motion.move, value: showsPlanner)
         // Фон — тот же, что у главного окна; поля — стеклянными карточками.
         // Под прозрачным заголовком окна — тоже фон: за него окно и тянут.
         .background { AppBackgroundView().ignoresSafeArea() }
-        .onAppear { EventEditorWindow.fit(height: sheetHeight, model: model) }
+        .onAppear {
+            EventEditorWindow.fit(height: sheetHeight, model: model)
+            if model.options.demo, model.options.linkPicker { state.showLinkPicker = true }
+        }
         .onChange(of: sheetHeight) { _, height in EventEditorWindow.fit(height: height, model: model) }
         .environment(\.auroraTheme, model.customBackground)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -138,7 +148,7 @@ struct EventEditorSheet: View {
     /// 1. Тема и справа от неё — календарь (или список напоминаний).
     private var titleCard: some View {
         EditorCard {
-            HStack(spacing: 12) {
+            HStack(spacing: Space.xl) {
                 TextField(state.kind == .reminder ? String(localized: "Что сделать") : String(localized: "Тема встречи"), text: $state.draft.title)
                     .textFieldStyle(.plain)
                     .font(.title2.weight(.semibold))
@@ -169,10 +179,38 @@ struct EventEditorSheet: View {
             attendeesSection
             Divider()
             labeled(String(localized: "Место"), systemImage: "mappin.and.ellipse") {
-                TextField("переговорная или ссылка на созвон", text: $state.draft.location)
-                    .textFieldStyle(.plain)
-                    .editorField()
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    HStack(spacing: Space.sm) {
+                        TextField("переговорная или ссылка на созвон", text: $state.draft.location)
+                            .textFieldStyle(.plain)
+                            .focused($locationFocused)
+                            .editorField()
+                        Button {
+                            withAnimation(Motion.quick) { state.showLinkPicker.toggle() }
+                        } label: {
+                            Image(systemName: "link.badge.plus")
+                        }
+                        .buttonStyle(.borderless)
+                        .labelHelp(String(localized: "Ссылка на созвон: свои, из прошлых встреч или новая"))
+                    }
+                    if state.showLinkPicker {
+                        MeetingLinkPicker(location: $state.draft.location) {
+                            withAnimation(Motion.quick) { state.showLinkPicker = false }
+                        }
+                        .transition(.opacity)
+                    }
+                }
+                // Встали в пустое «Место» (или без ссылки) — сразу предложить
+                // ссылку. Прячется выбором или крестиком, а не потерей фокуса:
+                // иначе щелчок по строке списка сначала убрал бы сам список.
+                .onChange(of: locationFocused) { _, focused in
+                    if focused, MeetingLinkHistory.parse(state.draft.location) == nil {
+                        withAnimation(Motion.quick) { state.showLinkPicker = true }
+                    }
+                }
             }
+            Divider()
+            autoJoinRow
         }
         if showsPlanner {
             EditorCard { planner }
@@ -182,7 +220,7 @@ struct EventEditorSheet: View {
             notesRow(String(localized: "Описание"))
             Divider()
             labeled(String(localized: "Вложения"), systemImage: "paperclip") {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Space.sm) {
                     AttachmentChips(files: $state.draft.attachments)
                     if canInvite || model.options.demo {
                         Button {
@@ -206,7 +244,7 @@ struct EventEditorSheet: View {
     private var reminderFields: some View {
         EditorCard {
             labeled(String(localized: "Срок"), systemImage: "calendar.badge.clock") {
-                HStack(spacing: 10) {
+                HStack(spacing: Space.lg) {
                     Toggle("есть", isOn: $state.hasDue).toggleStyle(.checkbox)
                     if state.hasDue {
                         DatePicker("", selection: dayBinding, displayedComponents: .date)
@@ -237,9 +275,9 @@ struct EventEditorSheet: View {
 
     private func labeled<Content: View>(_ title: String, systemImage: String,
                                         @ViewBuilder content: () -> Content) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.lg) {
             // Значки — в своём столбце одной ширины: подписи начинаются ровно.
-            HStack(spacing: 6) {
+            HStack(spacing: Space.sm) {
                 Image(systemName: systemImage).frame(width: 20)
                 Text(title)
             }
@@ -250,10 +288,40 @@ struct EventEditorSheet: View {
         }
     }
 
+    /// Подключиться самому в начале встречи: по умолчанию — как в настройках.
+    private var autoJoinRow: some View {
+        let link = MeetingLink.extract(url: nil, location: state.draft.location, notes: state.draft.notes)
+            ?? request.editing?.event?.link
+        let enabled = state.autoJoin ?? (request.editing.map(model.autoJoins) ?? model.autoJoinMeetings)
+        return labeled(String(localized: "Созвон"), systemImage: "video") {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Toggle("Открыть ссылку на встречу в момент начала", isOn: Binding(
+                    get: { enabled },
+                    set: { state.autoJoin = $0 }))
+                    .toggleStyle(.checkbox)
+                Group {
+                    if let link, link.provider != .other {
+                        Text(enabled ? String(localized: "\(link.provider.rawValue) откроется сам, когда встреча начнётся.")
+                                     : String(localized: "Ссылка \(link.provider.rawValue) — откроется кнопкой «Подключиться»."))
+                    } else if link != nil {
+                        Text("Сервис ссылки не узнан — сам он не откроется: только кнопкой «Подключиться».")
+                    } else {
+                        Text("Ссылки на созвон пока нет — вставьте её в «Место» или в описание.")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .onAppear {
+            if state.autoJoinInitial == nil { state.autoJoinInitial = enabled }
+        }
+    }
+
     /// День, начало, конец; «весь день».
     private var timeRow: some View {
         labeled(String(localized: "Когда"), systemImage: "clock") {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.md) {
                 DatePicker("", selection: dayBinding, displayedComponents: .date)
                     .labelsHidden()
                     .fixedSize()
@@ -354,15 +422,13 @@ struct EventEditorSheet: View {
 
     private var attendeesSection: some View {
         labeled(String(localized: "Участники"), systemImage: "person.2") {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 if canInvite || model.options.demo {
                     PeopleField(people: $state.draft.attendees, text: $state.attendeeText)
                 } else if hasGuests {
                     PersonChips(people: $state.draft.attendees)
-                    Label("Участников можно пригласить только во встречу календаря Exchange — выберите его у темы",
-                          systemImage: "exclamationmark.triangle.fill")
+                    InlineNotice(String(localized: "Участников можно пригласить только во встречу календаря Exchange — выберите его у темы"))
                         .font(.caption)
-                        .foregroundStyle(.orange)
                 } else {
                     Text("Приглашения рассылает календарь Exchange — выберите его у темы.")
                         .font(.caption)
@@ -402,31 +468,33 @@ struct EventEditorSheet: View {
 
     private var planner: some View {
         let grid = SchedulingGrid(rows: rows, day: state.draft.start, start: startBinding, duration: state.draft.duration)
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: Space.md) {
             HStack {
                 Label("Планировщик", systemImage: "calendar.day.timeline.left").font(.headline)
                 Button { shiftDay(-1) } label: { Image(systemName: "chevron.left") }
                     .buttonStyle(.borderless)
+                    .labelHelp(String(localized: "Предыдущий день"))
                 Text(Format.dayTitle(state.draft.start)).font(.callout)
                 Button { shiftDay(1) } label: { Image(systemName: "chevron.right") }
                     .buttonStyle(.borderless)
+                    .labelHelp(String(localized: "Следующий день"))
                 Spacer()
                 Button("Ближайшее свободное время", action: findFreeSlot)
                     .disabled(state.loadedKey != plannerKey)
             }
             grid
-            HStack(spacing: 6) {
+            HStack(spacing: Space.sm) {
                 if state.loadedKey != plannerKey {
                     ProgressView().controlSize(.small)
                     Text("Загружаю занятость…")
                 } else if grid.busyPeople.isEmpty, !grid.hasUnknown {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.success)
                     Text("\(Format.range(state.draft.start, state.draft.end)) — все свободны")
                 } else if grid.busyPeople.isEmpty {
-                    Image(systemName: "questionmark.circle.fill").foregroundStyle(.orange)
+                    Image(systemName: "questionmark.circle.fill").foregroundStyle(Palette.warning)
                     Text("\(Format.range(state.draft.start, state.draft.end)) — занятость известна не у всех")
                 } else {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Palette.danger)
                     Text("\(Format.range(state.draft.start, state.draft.end)) заняты: \(grid.busyPeople.joined(separator: ", "))")
                         .lineLimit(2)
                 }
@@ -496,8 +564,8 @@ struct EventEditorSheet: View {
             .disabled(model.isSavingEvent || (state.kind == .meeting && !canInvite && hasGuests)
                       || (state.kind == .reminder && state.draft.title.trimmingCharacters(in: .whitespaces).isEmpty))
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Space.xxl)
+        .padding(.vertical, Space.xl)
         .background(GlassPanelBackground(cornerRadius: 0))
     }
 
@@ -522,7 +590,10 @@ struct EventEditorSheet: View {
     private func save(_ scope: RecurrenceScope) {
         var draft = state.draft
         draft.attendees = PeopleField.merged(draft.attendees, typed: state.attendeeText)
-        Task { _ = await model.saveEvent(request, draft: draft, scope: scope) }
+        // Отметку встречи — только если её меняли: иначе встреча и дальше
+        // следует общей настройке.
+        let autoJoin = state.autoJoin.flatMap { $0 == state.autoJoinInitial ? nil : $0 }
+        Task { _ = await model.saveEvent(request, draft: draft, scope: scope, autoJoin: autoJoin) }
     }
 
     private var deleteTitle: String {
@@ -559,7 +630,7 @@ struct PersonChips: View {
     var body: some View {
         CollapsingFlow(expanded: true) {
             ForEach(Array(people.enumerated()), id: \.offset) { index, person in
-                HStack(spacing: 4) {
+                HStack(spacing: Space.xs) {
                     Text(person.name ?? person.address ?? "")
                         .lineLimit(1)
                     Button {
@@ -568,10 +639,11 @@ struct PersonChips: View {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .labelHelp(String(localized: "Убрать"))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                .padding(.horizontal, Space.md)
+                .padding(.vertical, Space.xxs)
+                .background(Capsule().fill(Fill.accentSoft))
                 .help(person.address ?? "")
                 .layoutValue(key: FlowRole.self, value: .item)
             }
@@ -588,7 +660,7 @@ struct PeopleField: View {
     var placeholder = String(localized: "Добавить: имя или адрес")
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             if !people.isEmpty {
                 PersonChips(people: $people)
             }
@@ -628,7 +700,7 @@ struct AttendeeSearch: View {
     @ViewState private var search: Task<Void, Never>?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.xxs) {
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .editorField()

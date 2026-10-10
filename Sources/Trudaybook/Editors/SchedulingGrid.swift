@@ -83,7 +83,7 @@ struct SchedulingGrid: View {
             ForEach(firstHour...lastHour, id: \.self) { hour in
                 let position = CGFloat(hour - firstHour) / CGFloat(lastHour - firstHour) * width
                 Rectangle()
-                    .fill(Color.primary.opacity(0.08))
+                    .fill(Fill.subtle)
                     .frame(width: 1, height: Self.headerHeight + CGFloat(rows.count) * Self.rowHeight)
                     .offset(x: position)
                 if hour < lastHour {
@@ -95,7 +95,7 @@ struct SchedulingGrid: View {
             }
             ForEach(0...rows.count, id: \.self) { line in
                 Rectangle()
-                    .fill(Color.primary.opacity(0.06))
+                    .fill(Fill.subtle)
                     .frame(width: width, height: 1)
                     .offset(y: Self.headerHeight + CGFloat(line) * Self.rowHeight)
             }
@@ -109,17 +109,17 @@ struct SchedulingGrid: View {
                 .font(.caption.italic())
                 .foregroundStyle(.secondary)
                 .frame(width: width, height: Self.rowHeight)
-                .background(Color.primary.opacity(0.03))
+                .background(Fill.faint)
         } else if let busy = row.availability?.busy {
             ZStack(alignment: .topLeading) {
                 ForEach(Array(busy.enumerated()), id: \.offset) { _, interval in
                     let left = x(interval.start, width: width)
                     let right = x(interval.end, width: width)
                     if right > left {
-                        RoundedRectangle(cornerRadius: 3)
+                        RoundedRectangle(cornerRadius: Radius.xs)
                             .fill(color(interval.kind, summary: row.isSummary))
-                            .overlay(RoundedRectangle(cornerRadius: 3)
-                                .strokeBorder(interval.kind == .tentative ? Color.blue.opacity(0.6) : .clear,
+                            .overlay(RoundedRectangle(cornerRadius: Radius.xs)
+                                .strokeBorder(interval.kind == .tentative ? Palette.info.opacity(0.6) : .clear,
                                               style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
                             .frame(width: max(2, right - left - 1), height: Self.rowHeight - 6)
                             .offset(x: left, y: 3)
@@ -135,10 +135,10 @@ struct SchedulingGrid: View {
     }
 
     private func color(_ kind: BusyInterval.Kind, summary: Bool) -> Color {
-        if summary { return Color.primary.opacity(0.28) }
+        if summary { return Fill.strong }
         switch kind {
-        case .busy: return Color.blue.opacity(0.55)
-        case .tentative: return Color.blue.opacity(0.18)
+        case .busy: return Palette.info.opacity(0.55)
+        case .tentative: return Palette.info.opacity(0.18)
         case .away: return Color.purple.opacity(0.5)
         case .elsewhere: return Color.gray.opacity(0.25)
         }
@@ -159,10 +159,10 @@ struct SchedulingGrid: View {
     private func slot(width: CGFloat) -> some View {
         let left = x(start, width: width)
         let right = x(start.addingTimeInterval(duration), width: width)
-        let color: Color = conflict ? .red : hasUnknown ? .orange : .green
-        return RoundedRectangle(cornerRadius: 4)
+        let color: Color = conflict ? Palette.danger : hasUnknown ? Palette.warning : Palette.success
+        return RoundedRectangle(cornerRadius: Radius.xs)
             .fill(color.opacity(0.12))
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(color, lineWidth: 2))
+            .overlay(RoundedRectangle(cornerRadius: Radius.xs).strokeBorder(color, lineWidth: 2))
             .frame(width: max(4, right - left), height: CGFloat(rows.count) * Self.rowHeight)
             .offset(x: left, y: Self.headerHeight)
             .allowsHitTesting(false)

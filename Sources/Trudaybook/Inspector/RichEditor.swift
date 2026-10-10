@@ -407,13 +407,13 @@ struct RichFormatControls: View {
         if noteTools {
             RichFormatButton(symbol: "textformat.size", help: String(localized: "Заголовок")) { editor.toggleHeading() }
         }
-        Divider().frame(height: 16).padding(.horizontal, 4)
+        Divider().frame(height: 16).padding(.horizontal, Space.xs)
         RichFormatButton(symbol: "list.bullet", help: String(localized: "Маркированный список")) { editor.toggleList(.bullet) }
         RichFormatButton(symbol: "list.number", help: String(localized: "Нумерованный список")) { editor.toggleList(.numbered) }
         if noteTools {
             RichFormatButton(symbol: "checklist", help: String(localized: "Список дел с галочками")) { editor.toggleList(.check) }
         }
-        Divider().frame(height: 16).padding(.horizontal, 4)
+        Divider().frame(height: 16).padding(.horizontal, Space.xs)
         // Цвет текста, выделение маркером, таблица.
         Menu {
             ForEach(TextPalette.text, id: \.name) { choice in
@@ -428,7 +428,7 @@ struct RichFormatControls: View {
         }
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Цвет текста")
+        .labelHelp(String(localized: "Цвет текста"))
         Menu {
             ForEach(TextPalette.highlight, id: \.name) { choice in
                 Button { editor.setHighlight(choice.color) } label: {
@@ -442,7 +442,7 @@ struct RichFormatControls: View {
         }
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Выделить цветом")
+        .labelHelp(String(localized: "Выделить цветом"))
         Menu {
             ForEach(TextPalette.tableSizes, id: \.self) { size in
                 Button("\(size.columns) × \(size.rows)") { editor.insertTable(rows: size.rows, columns: size.columns) }
@@ -452,7 +452,7 @@ struct RichFormatControls: View {
         }
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Вставить таблицу (столбцы × строки)")
+        .labelHelp(String(localized: "Вставить таблицу (столбцы × строки)"))
     }
 }
 
@@ -461,14 +461,19 @@ struct RichFormatButton: View {
     let help: String
     var key: KeyEquivalent?
     let action: () -> Void
+    @ViewState private var hovered = false
 
     var body: some View {
+        // Без стекла — кнопки лежат на стеклянной панели; под курсором — заливка.
         let button = Button(action: action) {
             Image(systemName: symbol)
                 .frame(width: 26, height: 22)
+                .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                    .fill(hovered ? Fill.hover : .clear))
                 .contentShape(Rectangle())
         }
-        .help(help)
+        .onHover { hovered = $0 }
+        .labelHelp(help)
         if let key {
             button.keyboardShortcut(key, modifiers: .command)
         } else {

@@ -106,6 +106,10 @@ public final class CombinedCalendar: CalendarProvider {
         sources.contains { $0.owns(calendarID: calendarID) }
     }
 
+    public func richDescription(of item: TimelineItem) async throws -> MailBody? {
+        try await source(ofItem: item.id).richDescription(of: item)
+    }
+
     private func source(ofItem id: String) throws -> CalendarProvider {
         guard let source = sources.first(where: { $0.owns(itemID: id) }) else { throw CalendarError.notFound }
         return source

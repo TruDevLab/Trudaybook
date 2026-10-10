@@ -17,7 +17,7 @@ struct HoverLabel: View {
     var tint: Color?
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.sm) {
             Image(systemName: symbol)
                 .foregroundStyle(tint ?? .primary)
             if expanded {
@@ -26,14 +26,17 @@ struct HoverLabel: View {
                     .fixedSize()
                     .transition(.asymmetric(
                         insertion: .opacity.animation(HoverMotion.animation.delay(0.05)),
-                        removal: .opacity.animation(.easeOut(duration: 0.12))))
+                        removal: .opacity.animation(Motion.quick)))
             }
         }
         .font(.body.weight(.medium))
-        .padding(.horizontal, 10)
+        .padding(.horizontal, Space.lg)
         .frame(height: 28)
         .frame(minWidth: 40)
         .clipped()
+        // Свёрнутая кнопка — один значок; VoiceOver читает подпись всегда.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(title))
     }
 }
 
@@ -44,11 +47,11 @@ struct HoverChrome: View {
     var targeted = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 9, style: .continuous)
-            .fill(targeted ? Color.accentColor.opacity(0.25) : Color.primary.opacity(hovered ? 0.1 : 0.05))
+        RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+            .fill(targeted ? Fill.accent : Color.primary.opacity(hovered ? 0.1 : 0.05))
             .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(targeted ? Color.accentColor : Color.primary.opacity(0.15),
+                RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                    .strokeBorder(targeted ? Color.accentColor : Fill.stroke,
                                   style: StrokeStyle(lineWidth: targeted ? 2 : 1, dash: dashed && !targeted ? [4, 3] : []))
             )
     }
@@ -71,7 +74,7 @@ struct HoverIconButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(isEnabled ? 1 : 0.45)
+        .opacity(isEnabled ? 1 : Alpha.disabled)
         .onHover { inside in withAnimation(HoverMotion.animation) { hovered = inside } }
         .help(help ?? title)
     }

@@ -11,10 +11,10 @@ struct InvitationCard: View {
 
     var body: some View {
         let conflicts = invitation.conflicts(in: model.invitationDayEvents)
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.md) {
+            HStack(spacing: Space.sm) {
                 Image(systemName: invitation.method == .cancel ? "calendar.badge.minus" : "calendar.badge.clock")
-                    .foregroundStyle(invitation.method == .cancel ? Color.red : Color.accentColor)
+                    .foregroundStyle(invitation.method == .cancel ? Palette.danger : Color.accentColor)
                 Text(invitation.method == .cancel ? String(localized: "Встреча отменена") : String(localized: "Приглашение на встречу"))
                     .font(.headline)
                 Spacer()
@@ -25,7 +25,7 @@ struct InvitationCard: View {
             Text(invitation.summary)
                 .font(.title3.weight(.semibold))
                 .textSelection(.enabled)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.xs) {
                 Label(when, systemImage: "clock")
                 if let location = invitation.location {
                     Label(location, systemImage: "mappin.and.ellipse").textSelection(.enabled)
@@ -46,9 +46,9 @@ struct InvitationCard: View {
                 answer
             }
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.accentColor.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.accentColor.opacity(0.25)))
+        .padding(Space.xl)
+        .background(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(Fill.accentFaint))
+        .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).strokeBorder(Fill.accent))
     }
 
     private var when: String {
@@ -66,12 +66,12 @@ struct InvitationCard: View {
         } else if conflicts.isEmpty {
             Label("Время свободно", systemImage: "checkmark.circle.fill")
                 .font(.callout.weight(.medium))
-                .foregroundStyle(.green)
+                .foregroundStyle(Palette.success)
         } else {
             Label(String(localized: "Пересекается: ") + conflicts.map { "\($0.title) (\(Format.range($0.time, $0.end)))" }.joined(separator: ", "),
                   systemImage: "exclamationmark.triangle.fill")
                 .font(.callout.weight(.medium))
-                .foregroundStyle(.orange)
+                .foregroundStyle(Palette.warning)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -90,13 +90,13 @@ struct InvitationCard: View {
                 Label("Ответ уйдёт организатору \(organizer) — это не отправитель письма",
                       systemImage: "exclamationmark.shield")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Palette.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
             TextField("Комментарий организатору — необязательно", text: $comment, axis: .vertical)
                 .lineLimit(1...4)
                 .textFieldStyle(.roundedBorder)
-            HStack(spacing: 8) {
+            HStack(spacing: Space.md) {
                 ForEach(InvitationResponse.allCases) { response in
                     Button {
                         model.respond(response, comment: comment, to: item.id)
@@ -120,9 +120,9 @@ struct InvitationCard: View {
 
     private func color(_ response: InvitationResponse) -> Color {
         switch response {
-        case .accept: .green
-        case .tentative: .orange
-        case .decline: .red
+        case .accept: Palette.success
+        case .tentative: Palette.warning
+        case .decline: Palette.danger
         }
     }
 }
@@ -151,11 +151,11 @@ private struct InvitationDayStrip: View {
                 // Часы.
                 ForEach(Int(from)...Int(to), id: \.self) { hour in
                     Rectangle()
-                        .fill(Color.primary.opacity(0.12))
+                        .fill(Fill.hover)
                         .frame(width: 1, height: 52)
                         .offset(x: x(Double(hour)))
                     Text(String(format: "%02d", hour % 24))
-                        .font(.system(size: 9).monospacedDigit())
+                        .font(.app(.tiny).monospacedDigit())
                         .foregroundStyle(.secondary)
                         // Последний час — подписью влево, чтобы не вылезал за край.
                         .offset(x: x(Double(hour)) + (Double(hour) == to ? -14 : 2), y: 54)
@@ -167,12 +167,12 @@ private struct InvitationDayStrip: View {
                     if end > start {
                         let clash = conflictIDs.contains(event.id)
                         Text(event.title)
-                            .font(.system(size: 9.5, weight: .medium))
+                            .font(.app(.tiny, weight: .medium))
                             .lineLimit(1)
-                            .padding(.horizontal, 4)
+                            .padding(.horizontal, Space.xs)
                             .frame(width: end - start - 1, height: 20, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 4)
-                                .fill(clash ? Color.orange.opacity(0.35) : Color.primary.opacity(0.14)))
+                            .background(RoundedRectangle(cornerRadius: Radius.xs)
+                                .fill(clash ? Palette.warning.opacity(0.35) : Fill.hover))
                             .offset(x: start, y: 2)
                             .help("\(event.title) · \(Format.range(event.time, event.end))")
                     }
@@ -181,12 +181,12 @@ private struct InvitationDayStrip: View {
                 let start = x(hourOf(invitation.start))
                 let end = x(hourOf(invitation.end))
                 Text(invitation.summary)
-                    .font(.system(size: 9.5, weight: .semibold))
+                    .font(.app(.tiny, weight: .semibold))
                     .lineLimit(1)
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, Space.xs)
                     .frame(width: max(end - start - 1, 6), height: 20, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor.opacity(0.35)))
-                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.accentColor, lineWidth: 1))
+                    .background(RoundedRectangle(cornerRadius: Radius.xs).fill(Color.accentColor.opacity(0.35)))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.xs).strokeBorder(Color.accentColor, lineWidth: 1))
                     .offset(x: start, y: 28)
             }
         }
@@ -204,7 +204,7 @@ private struct CancellationActions: View {
     @ViewState private var lookedUp = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.md) {
             if !lookedUp {
                 ProgressView().controlSize(.small)
             } else if let target {
@@ -243,7 +243,7 @@ private struct CancellationActions: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .tint(Palette.danger)
             .disabled(model.removingCancelled != nil)
             Text("Письмо уйдёт в архив").font(.caption).foregroundStyle(.secondary)
         }

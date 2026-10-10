@@ -6,6 +6,9 @@ public enum MailNetworkError: LocalizedError, Equatable {
     case server(String)
     case authentication(String)
     case protocolError(String)
+    /// Письма на сервере уже нет: его переложила или удалила другая
+    /// программа (Outlook, приняв приглашение, кладёт его в «Удалённые»).
+    case gone(String)
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +17,7 @@ public enum MailNetworkError: LocalizedError, Equatable {
         case .server(let text): return String(localized: "Сервер ответил ошибкой: \(text)")
         case .authentication(let text): return String(localized: "Не удалось войти: \(text)")
         case .protocolError(let text): return String(localized: "Непонятный ответ сервера: \(text)")
+        case .gone(let text): return String(localized: "Письма уже нет на сервере: \(text)")
         }
     }
 }

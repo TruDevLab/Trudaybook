@@ -51,6 +51,36 @@ public actor EWSCalendarService: SchedulingService {
         return listed.map { details[$0.id] ?? $0 }
     }
 
+    /// Описание встречи с картинками и файлами. Встроенные картинки (`cid:`)
+    /// подставляются прямо в HTML — WebKit в сеть не ходит. Файлы больше
+    /// `maxFile` не скачиваем: ответ EWS несёт их целиком, в base64.
+    func richDescription(id: String) async throws -> MailBody {
+        let parsed = try EWSCalendarRequest.parseRichBody(try await call("GetItem", EWSCalendarRequest.richBody(id)))
+        let wanted = parsed.attachments.filter { $0.size <= Self.maxFile }
+        var contents: [String: Data] = [:]
+        if !wanted.isEmpty {
+            contents = try EWSCalendarRequest.parseAttachmentContents(
+                try await call("GetAttachment", EWSCalendarRequest.getAttachments(wanted.map(\.id))))
+        }
+        if wanted.count < parsed.attachments.count {
+            log("описание встречи: файлов больше \(Self.maxFile / 1_000_000) МБ — \(parsed.attachments.count - wanted.count), не скачаны")
+        }
+        var html = parsed.html
+        var files: [MailBody.Attachment] = []
+        for ref in parsed.attachments {
+            guard let data = contents[ref.id] else { continue }
+            if ref.isInline, ref.contentType.hasPrefix("image/"), let cid = ref.contentID, let document = html {
+                let uri = "data:\(ref.contentType);base64,\(data.base64EncodedString())"
+                html = document.replacingOccurrences(of: "cid:\(cid)", with: uri)
+            } else if !ref.isInline {
+                files.append(.init(name: ref.name, size: data.count, mimeType: ref.contentType, data: data))
+            }
+        }
+        return MailBody(html: html, attachments: files)
+    }
+
+    static let maxFile = 20_000_000
+
     func draft(for id: String, calendarID: String) async throws -> EventDraft {
         var item = details[id]
         if item?.hasDetails != true {
@@ -366,6 +396,10 @@ public final class ExchangeCalendar: CalendarProvider {
             try await service.decline(id: id)
         }
         onChange?()
+    }
+
+    public func richDescription(of item: TimelineItem) async throws -> MailBody? {
+        try await service.richDescription(id: try remoteID(item))
     }
 
     public func owns(itemID: String) -> Bool { itemID.hasPrefix(prefix) }

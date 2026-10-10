@@ -19,62 +19,58 @@ struct ItemRow: View {
                                             || !model.isRead(item))
         let priority = model.priority(of: item)
 
-        HStack(spacing: 8) {
+        HStack(spacing: Space.md) {
             if let thread {
                 // Стрелка раскрытия диалога — отдельная кнопка: сама строка
                 // открывает письмо.
                 let open = model.expandedThreads.contains(thread.key) || (model.options.demo && model.options.openThreads)
                 Button { model.toggleThread(thread.key) } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.app(.tiny, weight: .bold))
                         .rotationEffect(.degrees(open ? 90 : 0))
                         .foregroundStyle(.secondary)
                         .frame(width: 14, height: 18)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(open ? String(localized: "Свернуть диалог") : String(localized: "Показать весь диалог"))
+                .labelHelp(open ? String(localized: "Свернуть диалог") : String(localized: "Показать весь диалог"))
             } else if isMember {
                 Color.clear.frame(width: 14)
             }
             // Прочитанное — открытый конверт, новое — закрытый.
             Image(systemName: item.kind == .mail && !unread ? "envelope.open" : item.symbol)
-                .foregroundStyle(item.kind == .reminder ? Color.orange : Color.accentColor)
+                .foregroundStyle(item.kind == .reminder ? Palette.reminder : Color.accentColor)
                 .frame(width: 18)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: Space.hairline) {
                 Text(item.title)
-                    .font(.system(size: 12.5, weight: unread ? .semibold : .regular))
+                    .font(.app(.text, weight: unread ? .semibold : .regular))
                     .lineLimit(1)
                 Text("\(model.subtitle(of: item)) · \(Format.relative(model.effectiveTime(of: item), now: model.now))")
-                    .font(.system(size: 11))
+                    .font(.app(.label))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
             if let thread {
                 let hasUnread = model.hasUnread(thread)
-                Text("\(thread.count)")
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(hasUnread ? Color.orange.opacity(0.25) : Color.primary.opacity(0.08)))
+                Tag(text: "\(thread.count)", tint: Palette.warning, style: hasUnread ? .badge : .neutral, size: .compact)
                     .help("Писем в диалоге: \(thread.count)")
             }
             if let role = model.recipientRole(of: item) {
-                RecipientMark(role: role)
+                RecipientTag(role: role)
             }
             if let label = model.label(of: item) {
-                LabelChip(label: label, source: model.labelSource(of: item))
+                LabelTag(label: label, source: model.labelSource(of: item))
             }
             // Приоритет — справа, в одном столбце у всех строк: так его видно,
             // пробегая список глазами, и тема не сдвигается.
             PriorityMark(priority: priority)
             switch status {
             case .done(let reason):
-                Text(reason.title).font(.caption).foregroundStyle(.green)
+                Text(reason.title).font(.caption).foregroundStyle(Palette.success)
             case .snoozed(let until):
                 Label(Format.relative(until, now: model.now), systemImage: "clock")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(Palette.warning)
             case .open, .upcoming:
                 if model.isInvitation(item) {
                     Image(systemName: "calendar.badge.clock").font(.caption).foregroundStyle(Color.accentColor)
@@ -85,10 +81,10 @@ struct ItemRow: View {
                 }
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Space.md)
         .padding(.leading, isMember ? 22 : 0)
-        .padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.accentColor.opacity(0.18) : .clear))
+        .padding(.vertical, Space.xs)
+        .background(RoundedRectangle(cornerRadius: Radius.sm).fill(selected ? Fill.accentSoft : .clear))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             // Двойное нажатие: письмо — в отдельное окно, встреча и
@@ -106,6 +102,10 @@ struct ItemRow: View {
             model.click(item, extend: flags.contains(.shift), toggle: flags.contains(.command))
             onSelect?()
         }
+        .actsAsRow(String(localized: "Выбрать")) {
+            model.click(item, extend: false, toggle: false)
+            onSelect?()
+        }
         .modifier(ListDragSource(item: item))
         .contextMenu { ItemContextMenu(item: item) }
     }
@@ -116,7 +116,7 @@ struct SearchScopeBar: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Space.xs) {
             chip(.all, String(localized: "Везде"), "magnifyingglass")
             chip(.from, String(localized: "От кого"), "person")
             chip(.to, String(localized: "Кому"), "person.2")
@@ -132,10 +132,10 @@ struct SearchScopeBar: View {
         } label: {
             Label(title, systemImage: symbol)
                 .font(.caption)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
+                .padding(.horizontal, Space.md)
+                .padding(.vertical, Space.xxs)
                 .foregroundStyle(selected ? Color.accentColor : .primary)
-                .background(Capsule().fill(selected ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05)))
+                .background(Capsule().fill(selected ? Fill.accent : Fill.faint))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -145,23 +145,17 @@ struct SearchScopeBar: View {
 
 /// «Мне» или «Копия» в строке списка: я среди адресатов или только в копии.
 /// Письмо только мне — «Мне» красным: его, кроме меня, никто не прочтёт.
-struct RecipientMark: View {
+struct RecipientTag: View {
     let role: AppModel.RecipientRole
 
     var body: some View {
         let tint: Color = switch role {
-        case .onlyMe: .red
+        case .onlyMe: Palette.danger
         case .to: .accentColor
         case .cc: .secondary
         }
-        Text(role == .cc ? String(localized: "Копия") : String(localized: "Мне"))
-            .font(.system(size: 9.5, weight: role == .onlyMe ? .semibold : .medium))
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
-            .foregroundStyle(tint)
-            .background(Capsule().fill(role == .cc ? Color.primary.opacity(0.07) : tint.opacity(0.14)))
+        Tag(text: role == .cc ? String(localized: "Копия") : String(localized: "Мне"),
+            tint: tint, style: role == .cc ? .neutral : .tinted, size: .compact, emphasized: role == .onlyMe)
             .help(help)
     }
 
@@ -191,7 +185,7 @@ struct PriorityMark: View {
     var body: some View {
         if priority != .none {
             Image(systemName: priority.symbol)
-                .font(.system(size: 12, weight: .bold))
+                .font(.app(.text, weight: .bold))
                 .foregroundStyle(priority.color)
                 .frame(width: 16)
                 .help("Приоритет: \(priority.title.lowercased())")
@@ -203,9 +197,9 @@ extension Priority {
     var color: Color {
         switch self {
         case .none: .secondary
-        case .high: .red
-        case .medium: .orange
-        case .low: .blue
+        case .high: Palette.danger
+        case .medium: Palette.warning
+        case .low: Palette.info
         }
     }
 }
@@ -248,12 +242,12 @@ struct MailListPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(spacing: Space.xs) {
                 // Вкладки прокручиваются: их столько, сколько выбрано в
                 // настройках, и раздвигать панель они не должны.
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: Space.xs) {
                         tab(String(localized: "Не разобрано"), count: model.unresolved.count, mode: .unresolved)
                         ForEach(primary) { folder in
                             tab(folder.name, count: nil, mode: .folder(folder.id))
@@ -285,8 +279,8 @@ struct MailListPanel: View {
                     .menuStyle(.borderlessButton)
                     .frame(maxWidth: 170)
                     .fixedSize(horizontal: currentOtherName == nil, vertical: false)
-                    .padding(.horizontal, 6)
-                    .background(Capsule().fill(currentOtherName == nil ? .clear : Color.accentColor.opacity(0.18)))
+                    .padding(.horizontal, Space.sm)
+                    .background(Capsule().fill(currentOtherName == nil ? .clear : Fill.accentSoft))
                 }
                 Spacer(minLength: 8)
                 if model.isLoadingList { ProgressView().controlSize(.small) }
@@ -294,22 +288,22 @@ struct MailListPanel: View {
                 // (она же у «скрыть разобранные»), а здесь меняется порядок.
                 // Включено — рядом флажок: «по приоритету».
                 Button { model.sortByPriority.toggle() } label: {
-                    HStack(spacing: 2) {
+                    HStack(spacing: Space.xxs) {
                         Image(systemName: "arrow.up.arrow.down")
                         if model.sortByPriority {
-                            Image(systemName: "flag.fill").font(.system(size: 9))
+                            Image(systemName: "flag.fill").font(.app(.tiny))
                         }
                     }
                     .foregroundStyle(model.sortByPriority ? Color.accentColor : .secondary)
                     .padding(.horizontal, model.sortByPriority ? 6 : 4)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(model.sortByPriority ? Color.accentColor.opacity(0.18) : .clear))
+                    .padding(.vertical, Space.xs)
+                    .background(Capsule().fill(model.sortByPriority ? Fill.accentSoft : .clear))
                 }
                 .buttonStyle(.borderless)
                 .help(model.sortByPriority
                       ? "Сейчас сначала важное. Нажмите — по времени"
                       : "Сортировать по приоритету: сначала высокий, потом средний и низкий")
-                HStack(spacing: 4) {
+                HStack(spacing: Space.xs) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Поиск", text: $model.searchText)
                         .textFieldStyle(.plain)
@@ -317,13 +311,14 @@ struct MailListPanel: View {
                         .onSubmit { model.searchOnServer() }
                     if !model.searchText.isEmpty {
                         Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .labelHelp(String(localized: "Очистить поиск"))
                             .buttonStyle(.borderless)
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.06)))
+                .padding(.horizontal, Space.md)
+                .padding(.vertical, Space.xs)
+                .background(RoundedRectangle(cornerRadius: Radius.sm).fill(Fill.subtle))
                 // Нажали в поле — оно занимает всё место, что есть: вкладки
                 // уступают (они прокручиваются), и запрос виден целиком.
                 .frame(minWidth: searchFocused ? 260 : 80, maxWidth: searchFocused ? .infinity : 210)
@@ -349,23 +344,19 @@ struct MailListPanel: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
+                .padding(.horizontal, Space.sm)
             } else if !model.searchText.isEmpty, model.searchScope == .all {
                 Button("Искать «\(model.searchText)» в тексте писем на сервере  ⏎") { model.searchOnServer() }
                     .buttonStyle(.link)
                     .font(.caption)
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, Space.sm)
             }
 
             let items = model.listItems
             if items.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: emptySymbol)
-                        .font(.system(size: 26))
-                        .foregroundStyle(model.listMode == .unresolved && model.searchText.isEmpty ? .green : .secondary)
-                    Text(emptyText).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyState(symbol: emptySymbol, text: emptyText,
+                           tint: model.listMode == .unresolved && model.searchText.isEmpty ? Palette.success : .secondary,
+                           loading: model.isLoadingList || (model.listMode == .unresolved && model.isAwaitingFirstMail && model.searchText.isEmpty))
             } else {
                 ScrollViewReader { proxy in
                     // Системный список, а не стопка строк: только в нём
@@ -396,12 +387,12 @@ struct MailListPanel: View {
                     // Стрелками ушли к письму за краем — список следует за выбором.
                     .onChange(of: model.selectedID) { _, id in
                         guard let id, items.contains(where: { $0.id == id }) else { return }
-                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) }
+                        withAnimation(Motion.quick) { proxy.scrollTo(id) }
                     }
                 }
             }
         }
-        .padding(10)
+        .padding(Space.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Panel())
     }
@@ -462,8 +453,9 @@ struct MailListPanel: View {
     }
 
     private var emptyText: String {
+        if model.isLoadingList { return model.searchText.isEmpty ? String(localized: "Загружаю…") : String(localized: "Ищу…") }
         if !model.searchText.isEmpty { return String(localized: "Ничего не нашлось") }
-        if model.isLoadingList { return String(localized: "Загружаю…") }
+        if model.listMode == .unresolved, model.isAwaitingFirstMail { return String(localized: "Загружаю почту…") }
         return model.listMode == .unresolved ? String(localized: "Всё разобрано") : String(localized: "Папка пуста")
     }
 
@@ -472,23 +464,18 @@ struct MailListPanel: View {
         return Button {
             model.show(list: mode)
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: Space.xs) {
                 Text(title)
                     .font(.callout.weight(selected ? .semibold : .regular))
                     .lineLimit(1)
                     .fixedSize()
                 if let count {
-                    Text("\(count)")
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(count == 0 ? Color.green.opacity(0.2) : Color.orange.opacity(0.25)))
-                        .fixedSize()
+                    Tag(text: "\(count)", tint: count == 0 ? Palette.success : Palette.warning, style: .badge)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(selected ? Color.accentColor.opacity(0.18) : .clear))
+            .padding(.horizontal, Space.md)
+            .padding(.vertical, Space.xs)
+            .background(Capsule().fill(selected ? Fill.accentSoft : .clear))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -505,15 +492,16 @@ struct MonthCalendarView: View {
     @ViewState private var showYear = false
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Space.sm) {
             HStack {
                 Button { model.shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
+                    .labelHelp(String(localized: "Предыдущий месяц"))
                 Spacer()
                 Button { showYear.toggle() } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: Space.xs) {
                         Text(Format.month(model.monthAnchor)).font(.headline)
                         Image(systemName: "square.grid.3x3")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.app(.small, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
                     .contentShape(Rectangle())
@@ -529,15 +517,16 @@ struct MonthCalendarView: View {
                     Image(systemName: "number")
                         .foregroundStyle(model.showWeekNumbers ? Color.accentColor : .secondary)
                 }
-                .help(model.showWeekNumbers ? String(localized: "Скрыть номера недель") : String(localized: "Показать номера недель"))
+                .labelHelp(model.showWeekNumbers ? String(localized: "Скрыть номера недель") : String(localized: "Показать номера недель"))
                 Button { model.shiftMonth(1) } label: { Image(systemName: "chevron.right") }
+                    .labelHelp(String(localized: "Следующий месяц"))
             }
             .buttonStyle(.borderless)
 
             let weeks = model.showWeekNumbers
-            let columns = (weeks ? [GridItem(.fixed(26), spacing: 2)] : [])
-                + Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
-            LazyVGrid(columns: columns, spacing: 2) {
+            let columns = (weeks ? [GridItem(.fixed(26), spacing: Space.xxs)] : [])
+                + Array(repeating: GridItem(.flexible(), spacing: Space.xxs), count: 7)
+            LazyVGrid(columns: columns, spacing: Space.xxs) {
                 if weeks {
                     Text("Нед").font(.caption2).foregroundStyle(.tertiary)
                 }
@@ -556,7 +545,7 @@ struct MonthCalendarView: View {
                 }
             }
         }
-        .padding(10)
+        .padding(Space.lg)
         .background(Panel())
     }
 }
@@ -574,11 +563,11 @@ private struct DayCell: View {
         Button {
             model.show(day: day)
         } label: {
-            VStack(spacing: 1) {
+            VStack(spacing: Space.hairline) {
                 Text("\(calendar.component(.day, from: day))")
-                    .font(.system(size: 12, weight: today ? .bold : .regular).monospacedDigit())
+                    .font(.app(.text, weight: today ? .bold : .regular).monospacedDigit())
                     .foregroundStyle(selected ? Color.white : (weekend ? Color.secondary : Color.primary))
-                HStack(spacing: 2) {
+                HStack(spacing: Space.xxs) {
                     Circle()
                         .fill(model.busyDays.contains(day) ? (selected ? Color.white : Color.accentColor) : .clear)
                         .frame(width: 4, height: 4)
@@ -592,11 +581,11 @@ private struct DayCell: View {
             }
             .frame(maxWidth: .infinity, minHeight: 26)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: Radius.sm)
                     .fill(selected ? Color.accentColor : .clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: Radius.sm)
                     .strokeBorder(today && !selected ? Color.accentColor : .clear, lineWidth: 1.5)
             )
             .contentShape(Rectangle())
@@ -637,28 +626,28 @@ struct RescheduleSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Space.xl) {
+            VStack(alignment: .leading, spacing: Space.xs) {
                 Text(heading).font(.title3.weight(.semibold))
                 Text("«\(item.title)»").lineLimit(2)
                 Text(explanation).font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Space.md) {
                 ForEach(options) { option in
                     Button {
                         model.reschedule(item, to: option.date)
                         dismiss()
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: Space.xxs) {
                             Text(option.title).font(.body.weight(.medium))
                             Text(Format.relative(option.date, now: model.now))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+                        .padding(Space.lg)
+                        .background(RoundedRectangle(cornerRadius: Radius.md).fill(Fill.subtle))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -680,7 +669,7 @@ struct RescheduleSheet: View {
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
+        .padding(Space.section)
         .frame(width: 460)
         .onAppear {
             custom = options.first?.date ?? item.time.addingTimeInterval(3600)
@@ -723,8 +712,8 @@ struct DayNotePanel: View {
     @StateObject private var session = NoteSession()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(spacing: Space.sm) {
                 Image(systemName: "note.text")
                 Text("Заметка · \(Format.dayTitle(model.day))")
                     .lineLimit(1)
@@ -735,7 +724,7 @@ struct DayNotePanel: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .help("Открыть заметку в окне: оформление, списки, повестка дня")
+                .labelHelp(String(localized: "Открыть заметку в окне: оформление, списки, повестка дня"))
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
@@ -743,15 +732,15 @@ struct DayNotePanel: View {
                 if session.isEmpty {
                     Text("Что важно в этот день…")
                         .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
+                        .padding(.horizontal, Space.xs)
+                        .padding(.vertical, Space.hairline)
                         .allowsHitTesting(false)
                 }
                 NoteEditorView(controller: session.editor, inset: NSSize(width: 0, height: 1), onAttach: session.attached)
             }
             .frame(maxHeight: .infinity)
         }
-        .padding(10)
+        .padding(Space.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Panel())
         .onAppear(perform: open)
@@ -774,22 +763,19 @@ private struct SectionHeader: View {
 
     var body: some View {
         Button(action: toggle) {
-            HStack(spacing: 6) {
+            HStack(spacing: Space.sm) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.app(.tiny, weight: .bold))
                     .rotationEffect(.degrees(collapsed ? 0 : 90))
                 Text(title)
                     .font(.caption.weight(.semibold))
-                Text("\(count)")
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .padding(.horizontal, 5)
-                    .background(Capsule().fill(Color.primary.opacity(0.08)))
+                Tag(text: "\(count)", style: .neutral, size: .compact)
                 Spacer()
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.top, 8)
-            .padding(.bottom, 3)
+            .padding(.horizontal, Space.md)
+            .padding(.top, Space.md)
+            .padding(.bottom, Space.xxs)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

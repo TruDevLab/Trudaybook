@@ -86,7 +86,7 @@ struct TimelineView: View {
                 }
                 .frame(width: scale.totalWidth, height: metrics.totalHeight, alignment: .topLeading)
                 .padding(.horizontal, metrics.edge)
-                .padding(.vertical, 10)
+                .padding(.vertical, Space.lg)
             }
             // Масштаб — под ширину: видно столько часов, сколько в настройках.
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
@@ -133,7 +133,7 @@ private struct LaneTitles: View {
             title(String(localized: "Встречи и напоминания"), height: metrics.eventLane)
             Color.clear.frame(height: metrics.axis)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, Space.lg)
         .frame(width: 30)
         .help("Почта: открытых из всех писем за день")
     }
@@ -163,7 +163,7 @@ private struct HourGrid: View {
             // Границы рабочего дня — из настроек.
             let evening = CGFloat(scale.hourWidth * Double(work.upperBound))
             let morning = CGFloat(scale.hourWidth * Double(work.lowerBound))
-            let shade = Color.primary.opacity(0.035)
+            let shade = Fill.faint
             context.fill(Path(CGRect(x: 0, y: 0, width: morning, height: metrics.lanesHeight)), with: .color(shade))
             context.fill(Path(CGRect(x: evening, y: 0, width: size.width - evening, height: metrics.lanesHeight)),
                          with: .color(shade))
@@ -173,14 +173,14 @@ private struct HourGrid: View {
                 var path = Path()
                 path.move(to: CGPoint(x: x, y: 0))
                 path.addLine(to: CGPoint(x: x, y: metrics.lanesHeight + 6))
-                context.stroke(path, with: .color(.primary.opacity(0.12)), lineWidth: 1)
+                context.stroke(path, with: .color(Fill.hover), lineWidth: 1)
             }
             // Разделитель дорожек.
             let y = metrics.mailLane + metrics.laneGap / 2
             var divider = Path()
             divider.move(to: CGPoint(x: 0, y: y))
             divider.addLine(to: CGPoint(x: size.width, y: y))
-            context.stroke(divider, with: .color(.primary.opacity(0.1)), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+            context.stroke(divider, with: .color(Fill.hover), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
         }
         .frame(width: scale.totalWidth, height: metrics.totalHeight)
         .allowsHitTesting(false)
@@ -204,7 +204,7 @@ private struct AxisView: View {
                     .offset(x: x - 16, y: 6)
                 if scale.hourWidth >= 90 {
                     Rectangle()
-                        .fill(Color.primary.opacity(0.25))
+                        .fill(Fill.strong)
                         .frame(width: 1, height: 5)
                         .offset(x: x + CGFloat(scale.hourWidth / 2), y: 0)
                 }
@@ -221,14 +221,14 @@ private struct NowLine: View {
     var body: some View {
         ZStack(alignment: .top) {
             Rectangle()
-                .fill(Color.red)
+                .fill(Palette.now)
                 .frame(width: 2, height: metrics.lanesHeight + 6)
             Text(Format.time(time))
                 .font(.caption2.weight(.bold).monospacedDigit())
                 .foregroundStyle(.white)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(Capsule().fill(Color.red))
+                .padding(.horizontal, Space.xs)
+                .padding(.vertical, Space.hairline)
+                .background(Capsule().fill(Palette.now))
                 .offset(y: -8)
         }
         .frame(width: 44)
@@ -345,6 +345,7 @@ extension View {
                 }
             }
             .onTapGesture { model.selectedID = item.id }
+            .actsAsRow(String(localized: "Выбрать")) { model.selectedID = item.id }
             .itemDraggable(item)
             .contextMenu { ItemContextMenu(item: item).environmentObject(model) }
     }
@@ -431,7 +432,7 @@ private struct DragCanvas: View {
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
                         Image(systemName: item.symbol)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.app(.body, weight: .semibold))
                             .foregroundStyle(Color.accentColor)
                             .frame(width: Self.badge, height: Self.badge)
                             .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
@@ -451,9 +452,9 @@ struct DragPreview: View {
         Label(item.title, systemImage: item.symbol)
             .font(.callout.weight(.medium))
             .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+            .padding(.horizontal, Space.lg)
+            .padding(.vertical, Space.sm)
+            .background(RoundedRectangle(cornerRadius: Radius.md).fill(Color(nsColor: .controlBackgroundColor)))
             .frame(maxWidth: 280)
     }
 }
@@ -464,9 +465,9 @@ struct StatusBadge: View {
     var body: some View {
         switch status {
         case .done:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.success)
         case .snoozed:
-            Image(systemName: "clock.fill").foregroundStyle(.orange)
+            Image(systemName: "clock.fill").foregroundStyle(Palette.warning)
         case .open, .upcoming:
             EmptyView()
         }
@@ -484,24 +485,24 @@ private struct MailCard: View {
         let selected = model.selectedID == item.id
         let textLength = metrics.cardHeight - 26
 
-        VStack(spacing: 4) {
+        VStack(spacing: Space.xs) {
             ZStack {
                 if case .open = status, unread {
                     Circle().fill(Color.accentColor).frame(width: 8, height: 8)
                 } else {
-                    StatusBadge(status: status).font(.system(size: 11))
+                    StatusBadge(status: status).font(.app(.label))
                 }
             }
             .frame(height: 14)
-            .padding(.top, 5)
+            .padding(.top, Space.xs)
 
             // Текст идёт снизу вверх, как на макете: карточка узкая и высокая,
             // а писем в час бывает несколько.
             VStack(alignment: .leading, spacing: 0) {
                 Text(item.subtitle)
-                    .font(.system(size: 11, weight: unread ? .bold : .semibold))
+                    .font(.app(.label, weight: unread ? .bold : .semibold))
                 Text(item.title)
-                    .font(.system(size: 10))
+                    .font(.app(.small))
                     .foregroundStyle(.secondary)
             }
             .lineLimit(1)
@@ -512,15 +513,15 @@ private struct MailCard: View {
         }
         .frame(width: metrics.cardWidth, height: metrics.cardHeight, alignment: .top)
         .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(unread ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.06))
+            RoundedRectangle(cornerRadius: Radius.sm)
+                .fill(unread ? Fill.accentSoft : Fill.subtle)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle(cornerRadius: Radius.sm)
                 .strokeBorder(selected ? Color.accentColor : Color.primary.opacity(unread ? 0.25 : 0.14),
                               style: StrokeStyle(lineWidth: selected ? 2 : 1, dash: statusIsSnoozed(status) ? [3, 2] : []))
         )
-        .opacity(status.isDone && !selected ? 0.45 : 1)
+        .opacity(status.isDone && !selected ? Alpha.done : 1)
         .help("\(item.subtitle)\n\(item.title)\n\(Format.time(item.time))")
         .timelineItem(item, model: model)
     }
@@ -545,32 +546,32 @@ private struct MailCluster: View {
 
         ZStack {
             ForEach(0..<2, id: \.self) { layer in
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(Color.accentColor.opacity(0.08))
-                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.primary.opacity(0.12)))
+                RoundedRectangle(cornerRadius: Radius.sm)
+                    .fill(Fill.accentFaint)
+                    .overlay(RoundedRectangle(cornerRadius: Radius.sm).strokeBorder(Fill.hover))
                     .offset(x: CGFloat(2 - layer) * 3, y: CGFloat(2 - layer) * -3)
             }
-            RoundedRectangle(cornerRadius: 7)
-                .fill(open > 0 ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.07))
-                .overlay(RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(containsSelection ? Color.accentColor : Color.primary.opacity(0.2),
+            RoundedRectangle(cornerRadius: Radius.sm)
+                .fill(open > 0 ? Fill.accent : Fill.subtle)
+                .overlay(RoundedRectangle(cornerRadius: Radius.sm)
+                    .strokeBorder(containsSelection ? Color.accentColor : Fill.strong,
                                   lineWidth: containsSelection ? 2 : 1))
-            VStack(spacing: 6) {
+            VStack(spacing: Space.sm) {
                 // Разобрана вся пачка — та же зелёная галочка, что у письма:
                 // одна бледность не говорила, всё ли в порядке.
                 if open == 0 {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.green)
+                        .font(.app(.large))
+                        .foregroundStyle(Palette.success)
                 } else {
                     Image(systemName: "envelope.stack")
-                        .font(.system(size: 15))
+                        .font(.app(.large))
                 }
                 Text("\(items.count)")
-                    .font(.system(size: 17, weight: .bold).monospacedDigit())
+                    .font(.app(.heading, weight: .bold).monospacedDigit())
                 if open > 0, open < items.count {
                     Text("✓\(items.count - open)")
-                        .font(.system(size: 10).monospacedDigit())
+                        .font(.app(.small).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -579,14 +580,15 @@ private struct MailCluster: View {
         .opacity(open == 0 && !containsSelection ? 0.6 : 1)
         .contentShape(Rectangle())
         .onTapGesture { isOpen = true }
+        .actsAsButton { isOpen = true }
         .help("\(items.count) писем с \(Format.time(items.first?.time ?? Date())) — нажмите, чтобы раскрыть")
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.xxs) {
                 ForEach(items) { item in
                     ItemRow(item: item) { isOpen = false }
                 }
             }
-            .padding(8)
+            .padding(Space.md)
             .frame(width: 360)
         }
     }
@@ -607,78 +609,88 @@ struct EventBlock: View {
         // Отменённая — как неподтверждённая (штриховка, пунктир), но зачёркнута:
         // в календаре она до нажатия «Удалить из календаря» в письме об отмене.
         let unconfirmed = item.event?.isUnconfirmed == true || cancelled
+        // Подключится само — камера своим цветом, видно и в узком блоке.
+        let autoJoin = AutoJoinRules.canAutoJoin(item) && model.autoJoins(item)
 
         HStack(spacing: 0) {
             Rectangle().fill(color.opacity(unconfirmed ? 0.5 : 1)).frame(width: 3)
             if compact {
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.xxs) {
                     if unconfirmed {
                         Image(systemName: cancelled ? "xmark.circle" : "questionmark.circle").foregroundStyle(color)
+                    }
+                    if autoJoin {
+                        Image(systemName: "video.fill").foregroundStyle(Self.autoJoinColor)
                     }
                     Text(item.title)
                         .strikethrough(cancelled)
                         .lineLimit(3)
                         .minimumScaleFactor(0.8)
                 }
-                .font(.system(size: 10.5, weight: .semibold))
-                .padding(.horizontal, 3)
-                .padding(.vertical, 2)
+                .font(.app(.small, weight: .semibold))
+                .padding(.horizontal, Space.xxs)
+                .padding(.vertical, Space.xxs)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
+                VStack(alignment: .leading, spacing: Space.xxs) {
+                    HStack(spacing: Space.xs) {
                         if unconfirmed {
                             Image(systemName: cancelled ? "xmark.circle" : "questionmark.circle")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.app(.label, weight: .semibold))
                                 .foregroundStyle(color)
                         }
                         Text(item.title)
                             .strikethrough(cancelled)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(.text, weight: .semibold))
                             .lineLimit(2)
                         Spacer(minLength: 0)
                         // Прошедшая встреча просто бледнеет; галочка — только
                         // если её разобрали руками, как письмо. Иначе галочки
                         // стояли у всех встреч до красной линии и путали.
                         if status == .done(.marked) {
-                            StatusBadge(status: status).font(.system(size: 10))
+                            StatusBadge(status: status).font(.app(.small))
                         }
                     }
-                    HStack(spacing: 4) {
+                    HStack(spacing: Space.xs) {
                         Text(Format.range(item.time, item.end))
-                            .font(.system(size: 10.5).monospacedDigit())
+                            .font(.app(.small).monospacedDigit())
                             .foregroundStyle(.secondary)
                         if item.event?.link != nil {
-                            Image(systemName: "video.fill").font(.system(size: 9)).foregroundStyle(.secondary)
+                            Image(systemName: "video.fill").font(.app(.tiny))
+                                .foregroundStyle(autoJoin ? Self.autoJoinColor : .secondary)
                         }
                         if item.event?.canReschedule == false {
-                            Image(systemName: "lock.fill").font(.system(size: 8)).foregroundStyle(.tertiary)
+                            Image(systemName: "lock.fill").font(.app(.micro)).foregroundStyle(.tertiary)
                         }
                     }
                     .lineLimit(1)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+                .padding(.horizontal, Space.sm)
+                .padding(.vertical, Space.xs)
                 Spacer(minLength: 0)
             }
         }
         // Неподтверждённая — бледная, в косую штриховку и с пунктирной
         // рамкой: место в дне занято, но решения ещё нет.
-        .background(RoundedRectangle(cornerRadius: 6).fill(color.opacity(unconfirmed ? 0.1 : (status == .open ? 0.3 : 0.18))))
+        .background(RoundedRectangle(cornerRadius: Radius.sm).fill(color.opacity(unconfirmed ? 0.1 : (status == .open ? 0.3 : 0.18))))
         .background { if unconfirmed { Hatch(color: color.opacity(0.28)) } }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: Radius.sm)
                 .strokeBorder(selected ? Color.accentColor : (status == .open || unconfirmed ? color : .clear),
                               style: StrokeStyle(lineWidth: selected ? 2 : 1.5, dash: unconfirmed && !selected ? [4, 3] : []))
         )
-        .opacity(status.isDone && !selected ? 0.5 : 1)
-        .help("\(item.title)\n\(Format.range(item.time, item.end))" + (unconfirmed ? "\n" + Self.answerNote(item) : ""))
+        .opacity(status.isDone && !selected ? Alpha.done : 1)
+        .help("\(item.title)\n\(Format.range(item.time, item.end))" + (unconfirmed ? "\n" + Self.answerNote(item) : "")
+              + (autoJoin ? "\n" + String(localized: "Подключится само в начале встречи") : ""))
         .timelineItem(item, model: model)
     }
 }
 
 extension EventBlock {
+    /// Камера встречи, которая подключится сама.
+    static let autoJoinColor = Palette.success
+
     static func answerNote(_ item: TimelineItem) -> String {
         if item.event?.isCancelled == true {
             return String(localized: "Встреча отменена — удалите её из календаря")
@@ -721,29 +733,29 @@ struct ReminderBlock: View {
         let status = model.status(of: item)
         let selected = model.selectedID == item.id
         let color = item.swiftUIColor
-        HStack(spacing: 5) {
+        HStack(spacing: Space.xs) {
             ReminderCheckbox(item: item)
             Text(item.title)
-                .font(.system(size: 11, weight: .medium))
+                .font(.app(.label, weight: .medium))
                 .strikethrough(status.isDone)
                 .lineLimit(1)
             if !compact {
                 Text(Format.time(item.time))
-                    .font(.system(size: 10).monospacedDigit())
+                    .font(.app(.small).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .fixedSize()
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, Space.sm)
         .frame(maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 6).fill(color.opacity(status == .open ? 0.24 : 0.12)))
+        .background(RoundedRectangle(cornerRadius: Radius.sm).fill(color.opacity(status == .open ? 0.24 : 0.12)))
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: Radius.sm)
                 .strokeBorder(selected ? Color.accentColor : color.opacity(0.7),
                               style: StrokeStyle(lineWidth: selected ? 2 : 1, dash: selected ? [] : [3, 2]))
         )
-        .opacity(status.isDone && !selected ? 0.55 : 1)
+        .opacity(status.isDone && !selected ? Alpha.done : 1)
         .help("Напоминание · \(Format.time(item.time))\n\(item.title)")
         .timelineItem(item, model: model)
     }
@@ -760,10 +772,10 @@ struct ReminderCheckbox: View {
         Button { model.toggleReminder(item) } label: {
             Image(systemName: done ? "checkmark.circle.fill" : "circle")
                 .font(.system(size: size))
-                .foregroundStyle(done ? Color.green : item.swiftUIColor)
+                .foregroundStyle(done ? Palette.success : item.swiftUIColor)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .help(done ? String(localized: "Вернуть в невыполненные") : String(localized: "Отметить выполненным"))
+        .labelHelp(done ? String(localized: "Вернуть в невыполненные") : String(localized: "Отметить выполненным"))
     }
 }

@@ -182,7 +182,7 @@ struct MenuBarCalendarView: View {
     let close: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.lg) {
             monthHeader
             monthGrid
             Divider()
@@ -191,7 +191,7 @@ struct MenuBarCalendarView: View {
             Divider()
             footer
         }
-        .padding(12)
+        .padding(Space.xl)
         .frame(width: 330)
         // Окошко открывается без кольца фокуса на первой кнопке.
         .focusEffectDisabled()
@@ -204,11 +204,11 @@ struct MenuBarCalendarView: View {
             Text(Format.month(state.month)).font(.headline)
             Spacer()
             Button { state.shiftMonth(-1, model: model) } label: { Image(systemName: "chevron.left") }
-                .help("Предыдущий месяц")
+                .labelHelp(String(localized: "Предыдущий месяц"))
             Button("Сегодня") { state.reset(to: model.now, model: model) }
                 .disabled(model.calendar.isDate(state.selected, inSameDayAs: model.now))
             Button { state.shiftMonth(1, model: model) } label: { Image(systemName: "chevron.right") }
-                .help("Следующий месяц")
+                .labelHelp(String(localized: "Следующий месяц"))
         }
         .buttonStyle(.borderless)
     }
@@ -230,9 +230,9 @@ struct MenuBarCalendarView: View {
 
     private var monthGrid: some View {
         // Первая колонка — номер недели ISO 8601, как в календаре главного окна.
-        let columns = [GridItem(.fixed(22), spacing: 2)] + Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
+        let columns = [GridItem(.fixed(22), spacing: Space.xxs)] + Array(repeating: GridItem(.flexible(), spacing: Space.xxs), count: 7)
         let cells = days
-        return LazyVGrid(columns: columns, spacing: 2) {
+        return LazyVGrid(columns: columns, spacing: Space.xxs) {
             Text("Нед").font(.caption2).foregroundStyle(.tertiary)
             ForEach([String(localized: "Пн"), String(localized: "Вт"), String(localized: "Ср"), String(localized: "Чт"),
                      String(localized: "Пт"), String(localized: "Сб"), String(localized: "Вс")], id: \.self) { name in
@@ -262,9 +262,10 @@ struct MenuBarCalendarView: View {
                 .foregroundStyle(current ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
                 .frame(maxWidth: .infinity)
                 .frame(height: 30, alignment: .top)
-                .padding(.top, 5)
+                .padding(.top, Space.xs)
                 .contentShape(Rectangle())
                 .onTapGesture { state.select(first, model: model) }
+                .actsAsButton(String(localized: "Неделя \(number)")) { state.select(first, model: model) }
                 .help("Неделя \(number)")
         } else {
             Color.clear.frame(height: 30)
@@ -279,7 +280,7 @@ struct MenuBarCalendarView: View {
         // Цвета — иерархические (`.primary`, а не `Color.primary`): только
         // их окошко строки меню красит как свои подписи.
         let digits: AnyShapeStyle = isToday ? AnyShapeStyle(.white) : weekend ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
-        return VStack(spacing: 2) {
+        return VStack(spacing: Space.xxs) {
             Text("\(calendar.component(.day, from: day))")
                 .font(.callout.weight(isToday ? .bold : .regular))
                 .foregroundStyle(digits)
@@ -291,10 +292,11 @@ struct MenuBarCalendarView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 30)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(isSelected && !isToday ? Color.accentColor.opacity(0.18) : .clear))
+        .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+            .fill(isSelected && !isToday ? Fill.accentSoft : .clear))
         .contentShape(Rectangle())
         .onTapGesture { state.select(day, model: model) }
+        .actsAsButton { state.select(day, model: model) }
     }
 
     // MARK: Встречи дня
@@ -320,7 +322,7 @@ struct MenuBarCalendarView: View {
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: Space.xs) {
                         ForEach(state.events) { item in
                             MenuBarEventRow(item: item, now: model.now, focused: item.id == state.focusID) { open(item) }
                                 .id(item.id)
@@ -391,12 +393,12 @@ private struct MenuBarEventRow: View {
     private var cancelled: Bool { item.event?.isCancelled == true }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            RoundedRectangle(cornerRadius: 2)
+        HStack(alignment: .top, spacing: Space.md) {
+            RoundedRectangle(cornerRadius: Radius.xs)
                 .fill(item.swiftUIColor)
                 .frame(width: 4)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.xxs) {
+                HStack(spacing: Space.sm) {
                     Text(item.isAllDay ? String(localized: "весь день") : Format.range(item.time, item.end))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(soon ? Color.accentColor : .secondary)
@@ -404,9 +406,9 @@ private struct MenuBarEventRow: View {
                         Text(item.time <= now ? String(localized: "идёт") : soon ? String(localized: "скоро") : String(localized: "далее"))
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                            .padding(.horizontal, Space.xs)
+                            .padding(.vertical, Space.hairline)
+                            .background(Capsule().fill(Fill.accentSoft))
                     }
                 }
                 Text(item.title)
@@ -440,16 +442,17 @@ private struct MenuBarEventRow: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.vertical, 5)
-        .padding(.horizontal, 6)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+        .padding(.vertical, Space.xs)
+        .padding(.horizontal, Space.sm)
+        .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
             .fill(focused ? Color.accentColor.opacity(hovered ? 0.18 : 0.12) : Color.primary.opacity(hovered ? 0.07 : 0)))
-        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .strokeBorder(focused ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+            .strokeBorder(focused ? Fill.accentStrong : .clear, lineWidth: 1))
         .opacity(ended || cancelled ? 0.55 : 1)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .onTapGesture(perform: open)
+        .actsAsRow(String(localized: "Открыть в Trudaybook"), action: open)
         .help("Открыть в Trudaybook")
     }
 }

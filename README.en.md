@@ -142,6 +142,28 @@ and Chinese interface.
 sample emails and meetings; skip it any time, take it again from Help →
 Trudaybook Tutorial or Settings → Appearance.
 
+**AI on this Mac** — through [Ollama](https://ollama.com) (free; Trudaybook
+offers to install it and download a suitable model itself, Settings → AI):
+- **assistant chat** (the “Assistant” button or ⌥⌘A): opens above the selected
+  email or meeting, with a draggable divider between them; it starts with tiles
+  of ready requests (My day, Awaiting reply, Summarize email, Meeting prep,
+  Reminder…); conversations in tabs,
+  questions about meetings, emails and the daily note, “what do I have today”,
+  “what did Orlov write”; attach an email or a meeting (`/mail` or `/cal` plus words from the subject) or a file (an image too, if
+  the model sees images) or dictate the question — speech is recognized on this
+  Mac. A reminder, meeting, email or daily-note entry is only **suggested as a
+  card** — you create and send it; the email opens in a separate window;
+- above each email there's a collapsed “Summary” bar: expand it and the model
+  summarizes the email; “To handle” gets labels — Important, Conversation,
+  Notifications, Newsletters — with a filter (newsletters and notifications
+  show up even without the model, from the email's headers);
+- “Daily Agenda” in the note window: key items for the day, meetings with a
+  Minutes section and emails from attendees, reminders, important emails;
+  week and month summaries from your daily notes;
+- “Prepare reply template” in the reply window: the model reads the email and
+  the earlier conversation and drafts a reply that answers every question;
+  it makes no decisions for you — those are left as [placeholders].
+
 **Together with [Trunook](https://github.com/TruDevLab/Trunook)** — a MacBook
 notch app by the same author (optional, all off by default):
 - emails, invitations, upcoming meetings and snoozed emails coming back —
@@ -151,19 +173,6 @@ notch app by the same author (optional, all off by default):
 - a Mail tile and emails on Trunook's day timeline;
 - while a Trunook timer runs, Trudaybook stays quiet and then sends one
   summary notification;
-- the Trunook assistant reads unhandled mail, snoozes emails, sets priority
-  and labels and drafts replies — **you send them yourself**;
-- above each email there's a collapsed “Summary” bar: expand it and Trunook's
-  model summarizes the email; “To handle” gets labels — Important,
-  Conversation, Notifications, Newsletters — with a filter. Newsletters and
-  notifications show up even without Trunook, from the email's headers;
-- “Daily Agenda” in the note window: key items for the day from Trunook's
-  model, meetings with a Minutes section and emails from attendees,
-  reminders, important emails;
-- week and month summaries from your daily notes;
-- “Prepare reply template” in the reply window: the model reads the email and
-  the earlier conversation and drafts a reply that answers every question;
-  it makes no decisions for you — those are left as [placeholders];
 - a shared day note;
 - weather in the calendar and for the Sky theme comes from Trunook.
 
@@ -207,9 +216,10 @@ notch app by the same author (optional, all off by default):
 - **Weather** comes from Trunook, if installed. Without it — only if you turn it
   on in Settings → Calendars → Weather: then the forecast is requested from
   Open-Meteo with coordinates rounded to about 10 km, or by city name.
-- **Summaries, labels, agendas, week summaries and reply templates** come only from a model on
-  this Mac: if Trunook uses a cloud model, it refuses, and neither emails nor
-  notes go anywhere.
+- **Summaries, labels, agendas, week summaries, reply templates and the chat** come only
+  from an Ollama model on this Mac (`127.0.0.1`); Ollama cloud models are never
+  offered or used, so neither emails nor notes go anywhere. The only downloads
+  are Ollama itself (ollama.com) and models — when you press the button.
 - Trudaybook talks to Trunook only through files in `~/Library/Application Support`
   on the same Mac.
 

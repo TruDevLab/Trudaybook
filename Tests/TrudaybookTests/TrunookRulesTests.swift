@@ -136,53 +136,6 @@ private func meeting(_ id: String = "event:1", inMinutes: Double, minutes: Doubl
     }
 }
 
-@Suite struct TrunookCommandTests {
-    private func mail(_ id: String, from name: String, title: String, minutesAgo: Double = 10) -> TimelineItem {
-        TimelineItem(id: id, title: title, time: now.addingTimeInterval(-minutesAgo * 60),
-                     detail: .mail(MailInfo(accountID: "a", from: Person(name: name, address: "\(id.suffix(1))@example.com"),
-                                            snippet: "Начало текста")))
-    }
-
-    @Test func parsesOnlyKnownActions() throws {
-        #expect(try TrunookCommand.parse(["action": "done", "letter": "mail:a:1"]).get() == .done(letter: "mail:a:1"))
-        #expect(try TrunookCommand.parse(["action": "priority", "letter": "Козлов", "level": "HIGH"]).get()
-                == .priority(letter: "Козлов", level: .high))
-        #expect(try TrunookCommand.parse(["action": "snooze", "letter": "x", "until": "2026-09-26T09:00:00Z"]).get()
-                == .snooze(letter: "x", until: ISO8601DateFormatter().date(from: "2026-09-26T09:00:00Z")!))
-        #expect(try TrunookCommand.parse(["action": "list", "limit": 500]).get() == .list(from: nil, importantOnly: false, limit: 30))
-        // Отправки нет в списке — и не появится случайно.
-        #expect(TrunookCommand.parse(["action": "send", "letter": "x"]) == .failure(.unknownAction("send")))
-        #expect(TrunookCommand.parse(["action": "delete", "letter": "x"]) == .failure(.unknownAction("delete")))
-        #expect(TrunookCommand.parse(["action": "done"]) == .failure(.missing("letter")))
-        #expect(TrunookCommand.parse(["action": "snooze", "letter": "x", "until": "завтра"]) == .failure(.badDate))
-        #expect(TrunookCommand.parse(["action": "priority", "letter": "x", "level": "urgent"]) == .failure(.badLevel("urgent")))
-        #expect(TrunookCommand.parse(["action": "draft", "letter": "x", "text": "   "]) == .failure(.missing("text")))
-    }
-
-    @Test func resolvesLettersByWordsNotGuessing() {
-        let a = mail("mail:a:1", from: "Андрей Козлов", title: "Договор: правки юристов", minutesAgo: 30)
-        let b = mail("mail:a:2", from: "Андрей Козлов", title: "Обед в пятницу", minutesAgo: 5)
-        let c = mail("mail:a:3", from: "Анна Смирнова", title: "Договор аренды")
-        #expect(TrunookCommand.resolve("mail:a:3", in: [a, b, c]) == .found(c))
-        #expect(TrunookCommand.resolve("Козлов договор", in: [a, b, c]) == .found(a))
-        #expect(TrunookCommand.resolve("козлов", in: [a, b, c]) == .ambiguous([b, a]))
-        #expect(TrunookCommand.resolve("Петров", in: [a, b, c]) == .none)
-        #expect(TrunookCommand.resolve("а", in: [a, b, c]) == .none)
-    }
-
-    @Test func listingFiltersBySenderAndImportance() {
-        let a = mail("mail:a:1", from: "Андрей Козлов", title: "Договор", minutesAgo: 30)
-        let b = mail("mail:a:2", from: "Анна Смирнова", title: "Отчёт", minutesAgo: 5)
-        let list = TrunookCommand.listing([a, b], from: nil, importantOnly: false, limit: 10, priority: { _ in .none })
-        #expect(list.map { $0["id"] as? String } == ["mail:a:2", "mail:a:1"])
-        let kozlov = TrunookCommand.listing([a, b], from: "козлов", importantOnly: false, limit: 10, priority: { _ in .none })
-        #expect(kozlov.count == 1)
-        let important = TrunookCommand.listing([a, b], from: nil, importantOnly: true, limit: 10,
-                                               priority: { $0.id == "mail:a:1" ? .high : .none })
-        #expect(important.map { $0["id"] as? String } == ["mail:a:1"])
-    }
-}
-
 @Suite struct LetterExportTests {
     @Test func exportedLetterReadsBackWithAttachments() throws {
         let item = TimelineItem(

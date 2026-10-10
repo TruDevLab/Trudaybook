@@ -9,7 +9,7 @@ import TrudaybookCore
 final class TrunookBridge: ObservableObject {
     /// Главный выключатель: без него в вырез уходят только уведомления
     /// о письмах (они настраиваются в «Уведомлениях»).
-    @Published var isEnabled: Bool { didSet { save(isEnabled, "trunookLink"); syncCommands(); publishState() } }
+    @Published var isEnabled: Bool { didSet { save(isEnabled, "trunookLink"); publishState() } }
     @Published var invitations: Bool { didSet { save(invitations, "trunookInvitations") } }
     @Published var meetings: Bool { didSet { save(meetings, "trunookMeetings") } }
     /// За сколько минут до встречи.
@@ -22,17 +22,6 @@ final class TrunookBridge: ObservableObject {
     @Published var shareSubjects: Bool { didSet { save(shareSubjects, "trunookSubjects"); publishState() } }
     /// Пока в Trunook идёт рабочая фаза таймера — уведомления ждут.
     @Published var quietDuringFocus: Bool { didSet { save(quietDuringFocus, "trunookFocusQuiet") } }
-    /// Помощник Trunook может читать неразобранное, откладывать, ставить
-    /// приоритет, отмечать разобранным и готовить черновик ответа.
-    @Published var acceptCommands: Bool { didSet { save(acceptCommands, "trunookCommands"); syncCommands(); publishState() } }
-
-    /// Пересказ писем и метки для разбора — местной моделью Trunook.
-    /// Облачной Trunook откажет сам: письма с Mac не уходят.
-    @Published var modelHelp: Bool { didSet { save(modelHelp, "trunookModelHelp") } }
-    /// Размечать новые неразобранные письма без нажатия.
-    @Published var autoLabel: Bool { didSet { save(autoLabel, "trunookAutoLabel") } }
-
-    let commands = TrunookCommandInbox()
     /// Заметка дня — общая с заметками Trunook. Выключено по умолчанию:
     /// заметки личные, а в Trunook они могут уйти и в Obsidian.
     @Published var shareDayNotes: Bool { didSet { save(shareDayNotes, "trunookDayNotes"); syncNotes() } }
@@ -60,23 +49,12 @@ final class TrunookBridge: ObservableObject {
         shareSummary = flag("trunookSummary", true)
         shareSubjects = flag("trunookSubjects", true)
         quietDuringFocus = flag("trunookFocusQuiet", true)
-        acceptCommands = flag("trunookCommands", false)
+        // Помощник Trunook (его ИИ) больше не работает с почтой: всё ИИ —
+        // своё, через Ollama. Прежнее разрешение не должно остаться в настройках.
+        defaults.removeObject(forKey: "trunookCommands")
         shareDayNotes = flag("trunookDayNotes", false)
-        modelHelp = flag("trunookModelHelp", true)
-        autoLabel = flag("trunookAutoLabel", true)
     }
 
-    /// Запустить то, что работает само по себе: приём команд.
-    func start() {
-        commands.model = model
-        syncCommands()
-    }
-
-    private func syncCommands() {
-        guard let model else { return }
-        commands.model = model
-        if isEnabled && acceptCommands { commands.start() } else { commands.stop() }
-    }
 
     private func save(_ value: Any, _ key: String) {
         if persists { UserDefaults.standard.set(value, forKey: key) }
@@ -330,7 +308,7 @@ final class TrunookBridge: ObservableObject {
         }
         let now = model.now
         let state = TrunookState.make(unresolved: model.unresolved, today: model.mail(onDayOf: now), updated: now,
-                                      subjects: shareSubjects, commands: acceptCommands && commands.isRunning,
+                                      subjects: shareSubjects,
                                       priority: model.priority(of:),
                                       done: { model.status(of: $0).isDone })
         if let lastState, lastState.sameContent(as: state), now.timeIntervalSince(lastWrite) < 300 { return }

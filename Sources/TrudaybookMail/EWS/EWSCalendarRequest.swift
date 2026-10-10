@@ -104,6 +104,64 @@ enum EWSCalendarRequest {
         """
     }
 
+    /// Описание встречи в HTML и список вложений — для правой панели. Список
+    /// встреч берёт описание текстом (`details`): HTML с картинками всего
+    /// календаря был бы мегабайтами на каждое обновление.
+    static func richBody(_ id: String) -> String {
+        """
+        <m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:BodyType>HTML</t:BodyType>\
+        <t:AdditionalProperties><t:FieldURI FieldURI="item:Body"/><t:FieldURI FieldURI="item:Attachments"/>\
+        </t:AdditionalProperties></m:ItemShape><m:ItemIds>\(EWSRequest.itemRef(id))</m:ItemIds></m:GetItem>
+        """
+    }
+
+    /// Вложение встречи без содержимого — из `richBody`.
+    struct AttachmentRef: Equatable {
+        var id: String
+        var name: String
+        var contentType: String
+        var contentID: String?
+        var isInline: Bool
+        var size: Int
+    }
+
+    static func parseRichBody(_ response: XMLTreeNode) throws -> (html: String?, attachments: [AttachmentRef]) {
+        guard let message = try EWSRequest.responseMessages(response).first else {
+            throw MailNetworkError.protocolError(String(localized: "пустой ответ"))
+        }
+        guard EWSRequest.isSuccess(message) else { throw EWSRequest.failure(message) }
+        let html = message.first("Body")?.text
+        // Вложенные письма (`ItemAttachment`) не берём — только файлы.
+        let files = message.first("Attachments")?.all("FileAttachment") ?? []
+        let refs = files.compactMap { file -> AttachmentRef? in
+            guard let id = file.child("AttachmentId")?.attributes["Id"] else { return nil }
+            return AttachmentRef(id: id, name: file.child("Name")?.text ?? "",
+                                 contentType: file.child("ContentType")?.text ?? "application/octet-stream",
+                                 contentID: file.child("ContentId")?.text,
+                                 isInline: file.child("IsInline")?.text.lowercased() == "true",
+                                 size: Int(file.child("Size")?.text ?? "") ?? 0)
+        }
+        return (html?.isEmpty == false ? html : nil, refs)
+    }
+
+    static func getAttachments(_ ids: [String]) -> String {
+        let refs = ids.map { "<t:AttachmentId Id=\"\(XMLEscape.text($0))\"/>" }.joined()
+        return "<m:GetAttachment><m:AttachmentIds>\(refs)</m:AttachmentIds></m:GetAttachment>"
+    }
+
+    /// Содержимое вложений по их Id. Не отдал сервер одно — остальные целы.
+    static func parseAttachmentContents(_ response: XMLTreeNode) throws -> [String: Data] {
+        var result: [String: Data] = [:]
+        for message in try EWSRequest.responseMessages(response) where EWSRequest.isSuccess(message) {
+            guard let file = message.first("FileAttachment"),
+                  let id = file.child("AttachmentId")?.attributes["Id"],
+                  let content = file.child("Content")?.text,
+                  let data = Data(base64Encoded: content, options: .ignoreUnknownCharacters) else { continue }
+            result[id] = data
+        }
+        return result
+    }
+
     /// Серия, к которой относится вхождение: её Id, начало и правило повтора.
     static func master(ofOccurrence id: String) -> String {
         """

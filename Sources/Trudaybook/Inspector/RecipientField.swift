@@ -34,7 +34,7 @@ struct SuggestionList: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(people.prefix(6).enumerated()), id: \.offset) { index, person in
                 Button { pick(person) } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Space.sm) {
                         Image(systemName: "person.crop.circle").foregroundStyle(.secondary)
                         Text(person.name ?? person.address ?? "")
                         if person.name != nil, let address = person.address {
@@ -43,16 +43,16 @@ struct SuggestionList: View {
                         Spacer()
                         if index == highlighted { Text("⏎").font(.caption).foregroundStyle(.secondary) }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: 5)
-                        .fill(index == highlighted ? Color.accentColor.opacity(0.22) : .clear))
+                    .padding(.horizontal, Space.md)
+                    .padding(.vertical, Space.xs)
+                    .background(RoundedRectangle(cornerRadius: Radius.xs)
+                        .fill(index == highlighted ? Fill.accent : .clear))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.12)))
+        .background(RoundedRectangle(cornerRadius: Radius.sm).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: Radius.sm).strokeBorder(Fill.hover))
     }
 }

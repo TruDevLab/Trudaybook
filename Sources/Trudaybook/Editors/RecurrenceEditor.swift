@@ -50,7 +50,7 @@ struct RecurrenceEditor: View {
     @ViewState private var customOpen = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.md) {
             if unsupported {
                 Label("Повтор задан в Outlook сложным правилом — здесь он не меняется, остальное можно править",
                       systemImage: "repeat")
@@ -91,7 +91,7 @@ struct RecurrenceEditor: View {
     }
 
     private var custom: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.md) {
             Text("Каждые")
             Stepper(value: Binding(get: { rule?.interval ?? 1 }, set: { rule?.interval = max(1, $0) }), in: 1...99) {
                 Text("\(rule?.interval ?? 1)").monospacedDigit().frame(minWidth: 20)
@@ -113,7 +113,7 @@ struct RecurrenceEditor: View {
 
     /// Пн … Вс кнопками-переключателями.
     private var weekdays: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Space.xxs) {
             ForEach([2, 3, 4, 5, 6, 7, 1], id: \.self) { day in
                 let on = rule?.weekdays.contains(day) == true
                 Button(RecurrenceRule.shortWeekday(day)) {
@@ -123,7 +123,7 @@ struct RecurrenceEditor: View {
                 }
                 .buttonStyle(.plain)
                 .frame(width: 28, height: 22)
-                .background(RoundedRectangle(cornerRadius: 5).fill(on ? Color.accentColor : Color.primary.opacity(0.06)))
+                .background(RoundedRectangle(cornerRadius: Radius.xs).fill(on ? Color.accentColor : Fill.subtle))
                 .foregroundStyle(on ? Color.white : Color.primary)
             }
         }
@@ -151,7 +151,7 @@ struct RecurrenceEditor: View {
     }
 
     private var endEditor: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.md) {
             Text("Окончание").foregroundStyle(.secondary)
             Picker("", selection: endKind) {
                 Text("никогда").tag(EndKind.never)

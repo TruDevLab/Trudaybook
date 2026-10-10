@@ -49,12 +49,12 @@ enum SwipeAction: String, CaseIterable, Identifiable {
         switch self {
         case .none: .gray
         case .archive: .indigo
-        case .done: .green
+        case .done: Palette.success
         case .priorityHigh: Priority.high.color
         case .priorityMedium: Priority.medium.color
         case .priorityLow: Priority.low.color
-        case .snoozeHour, .snoozeTomorrow: .orange
-        case .reply: .blue
+        case .snoozeHour, .snoozeTomorrow: Palette.warning
+        case .reply: Palette.info
         }
     }
 

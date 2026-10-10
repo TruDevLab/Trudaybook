@@ -34,13 +34,15 @@ struct YearCalendarView: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
+        VStack(spacing: Space.lg) {
+            HStack(spacing: Space.lg) {
                 Button { year -= 1 } label: { Image(systemName: "chevron.left") }
+                    .labelHelp(String(localized: "Предыдущий год"))
                 Text(verbatim: "\(year)")
                     .font(.title3.weight(.semibold).monospacedDigit())
                     .frame(minWidth: 60)
                 Button { year += 1 } label: { Image(systemName: "chevron.right") }
+                    .labelHelp(String(localized: "Следующий год"))
                 Spacer()
                 Button("Сегодня") {
                     year = model.calendar.component(.year, from: model.now)
@@ -50,13 +52,13 @@ struct YearCalendarView: View {
             .buttonStyle(.borderless)
 
             // Строка — квартал: три месяца рядом, подпись слева.
-            VStack(spacing: 8) {
+            VStack(spacing: Space.md) {
                 ForEach(0..<4, id: \.self) { quarter in
                     let current = model.calendar.component(.year, from: model.now) == year
                         && (model.calendar.component(.month, from: model.now) - 1) / 3 == quarter
-                    HStack(alignment: .top, spacing: 14) {
+                    HStack(alignment: .top, spacing: Space.xl) {
                         Text(String(localized: "\(Self.roman[quarter]) квартал"))
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.app(.label, weight: .semibold))
                             .foregroundStyle(current ? Color.accentColor : .secondary)
                             .fixedSize()
                             .rotationEffect(.degrees(-90))
@@ -66,14 +68,14 @@ struct YearCalendarView: View {
                                 .frame(maxWidth: .infinity, alignment: .top)
                         }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 10)
-                        .fill(current ? Color.accentColor.opacity(0.07) : Color.primary.opacity(0.03)))
+                    .padding(.horizontal, Space.md)
+                    .padding(.vertical, Space.sm)
+                    .background(RoundedRectangle(cornerRadius: Radius.md)
+                        .fill(current ? Fill.accentFaint : Fill.faint))
                 }
             }
         }
-        .padding(16)
+        .padding(Space.xxl)
         .frame(width: 820)
         .onAppear { year = model.calendar.component(.year, from: model.monthAnchor) }
         .task(id: year) { await model.loadYearBusy(year) }
@@ -93,13 +95,13 @@ private struct MiniMonth: View {
     var body: some View {
         let calendar = model.calendar
         let current = calendar.isDate(month, equalTo: model.now, toGranularity: .month)
-        VStack(spacing: 3) {
+        VStack(spacing: Space.xxs) {
             Button {
                 model.show(day: month)
                 close()
             } label: {
                 Text(Format.monthName(month))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.app(.text, weight: .semibold))
                     .foregroundStyle(current ? Color.accentColor : .primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -108,11 +110,11 @@ private struct MiniMonth: View {
             .help("Открыть месяц")
 
             let days = MonthGrid.days(of: month, calendar: calendar)
-            LazyVGrid(columns: [GridItem(.fixed(18), spacing: 2)]
-                      + Array(repeating: GridItem(.flexible(), spacing: 1), count: 7), spacing: 1) {
-                Text("Нед").font(.system(size: 7.5)).foregroundStyle(.tertiary)
+            LazyVGrid(columns: [GridItem(.fixed(18), spacing: Space.xxs)]
+                      + Array(repeating: GridItem(.flexible(), spacing: Space.hairline), count: 7), spacing: Space.hairline) {
+                Text("Нед").font(.app(.micro)).foregroundStyle(.tertiary)
                 ForEach(Self.weekdays, id: \.self) { name in
-                    Text(name).font(.system(size: 8)).foregroundStyle(.tertiary)
+                    Text(name).font(.app(.micro)).foregroundStyle(.tertiary)
                 }
                 ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                     if index % 7 == 0 {
@@ -144,7 +146,7 @@ private struct MiniWeekNumber: View {
                 close()
             } label: {
                 Text("\(number)")
-                    .font(.system(size: 8.5, weight: current ? .semibold : .regular).monospacedDigit())
+                    .font(.app(.micro, weight: current ? .semibold : .regular).monospacedDigit())
                     .foregroundStyle(current ? Color.accentColor : Color.secondary.opacity(0.8))
                     .frame(maxWidth: .infinity, minHeight: 18)
                     .contentShape(Rectangle())
@@ -175,15 +177,15 @@ private struct MiniDay: View {
         } label: {
             VStack(spacing: 0) {
                 Text("\(calendar.component(.day, from: day))")
-                    .font(.system(size: 10, weight: today ? .bold : .regular).monospacedDigit())
+                    .font(.app(.small, weight: today ? .bold : .regular).monospacedDigit())
                     .foregroundStyle(selected ? Color.white : (weekend ? Color.secondary : Color.primary))
                 Circle()
                     .fill(busy ? (selected ? Color.white : Color.accentColor) : .clear)
                     .frame(width: 3, height: 3)
             }
             .frame(maxWidth: .infinity, minHeight: 18)
-            .background(RoundedRectangle(cornerRadius: 4).fill(selected ? Color.accentColor : .clear))
-            .overlay(RoundedRectangle(cornerRadius: 4)
+            .background(RoundedRectangle(cornerRadius: Radius.xs).fill(selected ? Color.accentColor : .clear))
+            .overlay(RoundedRectangle(cornerRadius: Radius.xs)
                 .strokeBorder(today && !selected ? Color.accentColor : .clear, lineWidth: 1))
             .contentShape(Rectangle())
         }

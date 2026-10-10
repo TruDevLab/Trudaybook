@@ -28,7 +28,7 @@ for f in glob.glob(os.path.join(ls_dir, "*.stringsdata")):
             extracted.add((os.path.basename(data["source"]), loc.get("startingLine"), loc.get("startingColumn")))
 
 CYR = re.compile(r"[А-Яа-яЁё]")
-SKIP_LINE = re.compile(r"^\s*(//|///|\*)|DebugLog\.write|\blog\(|log\?\(|print\(|dateFormat|fatalError|precondition|assert")
+SKIP_LINE = re.compile(r"^\s*(//|///|\*)|purpose:\s*\"|let purpose =|DebugLog\.write|\blog\(|log\?\(|print\(|dateFormat|fatalError|precondition|assert")
 SKIP_BEFORE = re.compile(r"(defaultValue:\s*$|case\s*$|case\s.*,\s*$|String\(localized:\s*$|LocalizedStringKey\(\s*$|forKey:\s*$|Text\(verbatim:\s*$)")
 
 
@@ -136,10 +136,13 @@ EXCLUDE = {
     ('ReplyHistory.swift', '"^-{2,}\\\\s*(original message|исходное сообщение|пересылаемое сообщение|forwarded message).*$"'),
     ('ReplyHistory.swift', '"^(от|from)\\\\s*:.{0,200}$"'),
 }
-SKIP_FILES = {"DemoData.swift"}
+# Промты — данные для модели, их язык выбирается по коду языка, а не переводом.
+SKIP_FILES = {"DemoData.swift", "ModelPrompts.swift", "Assistant.swift", "AssistantSession.swift", "ChatCommand.swift"}
 total = 0
 for path in sorted(glob.glob(os.path.join(src_dir, "**/*.swift"), recursive=True)):
     name = os.path.basename(path)
+    if name in SKIP_FILES:
+        continue
     lines = open(path).read().split("\n")
     changed = False
     in_multiline = False

@@ -35,11 +35,11 @@ public enum ReplyHistory {
     /// (нет текста — письмо пропускается). Берутся самые свежие, пока не
     /// кончится бюджет знаков: старое письмо дороже новому не бывает.
     public static func letters(older: [TimelineItem], texts: [String: String], isMine: (Person) -> Bool,
-                               budget: Int = TrunookModelRequest.maxHistoryText) -> [TrunookModelRequest.HistoryLetter] {
+                               budget: Int = MailModel.maxHistoryText) -> [MailModel.HistoryLetter] {
         var remaining = budget
-        var result: [TrunookModelRequest.HistoryLetter] = []
+        var result: [MailModel.HistoryLetter] = []
         for item in older.reversed() {
-            guard result.count < TrunookModelRequest.maxHistoryLetters, remaining > 200,
+            guard result.count < MailModel.maxHistoryLetters, remaining > 200,
                   let info = item.mail, let raw = texts[item.id] else { continue }
             let text = String(stripQuoted(raw).prefix(min(remaining, 2_000)))
             guard !text.isEmpty else { continue }

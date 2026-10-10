@@ -122,7 +122,7 @@ final class NoteAssistant: ObservableObject {
     private static let weekday = AppLanguage.formatter(ru: "EEEE", template: "EEEE")
 
     /// Повестка дня: встречи, напоминания, важные письма — и главное на день
-    /// от модели Trunook. `offline` — сразу без Trunook.
+    /// от местной модели. `offline` — сразу без модели.
     func agenda(model: AppModel, day: Date, session: NoteSession, offline: Bool = false) {
         guard !isWorking else { return }
         let key = model.noteKey(.day, for: day)
@@ -132,36 +132,34 @@ final class NoteAssistant: ObservableObject {
             let input = await model.agendaInput(for: day)
             lastAgenda = (key, title, input)
             if offline {
-                insertAgendaWithoutTrunook(session: session)
+                insertAgendaWithoutModel(session: session)
                 return
             }
-            guard model.trunookModelAllowed else {
-                state = .failed(String(localized: "Включите в настройках Trudaybook → Trunook связь и помощь модели."), offline: true)
+            if let problem = model.ai.problem {
+                state = .failed(problem, offline: true)
                 return
             }
-            state = .working(String(localized: "Trunook готовит повестку…"))
-            let id = UUID().uuidString
-            let payload = TrunookModelRequest.agenda(
-                id: id, language: AppLanguage.code, day: key, weekday: Self.weekday.string(from: day),
-                input: input, time: Format.time)
-            DebugLog.write("Trunook: просим повестку — встреч \(input.meetings.count), напоминаний \(input.reminders.count), писем \(input.letters.count)")
-            let answer = await model.trunookModel.ask(payload, id: id, timeout: 240, kind: "agenda")
-            switch answer {
-            case .agenda(let result):
-                DebugLog.write("Trunook: повестка готова — главного \(result.focus.count), к встречам \(result.meetings.count)")
+            state = .working(String(localized: "Модель готовит повестку…"))
+            let prompt = ModelPrompts.agenda(day: key, weekday: Self.weekday.string(from: day), input: input,
+                                             time: Format.time, language: AppLanguage.code)
+            let purpose = "повестка: встреч \(input.meetings.count), напоминаний \(input.reminders.count), писем \(input.letters.count)"
+            switch await model.ai.complete(prompt, purpose: purpose) {
+            case .success(let answer):
+                let result = ModelPrompts.agenda(in: answer, input: input)
+                guard !result.focus.isEmpty || !result.meetings.isEmpty else {
+                    state = .failed(String(localized: "Модель вернула пустой ответ."), offline: true)
+                    return
+                }
                 session.deliver(DayAgenda.document(input, answer: result, title: title, words: Self.words, time: Format.time), to: key)
                 state = .idle
-            case let .failed(code, message):
-                DebugLog.write("Trunook: повестки нет — \(code)")
-                state = .failed(message, offline: true)
-            case .summary, .labels, .text, .reply:
-                state = .failed(String(localized: "Ответ Trunook не разобрался."), offline: true)
+            case .failure(let failure):
+                state = .failed(failure.message, offline: true)
             }
         }
     }
 
-    /// Та же повестка без Trunook: встречи с протоколами, напоминания, письма.
-    func insertAgendaWithoutTrunook(session: NoteSession) {
+    /// Та же повестка без модели: встречи с протоколами, напоминания, письма.
+    func insertAgendaWithoutModel(session: NoteSession) {
         guard let lastAgenda else { return }
         session.deliver(DayAgenda.document(lastAgenda.input, answer: nil, title: lastAgenda.title,
                                            words: Self.words, time: Format.time), to: lastAgenda.key)
@@ -178,28 +176,26 @@ final class NoteAssistant: ObservableObject {
                                             : String(localized: "За этот месяц нет заметок дней."), offline: false)
             return
         }
-        guard model.trunookModelAllowed else {
-            state = .failed(String(localized: "Включите в настройках Trudaybook → Trunook связь и помощь модели."), offline: false)
+        if let problem = model.ai.problem {
+            state = .failed(problem, offline: false)
             return
         }
-        state = .working(period == .week ? String(localized: "Trunook подводит итоги недели…")
-                                         : String(localized: "Trunook подводит итоги месяца…"))
-        let id = UUID().uuidString
-        let payload = TrunookModelRequest.digest(id: id, language: AppLanguage.code, period: period, title: title, notes: notes)
+        state = .working(period == .week ? String(localized: "Модель подводит итоги недели…")
+                                         : String(localized: "Модель подводит итоги месяца…"))
+        let prompt = ModelPrompts.digest(period: period, title: title, notes: notes, language: AppLanguage.code)
         // Текст заметок в журнал не пишется — только сколько их.
-        DebugLog.write("Trunook: просим итоги — заметок \(notes.count), знаков \(notes.map(\.text.count).reduce(0, +))")
+        let purpose = "итоги: заметок \(notes.count), знаков \(notes.map(\.text.count).reduce(0, +))"
         Task {
-            let answer = await model.trunookModel.ask(payload, id: id, timeout: 300, kind: "digest")
-            switch answer {
-            case .text(let text):
-                DebugLog.write("Trunook: итоги готовы")
+            switch await model.ai.complete(prompt, purpose: purpose) {
+            case .success(let answer):
+                guard let text = ModelPrompts.digestText(answer) else {
+                    state = .failed(String(localized: "Модель вернула пустой ответ."), offline: false)
+                    return
+                }
                 session.deliver(NoteDigest.document(title: String(localized: "Итоги · \(title)"), text: text), to: key)
                 state = .idle
-            case let .failed(code, message):
-                DebugLog.write("Trunook: итогов нет — \(code)")
-                state = .failed(message, offline: false)
-            case .summary, .labels, .agenda, .reply:
-                state = .failed(String(localized: "Ответ Trunook не разобрался."), offline: false)
+            case .failure(let failure):
+                state = .failed(failure.message, offline: false)
             }
         }
     }

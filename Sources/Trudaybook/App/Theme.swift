@@ -237,21 +237,21 @@ struct SettingsCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(spacing: Space.sm) {
                 if let icon {
-                    Image(systemName: icon).font(.system(size: 11, weight: .semibold))
+                    Image(systemName: icon).font(.app(.label, weight: .semibold))
                 }
-                Text(title).font(.system(size: 12, weight: .semibold))
+                Text(title).font(.app(.text, weight: .semibold))
             }
             .foregroundStyle(.secondary)
-            .padding(.leading, 4)
-            VStack(alignment: .leading, spacing: 10) {
+            .padding(.leading, Space.xs)
+            VStack(alignment: .leading, spacing: Space.lg) {
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(GlassPanelBackground(cornerRadius: 10))
+            .padding(Space.xl)
+            .background(GlassPanelBackground(cornerRadius: Radius.md))
         }
     }
 }
@@ -267,21 +267,21 @@ struct CollapsibleSettingsCard<Content: View>: View {
     @ViewState private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.lg) {
             Button {
-                withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
+                withAnimation(Motion.move) { expanded.toggle() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: Space.md) {
                     if let icon {
                         Image(systemName: icon).foregroundStyle(.secondary)
                     }
-                    Text(title).font(.system(size: 13, weight: .semibold))
+                    Text(title).font(.app(.body, weight: .semibold))
                     if let summary, !expanded {
                         Text(summary).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.app(.label, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                 }
@@ -294,8 +294,8 @@ struct CollapsibleSettingsCard<Content: View>: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(GlassPanelBackground(cornerRadius: 10))
+        .padding(Space.xl)
+        .background(GlassPanelBackground(cornerRadius: Radius.md))
     }
 }
 
@@ -306,7 +306,7 @@ struct SettingsHint: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11.5))
+            .font(.app(.label))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -321,9 +321,9 @@ struct SettingsSectionTitle: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 16, weight: .bold))
-            .padding(.top, 8)
-            .padding(.leading, 2)
+            .font(.app(.large, weight: .bold))
+            .padding(.top, Space.md)
+            .padding(.leading, Space.xxs)
             .padding(.bottom, -6)
     }
 }

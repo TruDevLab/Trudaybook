@@ -67,8 +67,8 @@ struct DefaultAppRow: View {
     @ViewState private var failure: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.md) {
+            HStack(spacing: Space.lg) {
                 if let current {
                     Image(nsImage: NSWorkspace.shared.icon(forFile: DefaultApps.shown(current).path))
                         .resizable()
@@ -82,7 +82,7 @@ struct DefaultAppRow: View {
             HStack {
                 if DefaultApps.isTrudaybook(current) {
                     Label("Trudaybook", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Palette.success)
                 } else {
                     Button(role == .mail ? String(localized: "Сделать почтой по умолчанию")
                                          : String(localized: "Сделать календарём по умолчанию")) {
@@ -92,7 +92,7 @@ struct DefaultAppRow: View {
                 }
             }
             if let failure {
-                Text(failure).font(.caption).foregroundStyle(.orange)
+                Text(failure).font(.caption).foregroundStyle(Palette.warning)
             }
             SettingsHint(role == .mail
                 ? String(localized: "Ссылки «написать письмо» на сайтах и в документах откроют новое письмо в Trudaybook. Скрытую копию из ссылки добавьте сами — её нет в окне письма.")

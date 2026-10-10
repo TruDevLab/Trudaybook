@@ -49,6 +49,10 @@ public final class ItemStateStore {
                 source TEXT NOT NULL,
                 updated_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS event_autojoin (
+                key TEXT PRIMARY KEY,
+                enabled INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -178,6 +182,30 @@ public final class ItemStateStore {
 
     /// Приоритеты, выбранные человеком. «Без приоритета» тоже хранится:
     /// это отказ от важности, которую поставил отправитель.
+    // MARK: - Автоподключение к встречам
+
+    /// Своя отметка встреч «открыть ссылку в начале» — ключи `AutoJoinRules.keys`.
+    public func allAutoJoin() -> [String: Bool] {
+        var result: [String: Bool] = [:]
+        db.query("SELECT key, enabled FROM event_autojoin") { row in
+            guard let key = row.text(0), let value = row.integer(1) else { return }
+            result[key] = value != 0
+        }
+        return result
+    }
+
+    /// `nil` — забыть отметку: встреча снова как в общей настройке.
+    public func setAutoJoin(_ enabled: Bool?, for key: String) throws {
+        guard let enabled else {
+            try db.run("DELETE FROM event_autojoin WHERE key = ?", [.text(key)])
+            return
+        }
+        try db.run("""
+            INSERT INTO event_autojoin (key, enabled) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET enabled = excluded.enabled
+            """, [.text(key), .integer(enabled ? 1 : 0)])
+    }
+
     public func allPriorities() -> [String: Priority] {
         var result: [String: Priority] = [:]
         db.query("SELECT id, priority FROM item_priority") { row in

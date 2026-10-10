@@ -7,9 +7,9 @@ struct TrunookSettingsView: View {
     @ObservedObject var bridge: TrunookBridge
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Space.xxl) {
             SettingsCard(title: String(localized: "Связь"), icon: "link") {
-                HStack(spacing: 10) {
+                HStack(spacing: Space.lg) {
                     Toggle("Плашки в вырезе Trunook", isOn: $bridge.isEnabled)
                         .toggleStyle(.switch)
                     Spacer()
@@ -21,7 +21,7 @@ struct TrunookSettingsView: View {
 
             SettingsCard(title: String(localized: "Что показывать"), icon: "rectangle.topthird.inset.filled") {
                 Toggle("Приглашения — с кнопками «Принять» и «Отклонить»", isOn: $bridge.invitations)
-                HStack(spacing: 8) {
+                HStack(spacing: Space.md) {
                     Toggle("Скорую встречу", isOn: $bridge.meetings)
                     Picker("", selection: $bridge.meetingLead) {
                         ForEach([1, 3, 5, 10, 15], id: \.self) { minutes in
@@ -48,31 +48,13 @@ struct TrunookSettingsView: View {
             SettingsCard(title: String(localized: "Сводка и фокус"), icon: "square.grid.2x2") {
                 Toggle("Сводка для плитки «Почта» и шкалы дня", isOn: $bridge.shareSummary)
                 Toggle("С темой и отправителем главного письма", isOn: $bridge.shareSubjects)
-                    .padding(.leading, 20)
+                    .padding(.leading, Space.section)
                     .disabled(!bridge.shareSummary)
                 SettingsHint(String(localized: "Без адресов и текста писем; файл читает лишь Trunook на этом Mac."))
                 Toggle("Тишина, пока в Trunook идёт таймер", isOn: $bridge.quietDuringFocus)
                 SettingsHint(String(localized: "После таймера — одно уведомление обо всех письмах."))
                 Toggle("Заметка дня — общая с заметками Trunook", isOn: $bridge.shareDayNotes)
                 SettingsHint(String(localized: "В Trunook она появится заметкой «Trudaybook · день»; правки идут в обе стороны."))
-            }
-            .toggleStyle(.checkbox)
-            .disabled(!bridge.isEnabled)
-
-            SettingsCard(title: String(localized: "Модель Trunook: пересказ и метки"), icon: "text.badge.star") {
-                Toggle("Пересказ писем и метки для разбора", isOn: $bridge.modelHelp)
-                Toggle("Размечать новые письма сами", isOn: $bridge.autoLabel)
-                    .padding(.leading, 20)
-                    .disabled(!bridge.modelHelp)
-                SettingsHint(String(localized: "Над письмом — плашка «Кратко»: раскройте, и Trunook перескажет письмо. В «Не разобрано» — метки: важное, переписка, уведомления, рассылки."))
-                SettingsHint(String(localized: "Отвечает только модель на этом Mac. Если в Trunook выбрана облачная, он откажет — письма в интернет не уходят."))
-            }
-            .toggleStyle(.checkbox)
-            .disabled(!bridge.isEnabled)
-
-            SettingsCard(title: String(localized: "Помощник Trunook"), icon: "sparkles") {
-                Toggle("Разрешить помощнику работать с почтой", isOn: $bridge.acceptCommands)
-                SettingsHint(String(localized: "Читать неразобранное, откладывать, ставить приоритет и метки, отмечать разобранным и готовить черновик ответа. Отправляете письма только вы."))
             }
             .toggleStyle(.checkbox)
             .disabled(!bridge.isEnabled)
@@ -99,14 +81,11 @@ struct TrunookStatus: View {
 
     var body: some View {
         if TrunookLink.appURL == nil {
-            Label("Trunook не установлен — скачайте его кнопкой выше и перенесите в «Программы»",
-                  systemImage: "exclamationmark.triangle.fill")
+            InlineNotice(String(localized: "Trunook не установлен — скачайте его кнопкой выше и перенесите в «Программы»"))
                 .font(.caption)
-                .foregroundStyle(.orange)
         } else if !accepts {
-            VStack(alignment: .leading, spacing: 4) {
-                Label("В Trunook выключен приём уведомлений от программ", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                InlineNotice(String(localized: "В Trunook выключен приём уведомлений от программ"))
                 Text("Включите: Trunook → Настройки → Уведомления → «Разрешить программам спрашивать через вырез».")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -117,7 +96,7 @@ struct TrunookStatus: View {
         } else {
             Label("Trunook принимает уведомления", systemImage: "checkmark.circle.fill")
                 .font(.caption)
-                .foregroundStyle(.green)
+                .foregroundStyle(Palette.success)
         }
     }
 }

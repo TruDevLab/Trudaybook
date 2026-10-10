@@ -39,6 +39,21 @@ enum CodeSignatureCheck {
         return SignatureVerdict(status: status)
     }
 
+    /// Бандл против **названного** требования — для чужого приложения,
+    /// которое мы ставим сами (Ollama): у него свой Developer ID.
+    static func matches(_ bundle: URL, requirement text: String) -> SignatureVerdict {
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString(text as CFString, [], &requirement) == errSecSuccess,
+              let requirement else { return .rejected(.damaged) }
+        var candidate: SecStaticCode?
+        let created = SecStaticCodeCreateWithPath(bundle as CFURL, [], &candidate)
+        guard created == errSecSuccess, let candidate else { return SignatureVerdict(status: created) }
+        let flags = SecCSFlags(rawValue: UInt32(
+            kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate
+        ))
+        return SignatureVerdict(status: SecStaticCodeCheckValidity(candidate, flags, requirement))
+    }
+
     private static func ownRequirement() -> SecRequirement? {
         var code: SecCode?
         guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }

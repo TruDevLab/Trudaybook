@@ -3,3 +3,5 @@
 "NSRemindersFullAccessUsageDescription" = "Trudaybook shows reminders on the day timeline, marks them done and moves them at your command.";
 "NSLocationUsageDescription" = "Trudaybook uses your location only to show the weather when Trunook doesn't provide it. Coordinates are rounded to about 10 km.";
 "NSLocationWhenInUseUsageDescription" = "Trudaybook uses your location only to show the weather when Trunook doesn't provide it. Coordinates are rounded to about 10 km.";
+"NSMicrophoneUsageDescription" = "Trudaybook listens to the microphone only while you dictate a question to the assistant. Speech is recognized on this Mac and sent nowhere.";
+"NSSpeechRecognitionUsageDescription" = "Trudaybook turns the question you dictate to the assistant into text. Recognition happens only on this Mac; your voice never goes online.";

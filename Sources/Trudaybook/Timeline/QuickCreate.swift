@@ -37,7 +37,7 @@ struct HoldToCreate: ViewModifier {
                             holdTask = Task { @MainActor in
                                 try? await Task.sleep(for: Self.holdDelay)
                                 guard !Task.isCancelled, pressed else { return }
-                                withAnimation(.easeOut(duration: 0.15)) { armed = time(at: start) }
+                                withAnimation(Motion.quick) { armed = time(at: start) }
                                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                             }
                         }
@@ -101,22 +101,22 @@ struct TimeGhost: View {
                 if vertical {
                     Label(range, systemImage: symbol)
                 } else {
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: Space.hairline) {
                         Label(first, systemImage: symbol)
                         if let second { Text(second).opacity(0.75) }
                     }
                 }
             }
-                .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+                .font(.app(.small, weight: .semibold).monospacedDigit())
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                .padding(.horizontal, Space.xs)
+                .padding(.vertical, Space.xxs)
                 .frame(width: vertical ? size.width - 2 : max(length, 64),
                        height: vertical ? max(length, 16) : size.height - 8,
                        alignment: .topLeading)
-                .background(RoundedRectangle(cornerRadius: 6).fill(tint.opacity(0.28)))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(tint, lineWidth: 1.5))
+                .background(RoundedRectangle(cornerRadius: Radius.sm).fill(tint.opacity(0.28)))
+                .overlay(RoundedRectangle(cornerRadius: Radius.sm).strokeBorder(tint, lineWidth: 1.5))
                 .offset(x: vertical ? 0 : offset, y: vertical ? offset : 4)
         }
         .allowsHitTesting(false)
@@ -152,7 +152,7 @@ struct TimeDropTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(RoundedRectangle(cornerRadius: 8).fill(isTargeted ? Color.accentColor.opacity(0.08) : .clear))
+            .background(RoundedRectangle(cornerRadius: Radius.md).fill(isTargeted ? Fill.accentFaint : .clear))
             .overlay(alignment: .topLeading) { ghostView }
             .onDrop(of: [.url, .plainText], delegate: TimelineDropDelegate(
                 model: model,
@@ -180,16 +180,16 @@ struct TimeDropTarget: ViewModifier {
 /// Дорожка писем под «Создать»: вся подсвечена, по центру — что будет.
 private struct NewMailHighlight: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(Color.accentColor.opacity(0.16))
-            .overlay(RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: Radius.md)
+            .fill(Fill.accentSoft)
+            .overlay(RoundedRectangle(cornerRadius: Radius.md)
                 .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])))
             .overlay {
                 Label("Создать новое письмо", systemImage: "square.and.pencil")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, Space.xl)
+                    .padding(.vertical, Space.sm)
                     .background(Capsule().fill(Color(nsColor: .controlBackgroundColor).opacity(0.9)))
             }
             .allowsHitTesting(false)
@@ -227,7 +227,7 @@ private struct MoveGhost: View {
                       second: String(localized: "до \(Format.time(end))"), range: Format.range(start, end))
         case .reminder:
             TimeGhost(start: start, minutes: 30, scale: scale, vertical: vertical, symbol: "bell",
-                      first: Format.time(start), second: nil, range: Format.time(start), tint: .orange)
+                      first: Format.time(start), second: nil, range: Format.time(start), tint: Palette.warning)
         case .mail:
             // Письмо «переносится» — откладывается до этого времени; в прошлое нельзя.
             let past = start <= model.now
@@ -235,7 +235,7 @@ private struct MoveGhost: View {
                       symbol: past ? "nosign" : "clock",
                       first: past ? String(localized: "Уже прошло") : String(localized: "До \(Format.time(start))"),
                       second: nil, range: past ? String(localized: "Уже прошло") : String(localized: "Отложить до \(Format.time(start))"),
-                      tint: past ? .secondary : .orange)
+                      tint: past ? .secondary : Palette.warning)
         }
     }
 }
@@ -317,9 +317,9 @@ struct NewItemDragPreview: View {
     var body: some View {
         Label("Создать", systemImage: "plus")
             .font(.callout.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.9)))
+            .padding(.horizontal, Space.lg)
+            .padding(.vertical, Space.sm)
+            .background(RoundedRectangle(cornerRadius: Radius.md).fill(Color.accentColor.opacity(0.9)))
             .foregroundStyle(.white)
     }
 }

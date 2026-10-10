@@ -47,10 +47,10 @@ struct AttachmentChips: View {
 
     var body: some View {
         if !files.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                CollapsingFlow(expanded: true, spacing: 6, lineSpacing: 6) {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                CollapsingFlow(expanded: true, spacing: Space.sm, lineSpacing: Space.sm) {
                     ForEach(Array(files.enumerated()), id: \.offset) { index, file in
-                        HStack(spacing: 4) {
+                        HStack(spacing: Space.xs) {
                             Image(systemName: "paperclip")
                             Text("\(file.name) · \(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))")
                                 .lineLimit(1)
@@ -58,18 +58,17 @@ struct AttachmentChips: View {
                                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
-                            .help("Убрать")
+                            .labelHelp(String(localized: "Убрать"))
                         }
                         .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.primary.opacity(0.07)))
+                        .padding(.horizontal, Space.md)
+                        .padding(.vertical, Space.xs)
+                        .background(Capsule().fill(Fill.subtle))
                     }
                 }
                 if total > AttachmentFiles.warnSize {
-                    Label("Вместе больше 20 МБ — почтовый сервер может не принять", systemImage: "exclamationmark.triangle.fill")
+                    InlineNotice(String(localized: "Вместе больше 20 МБ — почтовый сервер может не принять"))
                         .font(.caption)
-                        .foregroundStyle(.orange)
                 }
             }
         }
@@ -112,18 +111,55 @@ enum AttachmentSaver {
 
     /// Открыть вложение. Исполняемое — скрипт, установщик, программу —
     /// только после вопроса: вложение прислал чужой человек.
-    static func open(_ file: MailBody.Attachment) {
-        if AttachmentRisk.isExecutable(name: file.name) {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = String(localized: "Открыть «\(safeName(file.name))»?")
-            alert.informativeText = String(localized: "Это не документ, а файл, который запускает программу или команды. Открывайте, только если ждали его от этого отправителя.")
-            alert.addButton(withTitle: String(localized: "Не открывать"))
-            alert.addButton(withTitle: String(localized: "Открыть"))
-            guard alert.runModal() == .alertSecondButtonReturn else { return }
+    /// `url` — уже сохранённая копия (иначе — временная), `app` — чем открыть.
+    static func open(_ file: MailBody.Attachment, at url: URL? = nil, with app: URL? = nil) {
+        guard confirmOpening(file), let url = url ?? temporaryCopy(of: file) else { return }
+        if let app {
+            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)
         }
-        guard let url = temporaryCopy(of: file) else { return }
-        NSWorkspace.shared.open(url)
+    }
+
+    private static func confirmOpening(_ file: MailBody.Attachment) -> Bool {
+        guard AttachmentRisk.isExecutable(name: file.name) else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "Открыть «\(safeName(file.name))»?")
+        alert.informativeText = String(localized: "Это не документ, а файл, который запускает программу или команды. Открывайте, только если ждали его от этого отправителя.")
+        alert.addButton(withTitle: String(localized: "Не открывать"))
+        alert.addButton(withTitle: String(localized: "Открыть"))
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    /// Тип файла — по расширению очищенного имени, иначе по MIME из письма.
+    static func contentType(of file: MailBody.Attachment) -> UTType {
+        let ext = (safeName(file.name) as NSString).pathExtension
+        return UTType(filenameExtension: ext) ?? UTType(mimeType: file.mimeType) ?? .data
+    }
+
+    /// Программы, которые открывают такой файл: первой — та, что по умолчанию.
+    static func applications(for file: MailBody.Attachment) -> [URL] {
+        let type = contentType(of: file)
+        var apps = NSWorkspace.shared.urlsForApplications(toOpen: type)
+        if let preferred = NSWorkspace.shared.urlForApplication(toOpen: type) {
+            apps.removeAll { $0.standardizedFileURL == preferred.standardizedFileURL }
+            apps.insert(preferred, at: 0)
+        }
+        // Одна программа бывает в нескольких местах (копия в «Загрузках»,
+        // старая версия) — показываем первую по имени.
+        var seen = Set<String>()
+        return apps.filter { seen.insert(FileManager.default.displayName(atPath: $0.path)).inserted }
+    }
+
+    /// «Другая программа…» — выбор в «Программах».
+    static func chooseApplication() -> URL? {
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowedContentTypes = [.application]
+        panel.canChooseDirectories = false
+        panel.prompt = String(localized: "Открыть")
+        return panel.runModal() == .OK ? panel.url : nil
     }
 
     /// В «Загрузки»; занятое имя получает номер: «Отчёт 2.pdf».
@@ -189,16 +225,19 @@ enum AttachmentSaver {
     }
 }
 
-/// Вложения полученного письма плашками. Щелчок — меню: открыть, сохранить
-/// в «Загрузки», сохранить как… Плашку можно вытащить мышью в Finder.
+/// Вложения полученного письма плашками. Щелчок — меню: открыть, открыть
+/// с помощью, скачать; двойной щелчок — открыть временную копию.
+/// Плашку можно вытащить мышью в Finder.
 struct ReceivedAttachments: View {
     let files: [MailBody.Attachment]
     @ViewState private var saved: [URL] = []
     @ViewState private var problem: String?
+    /// Плашка под курсором — по имени файла.
+    @ViewState private var hovered: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            CollapsingFlow(expanded: true, spacing: 6, lineSpacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            CollapsingFlow(expanded: true, spacing: Space.sm, lineSpacing: Space.sm) {
                 ForEach(Array(files.enumerated()), id: \.offset) { _, file in
                     chip(file)
                 }
@@ -215,8 +254,8 @@ struct ReceivedAttachments: View {
                 }
             }
             if !saved.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.success)
                     Text(saved.count == 1
                          ? "Сохранено: \(saved[0].deletingLastPathComponent().lastPathComponent)/\(saved[0].lastPathComponent)"
                          : "Сохранено файлов: \(saved.count) — \(saved[0].deletingLastPathComponent().lastPathComponent)")
@@ -228,51 +267,119 @@ struct ReceivedAttachments: View {
                 .font(.caption)
             }
             if let problem {
-                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                InlineNotice(problem)
                     .font(.caption)
-                    .foregroundStyle(.orange)
             }
         }
     }
 
     private func chip(_ file: MailBody.Attachment) -> some View {
         let available = file.data != nil
-        return Menu {
-            Button("Открыть") { AttachmentSaver.open(file) }
-            Button("Сохранить в «Загрузки»") { run { try AttachmentSaver.saveToDownloads([file]) } }
-            Button("Сохранить как…") { run { try AttachmentSaver.saveAs(file).map { [$0] } ?? [] } }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: icon(for: file))
-                Text(file.name).lineLimit(1).truncationMode(.middle)
-                Text(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))
-                    .foregroundStyle(.secondary)
-                Image(systemName: "arrow.down.circle").foregroundStyle(Color.accentColor)
-            }
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(Color.primary.opacity(0.07)))
-            .contentShape(Capsule())
-        } primaryAction: {
-            run { try AttachmentSaver.saveToDownloads([file]) }
+        return HStack(spacing: Space.xs) {
+            Image(systemName: icon(for: file))
+            Text(file.name).lineLimit(1).truncationMode(.middle)
+            Text(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))
+                .foregroundStyle(.secondary)
+            Image(systemName: "chevron.down")
+                .font(.app(.micro, weight: .semibold))
+                .foregroundStyle(.secondary)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .disabled(!available)
+        .font(.caption)
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.xs)
+        .background(Capsule().fill(Color.primary.opacity(hovered == file.name ? 0.12 : 0.07)))
+        .contentShape(Capsule())
+        .opacity(available ? 1 : Alpha.disabled)
+        .onHover { inside in hovered = inside ? file.name : (hovered == file.name ? nil : hovered) }
         .help(available
-              ? "Щелчок — сохранить в «Загрузки». Долгое нажатие или правая кнопка — открыть, сохранить как… Можно вытащить в Finder."
+              ? "Щелчок — меню: открыть, открыть с помощью, скачать. Двойной щелчок — сразу открыть. Можно вытащить в Finder."
               : "Содержимое не загрузилось")
+        // Двойной — первым: одиночный ждёт, не будет ли второго щелчка.
+        .onTapGesture(count: 2) { if available { AttachmentSaver.open(file) } }
+        .onTapGesture { if available { menu(for: file).popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil) } }
+        .actsAsButton { if available { menu(for: file).popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil) } }
+        .accessibilityAction(named: Text("Открыть")) { if available { AttachmentSaver.open(file) } }
+        .accessibilityAction(named: Text("Скачать в «Загрузки»")) { if available { download(file) } }
         .onDrag {
             guard let url = AttachmentSaver.temporaryCopy(of: file) else { return NSItemProvider() }
             return NSItemProvider(contentsOf: url) ?? NSItemProvider()
         }
         .contextMenu {
-            Button("Открыть") { AttachmentSaver.open(file) }
-            Button("Сохранить в «Загрузки»") { run { try AttachmentSaver.saveToDownloads([file]) } }
-            Button("Сохранить как…") { run { try AttachmentSaver.saveAs(file).map { [$0] } ?? [] } }
+            if available {
+                Button("Открыть") { AttachmentSaver.open(file) }
+                Menu("Открыть с помощью") {
+                    ForEach(AttachmentSaver.applications(for: file), id: \.self) { app in
+                        Button(Self.appTitle(app, isDefault: app == AttachmentSaver.applications(for: file).first)) {
+                            AttachmentSaver.open(file, with: app)
+                        }
+                    }
+                    Divider()
+                    Button("Другая программа…") { openWithChosenApp(file) }
+                }
+                Divider()
+                Button("Скачать в «Загрузки»") { download(file) }
+                Button("Скачать и открыть") { download(file, then: .open) }
+                Button("Скачать и показать в Finder") { download(file, then: .reveal) }
+                Button("Сохранить как…") { run { try AttachmentSaver.saveAs(file).map { [$0] } ?? [] } }
+            }
+        }
+    }
+
+    /// Меню по щелчку — `NSMenu` под курсором: у SwiftUI `Menu` нет
+    /// двойного щелчка, он раскрывается уже на нажатии.
+    private func menu(for file: MailBody.Attachment) -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(ClosureItem(String(localized: "Открыть"), key: "") { AttachmentSaver.open(file) })
+        let withItem = NSMenuItem(title: String(localized: "Открыть с помощью"), action: nil, keyEquivalent: "")
+        let apps = NSMenu()
+        for (index, app) in AttachmentSaver.applications(for: file).enumerated() {
+            let item = ClosureItem(Self.appTitle(app, isDefault: index == 0), key: "") { AttachmentSaver.open(file, with: app) }
+            let image = NSWorkspace.shared.icon(forFile: app.path)
+            image.size = NSSize(width: 16, height: 16)
+            item.image = image
+            apps.addItem(item)
+        }
+        if !apps.items.isEmpty { apps.addItem(.separator()) }
+        apps.addItem(ClosureItem(String(localized: "Другая программа…"), key: "") { openWithChosenApp(file) })
+        withItem.submenu = apps
+        menu.addItem(withItem)
+        menu.addItem(.separator())
+        menu.addItem(ClosureItem(String(localized: "Скачать в «Загрузки»"), key: "") { download(file) })
+        menu.addItem(ClosureItem(String(localized: "Скачать и открыть"), key: "") { download(file, then: .open) })
+        menu.addItem(ClosureItem(String(localized: "Скачать и показать в Finder"), key: "") { download(file, then: .reveal) })
+        menu.addItem(ClosureItem(String(localized: "Сохранить как…"), key: "") {
+            run { try AttachmentSaver.saveAs(file).map { [$0] } ?? [] }
+        })
+        return menu
+    }
+
+    private static func appTitle(_ app: URL, isDefault: Bool) -> String {
+        let name = (FileManager.default.displayName(atPath: app.path) as NSString).deletingPathExtension
+        return isDefault ? String(localized: "\(name) (по умолчанию)") : name
+    }
+
+    private func openWithChosenApp(_ file: MailBody.Attachment) {
+        guard let app = AttachmentSaver.chooseApplication() else { return }
+        AttachmentSaver.open(file, with: app)
+    }
+
+    private enum AfterDownload { case nothing, open, reveal }
+
+    private func download(_ file: MailBody.Attachment, then next: AfterDownload = .nothing) {
+        let url: URL
+        do {
+            guard let written = try AttachmentSaver.saveToDownloads([file]).first else { return }
+            url = written
+            saved = [written]
+            problem = nil
+        } catch {
+            problem = String(localized: "Не сохранилось: \(error.localizedDescription)")
+            return
+        }
+        switch next {
+        case .nothing: break
+        case .open: AttachmentSaver.open(file, at: url)
+        case .reveal: AttachmentSaver.reveal([url])
         }
     }
 

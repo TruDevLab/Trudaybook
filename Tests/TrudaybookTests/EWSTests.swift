@@ -242,3 +242,58 @@ struct EWSTests {
         #expect(try cache.localUID(for: "test-mail", account: "Y") == 1)
     }
 }
+
+@Suite("Exchange: описание встречи с картинками")
+struct EWSRichDescriptionTests {
+    static let item = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>
+        <m:GetItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
+          <m:ResponseMessages><m:GetItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>
+            <m:Items><t:CalendarItem><t:ItemId Id="CAL1=" ChangeKey="DwAA"/>
+              <t:Body BodyType="HTML">&lt;p&gt;План &lt;img src="cid:logo@x"&gt;&lt;/p&gt;</t:Body>
+              <t:Attachments>
+                <t:FileAttachment><t:AttachmentId Id="ATT1="/><t:Name>logo.png</t:Name><t:ContentType>image/png</t:ContentType>
+                  <t:ContentId>logo@x</t:ContentId><t:Size>3</t:Size><t:IsInline>true</t:IsInline></t:FileAttachment>
+                <t:FileAttachment><t:AttachmentId Id="ATT2="/><t:Name>План.pdf</t:Name><t:ContentType>application/pdf</t:ContentType>
+                  <t:Size>4</t:Size><t:IsInline>false</t:IsInline></t:FileAttachment>
+                <t:ItemAttachment><t:AttachmentId Id="ATT3="/><t:Name>Письмо</t:Name></t:ItemAttachment>
+              </t:Attachments>
+            </t:CalendarItem></m:Items>
+          </m:GetItemResponseMessage></m:ResponseMessages>
+        </m:GetItemResponse></s:Body></s:Envelope>
+        """
+
+    static let contents = """
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>
+        <m:GetAttachmentResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
+          <m:ResponseMessages>
+            <m:GetAttachmentResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>
+              <m:Attachments><t:FileAttachment><t:AttachmentId Id="ATT1="/><t:Content>AQID</t:Content></t:FileAttachment></m:Attachments>
+            </m:GetAttachmentResponseMessage>
+            <m:GetAttachmentResponseMessage ResponseClass="Error"><m:ResponseCode>ErrorItemNotFound</m:ResponseCode></m:GetAttachmentResponseMessage>
+          </m:ResponseMessages>
+        </m:GetAttachmentResponse></s:Body></s:Envelope>
+        """
+
+    /// Ответ EWS — содержимое `<s:Body>`, как его отдаёт `EWSClient`.
+    private func response(_ xml: String) throws -> XMLTreeNode {
+        try #require(try XMLTreeNode.parse(Data(xml.utf8)).child("Body")?.children.first)
+    }
+
+    @Test("HTML и файлы — без вложенных писем; встроенная картинка помечена")
+    func разбор() throws {
+        let parsed = try EWSCalendarRequest.parseRichBody(try response(Self.item))
+        #expect(parsed.html == #"<p>План <img src="cid:logo@x"></p>"#)
+        #expect(parsed.attachments.map(\.id) == ["ATT1=", "ATT2="])
+        #expect(parsed.attachments.first?.isInline == true)
+        #expect(parsed.attachments.first?.contentID == "logo@x")
+        #expect(parsed.attachments.last?.name == "План.pdf")
+    }
+
+    @Test("Содержимое вложений по Id; не отданное сервером — пропущено")
+    func содержимое() throws {
+        let contents = try EWSCalendarRequest.parseAttachmentContents(try response(Self.contents))
+        #expect(contents == ["ATT1=": Data([1, 2, 3])])
+        #expect(EWSCalendarRequest.getAttachments(["A\"1"]).contains(#"Id="A&quot;1""#))
+    }
+}

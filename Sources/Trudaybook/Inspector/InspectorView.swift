@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import TrudaybookCore
 
 /// Правая панель: выбранное письмо, встреча или напоминание — или ответ.
+/// Чат с ассистентом — отдельной карточкой над ней (`MainView.rightColumn`).
 struct InspectorView: View {
     @EnvironmentObject private var model: AppModel
 
@@ -11,26 +12,21 @@ struct InspectorView: View {
         Group {
             if model.draft != nil {
                 // Ответ на выбранное или новое письмо.
-                ComposerView(item: model.draftItem)
+                ComposerView(item: model.draftItem, draft: $model.draft, isSending: model.isSending,
+                             onSend: model.sendDraft, onCancel: model.cancelDraft)
             } else if model.multiSelection.count > 1 {
                 SelectionSummary()
             } else if let item = model.selectedItem {
                 switch item.kind {
                 case .mail: MailDetail(item: item)
-                case .event: EventDetail(item: item)
+                // Своя `id`: разрешение «Загрузить картинки» и высота описания —
+                // у каждой встречи свои, на следующую не переходят.
+                case .event: EventDetail(item: item).id(item.id)
                 case .reminder: ReminderDetail(item: item)
                 }
             } else {
-                VStack(spacing: 10) {
-                    Image(systemName: "sidebar.right")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.tertiary)
-                    Text("Выберите письмо или событие на таймлайне")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyState(symbol: "sidebar.right", text: String(localized: "Выберите письмо или событие на таймлайне"),
+                           tint: Color(nsColor: .tertiaryLabelColor), large: true)
             }
         }
         // Стекло, как у остальных панелей; на старых системах — фон текста.
@@ -57,12 +53,12 @@ private struct InspectorHeader<Accessories: View>: View {
 
     var body: some View {
         let status = model.status(of: item)
-        HStack(spacing: 8) {
+        HStack(spacing: Space.md) {
             // Письмо в панели открыто — и значок открытого конверта.
             Label(kindTitle, systemImage: item.kind == .mail ? "envelope.open" : item.symbol)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
-            StatusPill(status: status)
+            StatusTag(status: status)
             Spacer()
             // Снять можно только то, что отметило само приложение: «отвечено»
             // с сервера или прошедшую встречу не вернуть.
@@ -84,24 +80,19 @@ extension InspectorHeader where Accessories == EmptyView {
     }
 }
 
-private struct StatusPill: View {
+private struct StatusTag: View {
     let status: ItemStatus
 
     var body: some View {
         let (text, color): (String, Color) = {
             switch status {
-            case .open: return (String(localized: "Ждёт действия"), .orange)
-            case .upcoming: return (String(localized: "Впереди"), .blue)
-            case .snoozed(let until): return (String(localized: "Отложено до \(Format.time(until))"), .orange)
-            case .done(let reason): return (reason.title, .green)
+            case .open: return (String(localized: "Ждёт действия"), Palette.warning)
+            case .upcoming: return (String(localized: "Впереди"), Palette.info)
+            case .snoozed(let until): return (String(localized: "Отложено до \(Format.time(until))"), Palette.warning)
+            case .done(let reason): return (reason.title, Palette.success)
             }
         }()
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(color.opacity(0.15)))
+        Tag(text: text, tint: color)
     }
 }
 
@@ -111,7 +102,7 @@ private struct Field<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.xxs) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -152,9 +143,9 @@ private struct MailDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Space.lg) {
                 InspectorHeader(item: item) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: Space.xs) {
                         PriorityMenu(item: item)
                         if let body = model.body {
                             LetterFileButton(item: item, letter: body)
@@ -177,7 +168,7 @@ private struct MailDetail: View {
                         .id(item.id)
                 }
 
-                HStack(spacing: 6) {
+                HStack(spacing: Space.sm) {
                     ActionButtons(item: item, titles: [.reschedule: String(localized: "Отложить"), .replyAll: String(localized: "Ответить всем")])
                     HoverIconButton(title: String(localized: "Встреча"), symbol: "calendar.badge.plus",
                                     help: String(localized: "Назначить встречу с участниками письма")) {
@@ -189,13 +180,13 @@ private struct MailDetail: View {
                     RemoteImagesNotice(letter: body) { showRemote = true }
                 }
 
-                // Пересказ — только когда есть кому пересказывать.
-                if TrunookLink.appURL != nil || model.options.demo {
+                // Пересказ — когда ИИ включён; почему модель не ответит, скажет сама плашка.
+                if model.aiEnabled {
                     SummaryPlaque(item: item)
                         .id(item.id)
                 }
             }
-            .padding(16)
+            .padding(Space.xxl)
 
             Divider()
 
@@ -218,7 +209,7 @@ struct OpenInWindowButton: View {
             // Основным цветом, и именно `Color.primary`: у `.borderless`
             // иерархическое `.primary` — вторичное, значок казался выключенным.
             Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 12, weight: .medium))
+                .font(.app(.text, weight: .medium))
                 .foregroundStyle(Color.primary)
                 .frame(width: 26, height: 26)
                 .contentShape(Rectangle())
@@ -236,13 +227,13 @@ private struct SelectionSummary: View {
         let items = model.selectionItems
         let letters = items.filter { $0.kind == .mail }
         let archivable = items.filter { model.availability(of: .archive, for: $0).isEnabled }
-        VStack(spacing: 14) {
+        VStack(spacing: Space.xl) {
             Image(systemName: "envelope.stack")
-                .font(.system(size: 38))
+                .font(.app(.hero))
                 .foregroundStyle(.secondary)
             Text(Self.title(items.count, letters: letters.count))
                 .font(.title3.weight(.semibold))
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.xs) {
                 ForEach(items.prefix(6)) { item in
                     Text("\(item.subtitle) — \(item.title)")
                         .font(.callout)
@@ -255,7 +246,7 @@ private struct SelectionSummary: View {
                 }
             }
             .frame(maxWidth: 320, alignment: .leading)
-            HStack(spacing: 8) {
+            HStack(spacing: Space.md) {
                 Button { model.archiveSelection() } label: {
                     Label(archivable.count == items.count ? String(localized: "В архив")
                                                           : String(localized: "В архив: \(archivable.count)"),
@@ -278,7 +269,7 @@ private struct SelectionSummary: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
-        .padding(24)
+        .padding(Space.page)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -298,7 +289,7 @@ struct LetterFields: View {
 
     var body: some View {
         let info = item.mail!
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Space.lg, verticalSpacing: Space.xs) {
             GridRow {
                 Text("От").foregroundStyle(.secondary)
                 PeopleLine(people: [info.from])
@@ -350,8 +341,8 @@ struct RemoteImagesNotice: View {
                 Button("Загрузить", action: load)
                     .controlSize(.small)
             }
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
+            .padding(Space.md)
+            .background(RoundedRectangle(cornerRadius: Radius.md).fill(Palette.notice.opacity(0.15)))
         }
     }
 }
@@ -372,12 +363,12 @@ struct LetterBodyPane: View {
                     let current = paper ?? MailBodyView.hasOwnColors(letter.html)
                     Button { paper = !current } label: {
                         Image(systemName: current ? "moon" : "doc.richtext")
-                            .padding(6)
-                            .background(Circle().fill(Color.primary.opacity(0.1)))
+                            .padding(Space.sm)
+                            .background(Circle().fill(Fill.hover))
                     }
                     .buttonStyle(.plain)
-                    .padding(10)
-                    .help(current ? String(localized: "Показать в тёмной теме") : String(localized: "Показать в цветах письма (таблицы, выделения)"))
+                    .padding(Space.lg)
+                    .labelHelp(current ? String(localized: "Показать в тёмной теме") : String(localized: "Показать в цветах письма (таблицы, выделения)"))
                 }
             }
     }
@@ -391,6 +382,9 @@ struct MailBodyView: NSViewRepresentable {
     /// Тёмная тема: показать письмо «на бумаге» — в его собственных цветах
     /// на светлом листе. `nil` — решить самим (`hasOwnColors`).
     var paper: Bool?
+    /// Высота документа после загрузки — где просмотр стоит внутри прокрутки
+    /// (описание встречи) и своей высоты ему не дано.
+    var onHeight: ((CGFloat) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
 
     /// В письме свои цвета: цветной текст, выделение, заливка ячеек таблиц.
@@ -444,6 +438,7 @@ struct MailBodyView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
+        context.coordinator.onHeight = onHeight
         let dark = colorScheme == .dark
         let onPaper = dark && (paper ?? Self.hasOwnColors(body.html))
         let html = document() + (dark ? (onPaper ? Self.paperStyle : Self.darkStyle) : "")
@@ -480,6 +475,18 @@ struct MailBodyView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var loadedKey: String?
+        var onHeight: ((CGFloat) -> Void)?
+
+        /// Скрипты письма выключены; высоту спрашивает само приложение — в своём
+        /// мире (`defaultClient`), письму этот вызов не виден.
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard let onHeight else { return }
+            webView.evaluateJavaScript("document.documentElement.scrollHeight", in: nil, in: .defaultClient) { result in
+                if case .success(let value) = result, let height = value as? Double {
+                    MainActor.assumeIsolated { onHeight(CGFloat(height)) }
+                }
+            }
+        }
 
         /// Письмо — чужой документ. Разрешено только показать его самого:
         /// переходы (в том числе `<meta refresh>`) и отправка форм — нет,
@@ -535,13 +542,16 @@ private struct EventDetail: View {
     @EnvironmentObject private var model: AppModel
     let item: TimelineItem
     @ViewState private var askDelete = false
+    /// Картинки из сети в описании — по нажатию, как в письме.
+    @ViewState private var showRemote = false
+    @ViewState private var descriptionHeight: CGFloat = 120
 
     /// Встреча отменена организатором — убрать её из календаря одной кнопкой
     /// (письмо об отмене, если оно есть, уйдёт в архив).
     private var cancelledBanner: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "calendar.badge.minus").foregroundStyle(.red)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: Space.lg) {
+            Image(systemName: "calendar.badge.minus").foregroundStyle(Palette.danger)
+            VStack(alignment: .leading, spacing: Space.xxs) {
                 Text("Встреча отменена").font(.callout.weight(.semibold))
                 Text("Организатор её отменил — в календаре она осталась.").font(.caption).foregroundStyle(.secondary)
             }
@@ -556,11 +566,11 @@ private struct EventDetail: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .tint(Palette.danger)
             .disabled(model.removingCancelled != nil || !canDelete)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.red.opacity(0.08)))
+        .padding(Space.lg)
+        .background(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(Palette.danger.opacity(0.08)))
     }
 
     /// Удалить можно из календаря, который разрешает правку, — и чужую
@@ -574,7 +584,7 @@ private struct EventDetail: View {
     var body: some View {
         let info = item.event!
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: Space.xl) {
                 InspectorHeader(item: item)
 
                 if info.isCancelled { cancelledBanner }
@@ -585,7 +595,7 @@ private struct EventDetail: View {
                 }
 
                 Field(title: String(localized: "Время")) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: Space.xxs) {
                         Text(item.isAllDay ? "\(Format.dayTitle(item.time)), весь день"
                                            : "\(Format.dayTitle(item.time)), \(Format.range(item.time, item.end))")
                         if info.isRecurring {
@@ -598,13 +608,16 @@ private struct EventDetail: View {
 
                 if let link = info.link {
                     Field(title: String(localized: "Ссылка")) {
-                        Button {
-                            MeetingOpener.open(link)
-                        } label: {
-                            Label("Подключиться · \(link.provider.rawValue)", systemImage: "video.fill")
+                        VStack(alignment: .leading, spacing: Space.sm) {
+                            Button {
+                                MeetingOpener.open(link)
+                            } label: {
+                                Label("Подключиться · \(link.provider.rawValue)", systemImage: "video.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .help(link.url.absoluteString)
+                            autoJoinToggle(item)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .help(link.url.absoluteString)
                     }
                 } else if let location = info.location, !location.isEmpty {
                     Field(title: String(localized: "Место")) { Text(location).textSelection(.enabled) }
@@ -614,10 +627,10 @@ private struct EventDetail: View {
                     if info.attendees.isEmpty {
                         Text("Только вы").foregroundStyle(.secondary)
                     } else {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: Space.xs) {
                             ForEach(info.attendees, id: \.self) { attendee in
                                 let response = info.response(of: attendee)
-                                HStack(spacing: 6) {
+                                HStack(spacing: Space.sm) {
                                     Image(systemName: icon(response))
                                         .foregroundStyle(color(response))
                                         .frame(width: 16)
@@ -632,7 +645,7 @@ private struct EventDetail: View {
                     }
                 }
 
-                HStack(spacing: 6) {
+                HStack(spacing: Space.sm) {
                     ActionButtons(item: item, titles: [.archive: String(localized: "Разобрано"), .reply: String(localized: "Организатору"),
                                                        .replyAll: String(localized: "Всем участникам"),
                                                        .decline: info.canEdit ? String(localized: "Отменить") : String(localized: "Отклонить")])
@@ -642,7 +655,7 @@ private struct EventDetail: View {
                         model.startEditing(item)
                     }
                     .disabled(!info.canEdit)
-                    HoverIconButton(title: String(localized: "Удалить…"), symbol: "trash", tint: .red) {
+                    HoverIconButton(title: String(localized: "Удалить…"), symbol: "trash", tint: Palette.danger) {
                         askDelete = true
                     }
                     .disabled(!canDelete)
@@ -669,14 +682,50 @@ private struct EventDetail: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let notes = info.notes, !notes.isEmpty {
+                if let rich = model.eventBody {
+                    if !rich.attachments.isEmpty {
+                        ReceivedAttachments(files: rich.attachments)
+                            .id(item.id)
+                    }
+                    if rich.html != nil {
+                        Field(title: String(localized: "Описание")) {
+                            VStack(alignment: .leading, spacing: Space.sm) {
+                                if !showRemote {
+                                    RemoteImagesNotice(letter: rich) { showRemote = true }
+                                }
+                                MailBodyView(body: rich, allowRemote: showRemote, onHeight: { height in
+                                    descriptionHeight = min(max(height, 40), 4000)
+                                })
+                                .frame(height: descriptionHeight)
+                                .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                            }
+                        }
+                    }
+                }
+                if model.eventBody?.html == nil, let notes = info.notes, !notes.isEmpty {
                     Field(title: String(localized: "Описание")) {
                         Text(notes).textSelection(.enabled)
                     }
                 }
             }
-            .padding(16)
+            .padding(Space.xxl)
         }
+    }
+
+    /// Подключиться само — у любой встречи со ссылкой, и у чужой: окна
+    /// правки у неё нет, а отметка всё равно только своя, на этом Mac.
+    @ViewBuilder
+    private func autoJoinToggle(_ item: TimelineItem) -> some View {
+        let possible = AutoJoinRules.canAutoJoin(item)
+        Toggle(isOn: Binding(get: { possible && model.autoJoins(item) },
+                             set: { model.setAutoJoin($0, for: item) })) {
+            Text("Автоподключение")
+        }
+        .toggleStyle(.checkbox)
+        .disabled(!possible)
+        .help(possible
+              ? String(localized: "Ссылка откроется сама, когда встреча начнётся. Для всех встреч — в Настройках → Календари.")
+              : String(localized: "Сама открывается только ссылка Zoom, Teams, Google Meet, Телемоста, Webex или Whereby у неотменённой и неотклонённой встречи."))
     }
 
     private func icon(_ response: Attendee.Response) -> String {
@@ -690,9 +739,9 @@ private struct EventDetail: View {
 
     private func color(_ response: Attendee.Response) -> Color {
         switch response {
-        case .accepted: return .green
-        case .declined: return .red
-        case .tentative: return .orange
+        case .accepted: return Palette.success
+        case .declined: return Palette.danger
+        case .tentative: return Palette.warning
         case .pending, .unknown: return .secondary
         }
     }
@@ -707,7 +756,7 @@ private struct ReminderDetail: View {
     var body: some View {
         let info = item.reminder!
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: Space.xl) {
                 InspectorHeader(item: item)
                 Field(title: String(localized: "Напоминание")) {
                     Text(item.title).font(.title2.weight(.semibold)).textSelection(.enabled)
@@ -717,14 +766,14 @@ private struct ReminderDetail: View {
                                       : Format.dayTitle(item.time))
                 }
                 Field(title: String(localized: "Список")) { Text(info.listTitle) }
-                HStack(spacing: 6) {
+                HStack(spacing: Space.sm) {
                     ActionButtons(item: item, titles: [.archive: String(localized: "Выполнено"), .decline: String(localized: "Удалить")])
                 }
                 if let notes = info.notes, !notes.isEmpty {
                     Field(title: String(localized: "Заметки")) { Text(notes).textSelection(.enabled) }
                 }
             }
-            .padding(16)
+            .padding(Space.xxl)
         }
     }
 }
@@ -734,10 +783,16 @@ private struct ReminderDetail: View {
 /// Редактор ответа: свой текст с оформлением сверху, исходное письмо —
 /// под чертой со своим оформлением, как в Mail. Символов «>» здесь нет:
 /// они появляются только в текстовой копии уходящего письма.
-private struct ComposerView: View {
+struct ComposerView: View {
     @EnvironmentObject private var model: AppModel
     /// Исходное письмо или встреча; `nil` — новое письмо.
     let item: TimelineItem?
+    /// Черновик: у правой панели — модели (`draft`), у отдельного
+    /// окна — свой (`ComposeWindow`).
+    @Binding var draft: OutgoingMail?
+    var isSending: Bool
+    var onSend: () -> Void
+    var onCancel: () -> Void
     @StateObject private var editor = RichTextController()
     @ViewState private var to: [Person] = []
     @ViewState private var cc: [Person] = []
@@ -756,6 +811,8 @@ private struct ComposerView: View {
     @ViewState private var showLink = false
     /// Шаблон ответа от Trunook: готовится, не вышел или ещё не просили.
     @ViewState private var assist: ReplyAssist = .idle
+    /// Высота цитаты под ручкой — одна на все ответы.
+    @AppStorage("composerQuoteHeight") private var quoteHeight = ComposerView.defaultQuoteHeight
 
     enum ReplyAssist: Equatable {
         case idle
@@ -782,20 +839,34 @@ private struct ComposerView: View {
                     Text(model.accounts.first.map { String(localized: "от \($0.email)") } ?? model.mailName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
+                // Кнопки — наверху, у заголовка: внизу их съедала цитата,
+                // а в узком окне приходилось листать до них.
+                sendButtons
+                    .padding(.leading, Space.sm)
             }
-            .padding([.horizontal, .top], 16)
-            .padding(.bottom, 10)
+            .padding([.horizontal, .top], Space.xxl)
+            .padding(.bottom, Space.lg)
+
+            if model.accounts.isEmpty || model.options.demo {
+                Text("Отправка тестовая: письмо никуда не уйдёт")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, Space.xxl)
+                    .padding(.bottom, Space.md)
+            }
 
             // Получатели — плашками с поиском, как участники встречи.
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 8) {
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Space.md, verticalSpacing: Space.md) {
                 GridRow {
                     Text("Кому").foregroundStyle(.secondary)
                     PeopleField(people: $to, text: $toText, placeholder: String(localized: "имя или адрес"))
                 }
                 GridRow {
                     Text("Копия").foregroundStyle(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
                         PeopleField(people: $cc, text: $ccText, placeholder: String(localized: "имя или адрес"))
                         if !showBcc {
                             Button("Скрытая") { withAnimation(HoverMotion.animation) { showBcc = true } }
@@ -818,66 +889,38 @@ private struct ComposerView: View {
                         .editorField()
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, Space.xxl)
 
             formatBar
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
+                .padding(.horizontal, Space.xxl)
+                .padding(.top, Space.lg)
 
-            if let item, item.kind == .mail, model.trunookModelAllowed {
+            if let item, item.kind == .mail, model.aiEnabled {
                 templateBar(item)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
+                    .padding(.horizontal, Space.xxl)
+                    .padding(.top, Space.sm)
             }
 
-            RichTextEditorView(controller: editor)
-                .frame(minHeight: 150, maxHeight: .infinity)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+            // Текст и цитата делят место ручкой: в узком окне иногда важнее
+            // перечитать, на что отвечаешь, чем видеть всё поле ввода.
+            GeometryReader { geometry in
+                VStack(alignment: .leading, spacing: 0) {
+                    RichTextEditorView(controller: editor)
+                        .frame(minHeight: Self.minEditorHeight, maxHeight: .infinity)
+                        .background(RoundedRectangle(cornerRadius: Radius.md).fill(Fill.faint))
+                        .padding(.horizontal, Space.xxl)
+                        .padding(.vertical, Space.md)
 
-            AttachmentChips(files: attachments)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
+                    AttachmentChips(files: attachments)
+                        .padding(.horizontal, Space.xxl)
+                        .padding(.bottom, Space.sm)
 
-            if let quote = model.draft?.quote {
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Цитировать исходное письмо", isOn: $includeQuote)
-                        .toggleStyle(.checkbox)
-                        .font(.callout)
-                    if includeQuote {
-                        Text(quote.attribution)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        HStack(spacing: 0) {
-                            Rectangle().fill(Color.secondary.opacity(0.4)).frame(width: 2)
-                            MailBodyView(body: MailBody(html: quote.html, text: quote.text), allowRemote: false)
-                        }
-                        .frame(height: 200)
-                        .opacity(0.85)
+                    if let quote = draft?.quote {
+                        quoteSection(quote, available: geometry.size.height)
                     }
                 }
-                .padding(.horizontal, 16)
             }
-
-            HStack {
-                Text(model.accounts.isEmpty || model.options.demo ? "Отправка тестовая: письмо никуда не уйдёт" : "")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Отмена") { model.cancelDraft() }
-                    .keyboardShortcut(.cancelAction)
-                Button {
-                    commit()
-                    model.sendDraft()
-                } label: {
-                    if model.isSending { ProgressView().controlSize(.small) } else { Text("Отправить") }
-                }
-                .keyboardShortcut(.return, modifiers: .command)
-                .buttonStyle(.borderedProminent)
-                .disabled(model.isSending)
-            }
-            .padding(16)
+            .padding(.bottom, Space.xl)
         }
         .onAppear {
             load()
@@ -892,21 +935,21 @@ private struct ComposerView: View {
 
     /// Вложения живут в черновике: переживают перерисовку редактора.
     private var attachments: Binding<[MailBody.Attachment]> {
-        Binding(get: { model.draft?.attachments ?? [] }, set: { model.draft?.attachments = $0 })
+        Binding(get: { draft?.attachments ?? [] }, set: { draft?.attachments = $0 })
     }
 
     private func addAttachments(_ files: [MailBody.Attachment]) {
         guard !files.isEmpty else { return }
-        model.draft?.attachments.append(contentsOf: files)
+        draft?.attachments.append(contentsOf: files)
     }
 
     /// Ящик отправителя. Хранится в черновике, чтобы выбор пережил
     /// перерисовку редактора.
     private var sender: Binding<String?> {
         Binding(
-            get: { model.draft?.accountID },
+            get: { draft?.accountID },
             set: { account in
-                model.draft?.accountID = account
+                draft?.accountID = account
                 applySignature()
             }
         )
@@ -914,20 +957,74 @@ private struct ComposerView: View {
 
     /// Подпись ящика «от» в конце текста; сменили ящик — меняется и она.
     private func applySignature() {
-        let signature = model.signatureForDraft(accountID: model.draft?.accountID, isReply: item != nil)
+        let signature = model.signatureForDraft(accountID: draft?.accountID, isReply: item != nil)
         editor.setSignature(signature, replacing: appliedSignature)
         appliedSignature = signature
     }
 
+    private var sendButtons: some View {
+        HStack(spacing: Space.sm) {
+            Button("Отмена") { onCancel() }
+                .keyboardShortcut(.cancelAction)
+            Button {
+                commit()
+                onSend()
+            } label: {
+                if isSending { ProgressView().controlSize(.small) } else { Text("Отправить") }
+            }
+            .keyboardShortcut(.return, modifiers: .command)
+            .buttonStyle(.borderedProminent)
+            .disabled(isSending)
+            .help("Отправить · ⌘↩")
+        }
+        .fixedSize()
+    }
+
+    /// Полю ввода всегда остаётся столько — даже если цитату вытянули вверх.
+    static let minEditorHeight: Double = 120
+    static let defaultQuoteHeight: Double = 200
+
+    /// Цитата под ручкой: высота — сколько человек вытянул, но не больше,
+    /// чем оставляет полю ввода его минимум.
+    @ViewBuilder
+    private func quoteSection(_ quote: OutgoingMail.Quote, available: Double) -> some View {
+        // Ручка, галочка и подпись цитаты, поля и вложения над ней.
+        let reserved = Self.minEditorHeight + 120
+        let upper = max(60, available - reserved)
+        let height = min(max(quoteHeight, 60), upper)
+        VStack(alignment: .leading, spacing: Space.sm) {
+            if includeQuote {
+                ResizeHandle(value: $quoteHeight, current: height, range: 60...upper, dimension: .height,
+                             growsTowardStart: true, reset: Self.defaultQuoteHeight,
+                             name: String(localized: "высота цитаты"), alwaysVisible: true, thickness: Space.xl)
+            }
+            Toggle("Цитировать исходное письмо", isOn: $includeQuote)
+                .toggleStyle(.checkbox)
+                .font(.callout)
+            if includeQuote {
+                Text(quote.attribution)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 0) {
+                    Rectangle().fill(Color.secondary.opacity(0.4)).frame(width: 2)
+                    MailBodyView(body: MailBody(html: quote.html, text: quote.text), allowRemote: false)
+                }
+                .frame(height: height)
+                .opacity(0.85)
+            }
+        }
+        .padding(.horizontal, Space.xxl)
+    }
+
     /// Кнопки оформления, вложения и ссылка.
     private var formatBar: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Space.xxs) {
             RichFormatControls(editor: editor)
-            Divider().frame(height: 16).padding(.horizontal, 4)
+            Divider().frame(height: 16).padding(.horizontal, Space.xs)
             RichFormatButton(symbol: "paperclip", help: String(localized: "Прикрепить файлы (или перетащите их сюда)")) {
                 addAttachments(AttachmentFiles.choose())
             }
-            Divider().frame(height: 16).padding(.horizontal, 4)
+            Divider().frame(height: 16).padding(.horizontal, Space.xs)
             RichFormatButton(symbol: "link", help: String(localized: "Ссылка на выделенном тексте")) {
                 linkAddress = ""
                 showLink = true
@@ -940,7 +1037,7 @@ private struct ComposerView: View {
                         .onSubmit(applyLink)
                     Button("Готово", action: applyLink)
                 }
-                .padding(10)
+                .padding(Space.lg)
             }
             Spacer()
         }
@@ -952,7 +1049,7 @@ private struct ComposerView: View {
     /// сроки и суммы она оставляет пометками в скобках — их вписывает человек.
     @ViewBuilder
     private func templateBar(_ item: TimelineItem) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.md) {
             Button {
                 requestTemplate(item)
             } label: {
@@ -961,15 +1058,15 @@ private struct ComposerView: View {
             }
             .buttonStyle(.borderless)
             .disabled(assist == .loading)
-            .help("Trunook прочтёт письмо и прошлую переписку и подготовит черновик, где отвечено на каждый вопрос. Решений за вас он не принимает — на их месте пометки в [скобках]. Модель — только на этом Mac.")
+            .help("Модель прочтёт письмо и прошлую переписку и подготовит черновик, где отвечено на каждый вопрос. Решений за вас она не принимает — на их месте пометки в [скобках]. Модель — только на этом Mac.")
             switch assist {
             case .loading:
                 ProgressView().controlSize(.small)
-                Text("Trunook читает переписку…")
+                Text("Модель читает переписку…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case let .failed(code, message):
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warning)
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1002,7 +1099,7 @@ private struct ComposerView: View {
     }
 
     private func load() {
-        guard let draft = model.draft else { return }
+        guard let draft else { return }
         to = draft.to
         cc = draft.cc
         bcc = draft.bcc
@@ -1017,16 +1114,16 @@ private struct ComposerView: View {
     }
 
     private func commit() {
-        guard var draft = model.draft else { return }
+        guard var updated = draft else { return }
         let text = editor.attributed
-        draft.to = PeopleField.merged(to, typed: toText)
-        draft.cc = PeopleField.merged(cc, typed: ccText)
-        draft.bcc = PeopleField.merged(bcc, typed: bccText)
-        draft.subject = subject
-        draft.text = text.string
-        draft.html = RichTextHTML.html(from: text)
-        if !includeQuote { draft.quote = nil }
-        model.draft = draft
+        updated.to = PeopleField.merged(to, typed: toText)
+        updated.cc = PeopleField.merged(cc, typed: ccText)
+        updated.bcc = PeopleField.merged(bcc, typed: bccText)
+        updated.subject = subject
+        updated.text = text.string
+        updated.html = RichTextHTML.html(from: text)
+        if !includeQuote { updated.quote = nil }
+        draft = updated
     }
 }
 
@@ -1103,6 +1200,7 @@ struct LetterFileButton: View {
             .onHover { inside in withAnimation(HoverMotion.animation) { hovered = inside } }
             .help(String(localized: "Сохранить письмо файлом · ⇧⌘S. Можно и перетащить — на полку Trunook или в Finder"))
             .onTapGesture { Self.save(item, letter, raw: raw) }
+            .actsAsButton(String(localized: "Сохранить")) { Self.save(item, letter, raw: raw) }
             .onDrag {
                 guard let url = Self.file(item, letter, raw: raw) else { return NSItemProvider() }
                 return NSItemProvider(contentsOf: url) ?? NSItemProvider()

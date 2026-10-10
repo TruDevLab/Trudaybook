@@ -93,8 +93,12 @@
 	<string>Trudaybook узнаёт, где вы, только чтобы показать погоду, если её не присылает Trunook. Координаты округляются примерно до 10 км.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Trudaybook узнаёт, где вы, только чтобы показать погоду, если её не присылает Trunook. Координаты округляются примерно до 10 км.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Trudaybook слушает микрофон, только пока вы диктуете вопрос ассистенту. Речь распознаётся на этом Mac и никуда не отправляется.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Trudaybook превращает в текст вопрос, который вы диктуете ассистенту. Распознавание — только на этом Mac, голос в интернет не уходит.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Trudaybook показывает напоминания на шкале дня, отмечает их выполненными и переносит по вашей команде.</string>
 </dict>

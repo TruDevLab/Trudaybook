@@ -91,20 +91,20 @@ struct NoteWindowView: View {
                 if case let .failed(message, offline) = assistant.state {
                     failure(message, offline: offline)
                 }
-                HStack(spacing: 2) {
+                HStack(spacing: Space.xxs) {
                     RichFormatControls(editor: session.editor, noteTools: true)
                     Spacer()
                 }
                 .buttonStyle(.borderless)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, Space.lg)
+                .padding(.vertical, Space.sm)
                 Divider().opacity(0.5)
                 ZStack(alignment: .topLeading) {
                     if session.isEmpty {
                         Text(placeholder)
                             .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 17)
-                            .padding(.vertical, 10)
+                            .padding(.horizontal, Space.xxl)
+                            .padding(.vertical, Space.lg)
                             .allowsHitTesting(false)
                     }
                     NoteEditorView(controller: session.editor, autofocus: true,
@@ -117,7 +117,7 @@ struct NoteWindowView: View {
         }
         .padding(.horizontal, Self.gap)
         .padding(.bottom, Self.gap)
-        .padding(.top, 8)
+        .padding(.top, Space.md)
         .frame(minWidth: 600, minHeight: 440)
         .ignoresSafeArea(edges: .top)
         .background {
@@ -135,7 +135,7 @@ struct NoteWindowView: View {
 
     /// Слева — место под кнопки окна, затем период и дата; справа — Trunook.
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Space.lg) {
             Picker("Период", selection: $state.period) {
                 Text("День").tag(NotePeriod.day)
                 Text("Неделя").tag(NotePeriod.week)
@@ -144,11 +144,11 @@ struct NoteWindowView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-            HStack(spacing: 2) {
+            HStack(spacing: Space.xxs) {
                 Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 22) }
-                    .help(previousHelp)
+                    .labelHelp(previousHelp)
                 Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 22) }
-                    .help(nextHelp)
+                    .labelHelp(nextHelp)
             }
             .buttonStyle(.borderless)
             Text(title)
@@ -159,15 +159,15 @@ struct NoteWindowView: View {
             generateButton
         }
         // Кнопки окна кончаются на 78 pt.
-        .padding(.leading, 84)
-        .padding(.trailing, 6)
+        .padding(.leading, MainView.windowButtonsWidth + Space.xxs)
+        .padding(.trailing, Space.sm)
         .frame(height: 36)
     }
 
     @ViewBuilder
     private var generateButton: some View {
         if case .working(let text) = assistant.state {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.md) {
                 ProgressView().controlSize(.small)
                 Text(text).font(.callout).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -182,23 +182,23 @@ struct NoteWindowView: View {
     }
 
     private func failure(_ message: String, offline: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        HStack(alignment: .firstTextBaseline, spacing: Space.md) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warning)
             Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if offline {
-                Button("Вставить без Trunook") { assistant.insertAgendaWithoutTrunook(session: session) }
+                Button("Вставить без модели") { assistant.insertAgendaWithoutModel(session: session) }
                     .help("Встречи с разделом «Протокол», напоминания и важные письма — без главного на день")
             }
             Button("Ещё раз", action: generate)
             Button { assistant.dismiss() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
-                .help("Закрыть")
+                .labelHelp(String(localized: "Закрыть"))
         }
         .controlSize(.small)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.1))
+        .padding(.horizontal, Space.xl)
+        .padding(.vertical, Space.md)
+        .background(Palette.warning.opacity(0.1))
     }
 
     // MARK: - Период
@@ -223,9 +223,9 @@ struct NoteWindowView: View {
 
     private var generateHelp: String {
         switch state.period {
-        case .day: String(localized: "Trunook соберёт повестку: главное на день, встречи с местом для протокола, напоминания и важные письма")
-        case .week: String(localized: "Trunook подведёт итоги недели по заметкам дней")
-        case .month: String(localized: "Trunook подведёт итоги месяца по заметкам дней")
+        case .day: String(localized: "Модель соберёт повестку: главное на день, встречи с местом для протокола, напоминания и важные письма")
+        case .week: String(localized: "Модель подведёт итоги недели по заметкам дней")
+        case .month: String(localized: "Модель подведёт итоги месяца по заметкам дней")
         }
     }
 

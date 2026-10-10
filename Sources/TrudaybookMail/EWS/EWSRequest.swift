@@ -270,6 +270,7 @@ enum EWSRequest {
         if code == "ErrorAccessDenied" || code == "ErrorNonExistentMailbox" {
             return .authentication(text)
         }
+        if code == "ErrorItemNotFound" { return .gone(text) }
         return .server(text.isEmpty ? String(localized: "ошибка Exchange") : text)
     }
 

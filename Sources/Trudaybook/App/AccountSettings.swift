@@ -10,7 +10,7 @@ import TrudaybookMail
 @MainActor
 enum SettingsWindow {
     enum Tab: String, CaseIterable, Identifiable {
-        case mail, calendars, notifications, trunook, appearance, updates
+        case mail, calendars, notifications, ai, trunook, appearance, updates
         var id: String { rawValue }
 
         var title: String {
@@ -18,6 +18,7 @@ enum SettingsWindow {
             case .mail: String(localized: "Почта")
             case .calendars: String(localized: "Календари")
             case .notifications: String(localized: "Уведомления")
+            case .ai: String(localized: "ИИ")
             case .trunook: "Trunook"
             case .appearance: String(localized: "Оформление")
             case .updates: String(localized: "Обновления")
@@ -29,6 +30,7 @@ enum SettingsWindow {
             case .mail: "envelope.fill"
             case .calendars: "calendar"
             case .notifications: "bell.badge.fill"
+            case .ai: "sparkles"
             case .trunook: "rectangle.topthird.inset.filled"
             case .appearance: "paintpalette.fill"
             case .updates: "arrow.down.circle.fill"
@@ -40,6 +42,7 @@ enum SettingsWindow {
             case .mail: Palette.blue
             case .calendars: Palette.rose
             case .notifications: Palette.amber
+            case .ai: Palette.violet
             case .trunook: Palette.mint
             case .appearance: Palette.violet
             case .updates: Palette.cyan
@@ -97,21 +100,22 @@ struct SettingsView: View {
             Divider().ignoresSafeArea()
             ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: Space.xxl) {
                     Text(tab.title)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.app(.title, weight: .semibold))
                     switch tab {
                     case .mail: AccountSettingsView()
                     case .calendars: CalendarSettingsView()
                     case .notifications: NotificationSettingsView(notifier: model.notifier)
+                    case .ai: AISettingsView(ai: model.ai)
                     case .trunook: TrunookSettingsView(bridge: model.trunook)
                     case .appearance: AppearanceSettingsView()
                     case .updates: UpdateSettingsView(updates: model.updates)
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                .padding(.horizontal, Space.page)
+                .padding(.top, Space.md)
+                .padding(.bottom, Space.page)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Color.clear.frame(height: 1).id("settings-bottom")
             }
@@ -135,23 +139,23 @@ struct SettingsView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.xxs) {
             ForEach(SettingsWindow.Tab.allCases) { item in
                 Button { tab = item } label: {
-                    HStack(spacing: 8) {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    HStack(spacing: Space.md) {
+                        RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                             .fill(item.tint)
                             .frame(width: 20, height: 20)
                             .overlay(Image(systemName: item.icon)
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.app(.small, weight: .semibold))
                                 .foregroundStyle(.black.opacity(0.85)))
-                        Text(item.title).font(.system(size: 13))
+                        Text(item.title).font(.app(.body))
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(tab == item ? Color.primary.opacity(0.1) : .clear))
+                    .padding(.horizontal, Space.md)
+                    .padding(.vertical, Space.xs)
+                    .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                        .fill(tab == item ? Fill.hover : .clear))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -159,9 +163,9 @@ struct SettingsView: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, Space.lg)
         // Сверху система уже оставила место под кнопки окна.
-        .padding(.top, 12)
+        .padding(.top, Space.xl)
         .frame(width: Self.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(GlassPanelBackground(cornerRadius: 0).ignoresSafeArea())
@@ -188,7 +192,7 @@ struct AccountSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Space.xxl) {
             if model.accounts.isEmpty {
                 SettingsCard(title: String(localized: "Подключить почту"), icon: "plus.circle") {
                     ConnectAccountForm()
@@ -316,7 +320,7 @@ private struct FolderOrderCard: View {
             } else {
                 List {
                     ForEach(folders) { folder in
-                        HStack(spacing: 8) {
+                        HStack(spacing: Space.md) {
                             Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary)
                             Toggle(isOn: Binding(get: { model.isTab(folder) }, set: { model.setTab(folder, $0) })) {
                                 EmptyView()
@@ -330,7 +334,7 @@ private struct FolderOrderCard: View {
                                 Text(box).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                         }
-                        .padding(.vertical, 2)
+                        .padding(.vertical, Space.xxs)
                     }
                     .onMove(perform: model.moveFolders)
                 }
@@ -381,13 +385,10 @@ struct CalendarSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Space.xxl) {
             if let problem = model.accessProblem, !model.options.demo {
-                Label("\(problem). Разрешите доступ: Системные настройки → Конфиденциальность и безопасность.",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                InlineNotice(String(localized: "\(problem). Разрешите доступ: Системные настройки → Конфиденциальность и безопасность."))
                     .font(.callout)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             SettingsCard(title: String(localized: "Календари на таймлайне"), icon: "calendar") {
                 checkboxes(kind: .events)
@@ -421,6 +422,8 @@ struct CalendarSettingsView: View {
             }
             TimelineSettingsCard()
             MenuBarSettingsCard()
+            AutoJoinSettingsCard()
+            OwnMeetingLinksCard()
             WeatherSettingsCard(weather: model.directWeather)
             // Редкая настройка — в конце вкладки.
             SettingsCard(title: String(localized: "Календарь по умолчанию"), icon: "calendar.badge.checkmark") {
@@ -451,7 +454,7 @@ struct CalendarSettingsView: View {
         }
         ForEach(Array(groups.enumerated()), id: \.element.group) { index, group in
             if index > 0 { Divider() }
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: Space.xs) {
                 Label(group.items.first?.displayGroup ?? group.group, systemImage: group.items.first?.groupSymbol ?? "calendar")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -460,7 +463,7 @@ struct CalendarSettingsView: View {
                         get: { !model.hiddenCalendars.contains(source.id) },
                         set: { model.setCalendar(source.id, visible: $0) }
                     )) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: Space.sm) {
                             Circle()
                                 .fill(source.color.map { Color(red: $0.red, green: $0.green, blue: $0.blue) } ?? .accentColor)
                                 .frame(width: 9, height: 9)
@@ -481,7 +484,7 @@ struct AppearanceSettingsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Space.xxl) {
             SettingsSectionTitle(String(localized: "Общее"))
             SettingsCard(title: String(localized: "Язык"), icon: "globe") {
                 HStack {
@@ -576,7 +579,7 @@ struct AppearanceSettingsView: View {
         case .aurora:
             SettingsHint(String(localized: "Тёмное окно с плывущими пятнами света — как настройки и знакомство в Trunook."))
         case .color:
-            HStack(spacing: 10) {
+            HStack(spacing: Space.lg) {
                 ColorPicker("Цвет", selection: colorBinding(\.backgroundColor1), supportsOpacity: false)
                 ForEach(GradientPreset.all) { preset in
                     swatch(preset.from.color, selected: model.backgroundColor1 == preset.from) {
@@ -586,16 +589,16 @@ struct AppearanceSettingsView: View {
                 }
             }
         case .gradient:
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.md), count: 5), spacing: Space.md) {
                 ForEach(GradientPreset.all) { preset in
                     Button { model.applyGradient(preset) } label: {
-                        VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        VStack(spacing: Space.xs) {
+                            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
                                 .fill(LinearGradient(colors: [preset.from.color, preset.to.color],
                                                      startPoint: .topLeading, endPoint: .bottomTrailing))
                                 .frame(height: 44)
-                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(isCurrent(preset) ? Color.accentColor : Color.primary.opacity(0.15),
+                                .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                                    .strokeBorder(isCurrent(preset) ? Color.accentColor : Fill.stroke,
                                                   lineWidth: isCurrent(preset) ? 2 : 1))
                             Text(preset.name).font(.caption)
                         }
@@ -603,27 +606,27 @@ struct AppearanceSettingsView: View {
                     .buttonStyle(.plain)
                 }
             }
-            HStack(spacing: 14) {
+            HStack(spacing: Space.xl) {
                 ColorPicker("Первый цвет", selection: colorBinding(\.backgroundColor1), supportsOpacity: false)
                 ColorPicker("Второй цвет", selection: colorBinding(\.backgroundColor2), supportsOpacity: false)
             }
         case .image:
             // Готовые текстуры — спокойные, под ними текст читается.
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.md), count: 4), spacing: Space.md) {
                 ForEach(BackgroundTexture.all) { texture in
                     let current = model.backgroundImageName == texture.settingName
                     Button { model.applyTexture(texture) } label: {
-                        VStack(spacing: 4) {
+                        VStack(spacing: Space.xs) {
                             ZStack {
-                                Color.primary.opacity(0.08)
+                                Fill.subtle
                                 if let thumbnail = texture.thumbnail {
                                     Image(nsImage: thumbnail).resizable().scaledToFill()
                                 }
                             }
                             .frame(height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(current ? Color.accentColor : Color.primary.opacity(0.15),
+                            .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                                .strokeBorder(current ? Color.accentColor : Fill.stroke,
                                               lineWidth: current ? 2 : 1))
                             Text(texture.name).font(.caption)
                         }
@@ -631,10 +634,10 @@ struct AppearanceSettingsView: View {
                     .buttonStyle(.plain)
                 }
             }
-            HStack(spacing: 12) {
+            HStack(spacing: Space.xl) {
                 let custom = model.backgroundImage != nil && BackgroundTexture.named(model.backgroundImageName) == nil
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.08))
+                    RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(Fill.subtle)
                     if custom, let image = model.backgroundImage {
                         Image(nsImage: image).resizable().scaledToFill()
                     } else {
@@ -642,10 +645,10 @@ struct AppearanceSettingsView: View {
                     }
                 }
                 .frame(width: 120, height: 72)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
                     .strokeBorder(custom ? Color.accentColor : .clear, lineWidth: 2))
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Space.sm) {
                     Button(custom ? String(localized: "Другая своя картинка…") : String(localized: "Своя картинка…")) {
                         model.chooseBackgroundImage()
                     }
@@ -674,7 +677,7 @@ struct AppearanceSettingsView: View {
             Circle()
                 .fill(color)
                 .frame(width: 22, height: 22)
-                .overlay(Circle().strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.2), lineWidth: selected ? 2 : 1))
+                .overlay(Circle().strokeBorder(selected ? Color.accentColor : Fill.strong, lineWidth: selected ? 2 : 1))
         }
         .buttonStyle(.plain)
     }
@@ -687,7 +690,7 @@ private struct AccountRow: View {
     @ViewState private var confirmDisconnect = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             HStack(alignment: .firstTextBaseline) {
                 Label(account.email, systemImage: "envelope.circle.fill")
                     .font(.headline)
@@ -709,7 +712,7 @@ private struct AccountRow: View {
                 .fixedSize(horizontal: false, vertical: true)
             SignatureEditor(accountID: account.id)
         }
-        .padding(12)
+        .padding(Space.xl)
         .confirmationDialog("Отключить \(account.email)?", isPresented: $confirmDisconnect) {
             Button("Отключить", role: .destructive) {
                 Task { await model.disconnect(account.id) }
@@ -726,13 +729,12 @@ struct SyncStatusText: View {
     var body: some View {
         if let status {
             if status.isSyncing {
-                HStack(spacing: 6) {
+                HStack(spacing: Space.sm) {
                     ProgressView().controlSize(.small)
                     Text("обновляю…")
                 }
             } else if let error = status.error {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                InlineNotice(error)
             } else if let last = status.lastSync {
                 Text("обновлено в \(Format.time(last))")
             } else {
@@ -795,7 +797,7 @@ private struct ConnectAccountForm: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Space.xl) {
             if onDone == nil {
                 Text("Пока ящик не подключён, на таймлайне тестовые письма.")
                     .font(.callout)
@@ -809,7 +811,7 @@ private struct ConnectAccountForm: View {
             .labelsHidden()
             .frame(maxWidth: .infinity)
 
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 8) {
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Space.lg, verticalSpacing: Space.md) {
                 GridRow {
                     Text("Адрес").foregroundStyle(.secondary)
                     TextField("name@icloud.com", text: $email)
@@ -842,7 +844,7 @@ private struct ConnectAccountForm: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack(alignment: .top, spacing: 6) {
+            HStack(alignment: .top, spacing: Space.sm) {
                 Image(systemName: "key.fill").foregroundStyle(.secondary)
                 Text(preset.passwordHint)
                     .font(.caption)
@@ -857,11 +859,8 @@ private struct ConnectAccountForm: View {
 
             if preset == .iCloud, !MailPreset.cleanPassword(password).isEmpty,
                !MailPreset.looksLikeAppleAppPassword(MailPreset.cleanPassword(password)) {
-                Label("Это не похоже на пароль приложения (вида abcd-efgh-ijkl-mnop). Обычный пароль Apple ID iCloud по почте не примет.",
-                      systemImage: "exclamationmark.triangle.fill")
+                InlineNotice(String(localized: "Это не похоже на пароль приложения (вида abcd-efgh-ijkl-mnop). Обычный пароль Apple ID iCloud по почте не примет."))
                     .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if preset == .exchange {
@@ -896,10 +895,8 @@ private struct ConnectAccountForm: View {
             }
 
             if let error {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                InlineNotice(error)
                     .font(.callout)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack {
@@ -923,7 +920,7 @@ private struct ConnectAccountForm: View {
     /// Серверы IMAP и SMTP руками — когда готовые настройки не подошли.
     private var manualServers: some View {
         DisclosureGroup("Серверы вручную", isExpanded: $manual) {
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 6) {
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Space.md, verticalSpacing: Space.sm) {
                     GridRow {
                         Text("IMAP").foregroundStyle(.secondary)
                         TextField("сервер", text: $imapHost)
@@ -945,7 +942,7 @@ private struct ConnectAccountForm: View {
                     }
                 }
                 .textFieldStyle(.roundedBorder)
-                .padding(.top, 6)
+                .padding(.top, Space.sm)
         }
     }
 
@@ -1025,7 +1022,7 @@ struct NotificationSettingsView: View {
     @ObservedObject var notifier: MailNotifier
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Space.xxl) {
             SettingsCard(title: String(localized: "Новые письма"), icon: "envelope.badge") {
                 Toggle("Сообщать о новых письмах", isOn: $notifier.isEnabled)
                     .toggleStyle(.switch)
@@ -1038,7 +1035,7 @@ struct NotificationSettingsView: View {
 
             Group {
                 SettingsCard(title: String(localized: "Куда"), icon: "bell") {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: Space.xs) {
                         Toggle("В Центре уведомлений macOS", isOn: $notifier.toMac)
                             .onChange(of: notifier.toMac) { _, on in
                                 if on { Task { await notifier.requestMacPermission() } }
@@ -1046,8 +1043,8 @@ struct NotificationSettingsView: View {
                         if notifier.toMac { macStatus }
                     }
                     Divider()
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        HStack(spacing: Space.lg) {
                             Toggle("В вырезе Trunook", isOn: $notifier.toTrunook)
                             Spacer()
                             if MailNotifier.trunookURL == nil {
@@ -1089,9 +1086,8 @@ struct NotificationSettingsView: View {
     private var macStatus: some View {
         switch notifier.macStatus {
         case .denied:
-            HStack(spacing: 6) {
-                Label("Уведомления Trudaybook выключены в системе", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+            HStack(spacing: Space.sm) {
+                InlineNotice(String(localized: "Уведомления Trudaybook выключены в системе"))
                 Button("Открыть настройки") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
                         NSWorkspace.shared.open(url)
@@ -1103,7 +1099,7 @@ struct NotificationSettingsView: View {
         case .authorized, .provisional:
             Label("Разрешено", systemImage: "checkmark.circle.fill")
                 .font(.caption)
-                .foregroundStyle(.green)
+                .foregroundStyle(Palette.success)
         default:
             Text("macOS спросит разрешение при включении")
                 .font(.caption)
@@ -1124,11 +1120,11 @@ private struct SignatureEditor: View {
 
     var body: some View {
         let current = model.signature(for: accountID).trimmingCharacters(in: .whitespacesAndNewlines)
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             Button {
                 open.toggle()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: Space.xs) {
                     Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2)
                     Text("Подпись:").foregroundStyle(.secondary)
                     Text(current.isEmpty ? String(localized: "нет") : current.replacingOccurrences(of: "\n", with: " · "))
@@ -1143,7 +1139,7 @@ private struct SignatureEditor: View {
                 TextEditor(text: text)
                     .font(.body)
                     .frame(height: 90)
-                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.primary.opacity(0.15)))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.xs).strokeBorder(Fill.stroke))
                 Text("Вставляется в конец нового письма (и ответа, если включено ниже). Меняется ящик «от» — меняется и подпись.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1171,6 +1167,63 @@ private struct MenuBarSettingsCard: View {
     }
 }
 
+/// Автоподключение: ссылка встречи открывается сама в её начале.
+private struct AutoJoinSettingsCard: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        SettingsCard(title: String(localized: "Подключение к встречам"), icon: "video") {
+            Toggle("Открывать ссылку на встречу в момент начала", isOn: $model.autoJoinMeetings)
+                .toggleStyle(.switch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            SettingsHint(String(localized: "Для всех встреч со ссылкой Zoom, Teams, Google Meet, Телемоста, Webex или Whereby. Не открываются: отменённые, отклонённые, на весь день и ссылки неизвестных сервисов — страницу из чужого приглашения без вашего нажатия открывать небезопасно. Для одной встречи — галочка «Созвон» в её окне; она сильнее этой настройки."))
+        }
+    }
+}
+
+/// Свои постоянные ссылки на созвон — первыми в окне встречи.
+private struct OwnMeetingLinksCard: View {
+    @EnvironmentObject private var model: AppModel
+    @ViewState private var text = ""
+    @ViewState private var rejected = false
+
+    var body: some View {
+        SettingsCard(title: String(localized: "Мои ссылки на созвон"), icon: "link") {
+            ForEach(model.ownMeetingLinks, id: \.url) { link in
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "video.fill").foregroundStyle(Color.accentColor)
+                    Text(link.provider.rawValue).fontWeight(.medium)
+                    Text(link.url.absoluteString)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: Space.md)
+                    Button { model.removeOwnMeetingLink(link) } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.borderless)
+                        .labelHelp(String(localized: "Убрать ссылку"))
+                }
+            }
+            HStack(spacing: Space.sm) {
+                TextField("Вставьте ссылку: личная комната Zoom, Телемост…", text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(add)
+                Button("Добавить", action: add)
+                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            if rejected {
+                InlineNotice(String(localized: "Это не похоже на ссылку на созвон."))
+                    .font(.caption)
+            }
+            SettingsHint(String(localized: "Показываются первыми, когда вы ставите курсор в «Место» новой встречи. Там же — ссылки из ваших встреч за три месяца и кнопки «создать новую» на сайте Zoom, Google Meet и Телемоста. Хранятся только на этом Mac."))
+        }
+    }
+
+    private func add() {
+        rejected = !model.addOwnMeetingLink(text)
+        if !rejected { text = "" }
+    }
+}
+
 /// Таймлайн: где он в окне, рабочий день и сколько часов видно сразу.
 private struct TimelineSettingsCard: View {
     @EnvironmentObject private var model: AppModel
@@ -1188,9 +1241,7 @@ private struct TimelineSettingsCard: View {
                 .labelsHidden()
                 .fixedSize()
             }
-            SettingsHint(model.timelineVertical
-                ? String(localized: "Сейчас таймлайн вертикальный — слева; верх и низ — для таймлайна слева направо (⌥⌘L).")
-                : String(localized: "Снизу — список писем, месяц и заметка над ним. Можно и перетащить таймлайн за ручку ≡ слева от даты или нажать ⌥⌘B."))
+            SettingsHint(String(localized: "Снизу — список писем, месяц и заметка над ним. Можно и перетащить таймлайн за ручку ≡ слева от даты или нажать ⌥⌘B."))
             HStack {
                 Text("Рабочий день")
                 Spacer(minLength: 12)
@@ -1233,7 +1284,7 @@ struct WeatherSettingsCard: View {
             Label(model.trunookWeatherFresh ? String(localized: "Погоду присылает Trunook.")
                                             : String(localized: "Trunook погоду не присылает."),
                   systemImage: model.trunookWeatherFresh ? "checkmark.circle.fill" : "info.circle")
-                .foregroundStyle(model.trunookWeatherFresh ? Color.green : Color.secondary)
+                .foregroundStyle(model.trunookWeatherFresh ? Palette.success : Color.secondary)
             Toggle("Получать погоду напрямую, если Trunook её не прислал", isOn: $weather.enabled)
                 .toggleStyle(.switch)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1265,7 +1316,7 @@ struct WeatherPlacePicker: View {
     }
 
     private var cityPicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             HStack {
                 if let place = weather.place {
                     Label(place.title, systemImage: "mappin.and.ellipse")
@@ -1308,9 +1359,7 @@ struct WeatherPlacePicker: View {
             Label(String(localized: "Прогноз получен в \(Format.time(date))"), systemImage: "checkmark.circle")
                 .foregroundStyle(.secondary)
         case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
+            InlineNotice(message)
         }
     }
 }
@@ -1324,7 +1373,7 @@ private struct SkyWeatherPrompt: View {
 
     var body: some View {
         if !model.trunookWeatherFresh {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.md) {
                 if weather.enabled {
                     Label("Погода для неба — от Open-Meteo", systemImage: "cloud.sun")
                         .font(.callout.weight(.semibold))
@@ -1334,7 +1383,7 @@ private struct SkyWeatherPrompt: View {
                           systemImage: "location.circle")
                         .font(.callout)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 8) {
+                    HStack(spacing: Space.md) {
                         Button {
                             weather.source = .location
                             weather.enabled = true
@@ -1350,9 +1399,9 @@ private struct SkyWeatherPrompt: View {
                 }
                 SettingsHint(WeatherPlacePicker.privacy)
             }
-            .padding(12)
+            .padding(Space.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.accentColor.opacity(0.08)))
+            .background(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(Fill.accentFaint))
         }
     }
 }

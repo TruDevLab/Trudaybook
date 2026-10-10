@@ -158,10 +158,10 @@ struct LetterWindowView: View {
     private var known: TimelineItem? { fromFile ? nil : model.item(item.id) }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Space.md) {
             header
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Space.lg) {
                     Text(item.title)
                         .font(.title2.weight(.semibold))
                         .textSelection(.enabled)
@@ -177,7 +177,7 @@ struct LetterWindowView: View {
                         RemoteImagesNotice(letter: body) { showRemote = true }
                     }
                 }
-                .padding(16)
+                .padding(Space.xxl)
                 Divider()
                 if let body = document.body {
                     LetterBodyPane(letter: body, allowRemote: showRemote, paper: $paper)
@@ -193,9 +193,9 @@ struct LetterWindowView: View {
             .clipShape(RoundedRectangle(cornerRadius: Panel.radius, style: .continuous))
             .background(GlassPanelBackground(cornerRadius: Panel.radius))
         }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 8)
-        .padding(.top, 8)
+        .padding(.horizontal, Space.md)
+        .padding(.bottom, Space.md)
+        .padding(.top, Space.md)
         .frame(minWidth: 540, minHeight: 400)
         .ignoresSafeArea(edges: .top)
         .background {
@@ -215,7 +215,7 @@ struct LetterWindowView: View {
 
     /// Слева — место под кнопки окна и отправитель; справа — действия.
     private var header: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.sm) {
             Label(item.mail?.from.display ?? "", systemImage: "envelope.open")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
@@ -255,14 +255,14 @@ struct LetterWindowView: View {
         // Кольцо фокуса на первой кнопке в только что открытом окне — лишнее.
         .focusEffectDisabled()
         // Кнопки окна кончаются на 78 pt.
-        .padding(.leading, 84)
-        .padding(.trailing, 6)
+        .padding(.leading, MainView.windowButtonsWidth + Space.xxs)
+        .padding(.trailing, Space.sm)
         .frame(height: 36)
     }
 
     /// Приглашение отвечается из главного окна: там календарь дня рядом.
     private var invitationNote: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.md) {
             Image(systemName: "calendar.badge.clock").foregroundStyle(Color.accentColor)
             Text(fromFile
                  ? String(localized: "В письме приглашение на встречу. Ответить на него можно из письма в ящике.")
@@ -271,8 +271,8 @@ struct LetterWindowView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.1)))
+        .padding(Space.md)
+        .background(RoundedRectangle(cornerRadius: Radius.md).fill(Fill.accentFaint))
     }
 
     private func reply(all: Bool) {

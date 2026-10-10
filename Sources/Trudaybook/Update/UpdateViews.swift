@@ -8,7 +8,7 @@ struct UpdateSettingsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Space.xxl) {
             SettingsCard(title: String(localized: "Обновления"), icon: "arrow.down.circle") {
                 Toggle("Проверять обновления", isOn: Binding(
                     get: { updates.isEnabled },
@@ -37,8 +37,8 @@ struct UpdateSettingsView: View {
     @ViewBuilder
     private var statusRow: some View {
         let line = UpdateStatusLine.line(for: updates.state)
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.lg) {
                 if updates.state.isBusy { ProgressView().controlSize(.small) }
                 Text(verbatim: line.text).foregroundStyle(.secondary)
                 Button("Что нового") {
@@ -85,7 +85,7 @@ struct UpdateCapsule: View {
             .glassCapsule()
             .help("Trudaybook перезапустится новой версией. Доступы сохранятся.")
         } else if updates.state == .installing {
-            HStack(spacing: 6) {
+            HStack(spacing: Space.sm) {
                 ProgressView().controlSize(.small)
                 Text("Обновляем…").font(.callout).foregroundStyle(.secondary)
             }

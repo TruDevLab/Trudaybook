@@ -291,7 +291,7 @@ private struct TourOverlay: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
                     .position(cardCenter(hole: hole, in: size))
             }
-            .animation(.spring(duration: 0.45, bounce: 0), value: tour.index)
+            .animation(Motion.move, value: tour.index)
         }
         .ignoresSafeArea()
     }
@@ -382,20 +382,20 @@ private struct TourCard: View {
 
     var body: some View {
         let step = tour.step
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: Space.xl) {
+            HStack(spacing: Space.xl) {
                 if tour.index == 0 {
                     Image(nsImage: NSApp.applicationIconImage)
                         .resizable()
                         .frame(width: 48, height: 48)
                 } else {
                     Image(systemName: step.symbol)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.app(.heading, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 38, height: 38)
                         .background(Circle().fill(Color.accentColor))
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.xxs) {
                     Text(String(localized: "Шаг \(tour.index + 1) из \(tour.steps.count)"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -407,18 +407,12 @@ private struct TourCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             if let task = step.taskTitle {
                 let done = tour.isDone(model: model)
-                HStack(spacing: 6) {
-                    Image(systemName: done ? "checkmark.circle.fill" : "hand.point.up.left")
-                        .foregroundStyle(done ? Color.green : Color.accentColor)
-                    Text(done ? String(localized: "Получилось!") : task)
-                        .font(.callout.weight(.medium))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill((done ? Color.green : Color.accentColor).opacity(0.14)))
-                .animation(.easeOut(duration: 0.2), value: done)
+                Tag(text: done ? String(localized: "Получилось!") : task,
+                    symbol: done ? "checkmark.circle.fill" : "hand.point.up.left",
+                    tint: done ? Palette.success : Color.accentColor, size: .large)
+                    .animation(Motion.quick, value: done)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: Space.md) {
                 if !tour.isLast {
                     Button("Пропустить обучение") { tour.finish(false) }
                         .buttonStyle(.borderless)
@@ -441,8 +435,8 @@ private struct TourCard: View {
                 }
             }
         }
-        .padding(18)
-        .background(GlassPanelBackground(cornerRadius: 16))
+        .padding(Space.xxl)
+        .background(GlassPanelBackground(cornerRadius: Radius.xl))
         .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
     }
 }

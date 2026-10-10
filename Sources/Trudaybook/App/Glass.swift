@@ -26,7 +26,7 @@ struct GlassPanelBackground: View {
         } else {
             shape
                 .fill(fallback.opacity(aurora ? 0.55 : 1))
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.1)))
+                .overlay(shape.strokeBorder(Fill.hover))
         }
     }
 }
@@ -39,10 +39,10 @@ struct GlassButtonSurface: ViewModifier {
     var dashed = false
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
         if #available(macOS 26, *) {
             content
-                .glassEffect(targeted ? .regular.tint(Color.accentColor.opacity(0.55)).interactive() : .regular.interactive(),
+                .glassEffect(targeted ? .regular.tint(Fill.accentStrong).interactive() : .regular.interactive(),
                              in: shape)
         } else {
             content.background(HoverChrome(hovered: hovered, dashed: dashed, targeted: targeted))

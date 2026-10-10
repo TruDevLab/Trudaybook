@@ -108,19 +108,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DebugLog.write("данные: на дне \(model.dayItems.count), не разобрано \(model.unresolved.count)")
             if model.options.labelMail { model.labelUnresolved(manual: true) }
             if model.options.dragProbe != nil, model.options.snapshotPath == nil { model.applyDebugSelection() }
+            if model.options.assistant { model.assistantOpen = true }
+            if let question = model.options.ask { model.assistant.send(question) }
             if let path = model.options.snapshotPath {
                 model.applyDebugSelection()
                 // Дать окну дорисоваться: тело письма и раскладка приходят асинхронно.
                 try? await Task.sleep(for: .seconds(2.5))
                 // Пересказ и разметка — ждём ответа Trunook, а не снимаем «читает…».
-                if model.options.summary || model.options.labelMail {
+                if model.options.summary || model.options.labelMail || model.options.ask != nil || model.options.tile != nil {
                     let deadline = Date().addingTimeInterval(300)
                     while Date() < deadline {
                         let summaryBusy = model.options.summary
                             && model.selectedID.map { model.summaries[$0] == .loading } == true
                         var labelBusy = false
                         if case .running = model.labeling { labelBusy = true }
-                        if !summaryBusy && !labelBusy { break }
+                        if !summaryBusy && !labelBusy && !model.assistant.busy { break }
                         try? await Task.sleep(for: .seconds(1))
                     }
                     try? await Task.sleep(for: .seconds(0.5))
@@ -136,6 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     LetterWindow.show(item, model: model)
                     try? await Task.sleep(for: .seconds(1.5))
                 }
+                if model.options.composeWindow {
+                    let letter = Demo.assistantLetter
+                    ComposeWindow.show(model.newDraft(to: letter.to, subject: letter.subject, text: letter.text), model: model)
+                    try? await Task.sleep(for: .seconds(1.5))
+                }
                 if let step = model.options.tourStep {
                     TourWindow.show(main: model, step: step)
                     try? await Task.sleep(for: .seconds(3))
@@ -146,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 // Редактор встречи — отдельное окно поверх главного.
                 WindowSnapshot.write(menuBar?.popoverWindow ?? EventEditorWindow.current ?? TourWindow.current
-                                     ?? LetterWindow.current ?? NoteWindow.current ?? SettingsWindow.current
+                                     ?? LetterWindow.current ?? ComposeWindow.current ?? NoteWindow.current ?? SettingsWindow.current
                                      ?? window, to: path)
                 NSApp.terminate(nil)
             }
@@ -232,6 +239,9 @@ enum MainMenu {
             item(String(localized: "Вырезать"), #selector(NSText.cut(_:)), key: "x"),
             item(String(localized: "Копировать"), #selector(NSText.copy(_:)), key: "c"),
             item(String(localized: "Вставить"), #selector(NSText.paste(_:)), key: "v"),
+            // Текст из чужого письма или страницы — в оформление того места,
+            // куда вставляют: шрифт, цвет и размер письма не рассыпаются.
+            item(String(localized: "Вставить без оформления"), #selector(NSTextView.pasteAsPlainText(_:)), key: "v", modifiers: [.command, .shift]),
             item(String(localized: "Выделить всё"), #selector(NSText.selectAll(_:)), key: "a"),
         ]))
 
@@ -290,6 +300,9 @@ enum MainMenu {
             ClosureItem(String(localized: "Скрывать разобранные письма"), key: "h", modifiers: [.command, .shift]) {
                 withAnimation(HoverMotion.animation) { model.hideResolvedMail.toggle() }
             },
+            ClosureItem(String(localized: "Чат с ИИ-ассистентом"), key: "a", modifiers: [.command, .option]) {
+                withAnimation(Motion.move) { model.assistantOpen.toggle() }
+            },
             ClosureItem(String(localized: "Вертикальный таймлайн"), key: "l", modifiers: [.command, .option]) {
                 withAnimation(HoverMotion.animation) { model.timelineVertical.toggle() }
             },
@@ -297,10 +310,7 @@ enum MainMenu {
                 withAnimation(HoverMotion.animation) { model.timelineAtBottom.toggle() }
             },
             ClosureItem(String(localized: "День"), key: "1", modifiers: [.command, .option]) { model.timelineSpan = .day },
-            ClosureItem(String(localized: "Неделя"), key: "2", modifiers: [.command, .option]) {
-                model.timelineVertical = false
-                model.timelineSpan = .week
-            },
+            ClosureItem(String(localized: "Неделя"), key: "2", modifiers: [.command, .option]) { model.timelineSpan = .week },
         ]))
 
         let windowMenu = submenu(String(localized: "Окно"), [
@@ -368,11 +378,16 @@ extension WindowSnapshot {
     static func logTitlebarHits(_ window: NSWindow?) {
         guard let window, let frame = window.contentView?.superview, let content = window.contentView else { return }
         let height = frame.bounds.height
-        for (x, y) in [(20.0, 26.0), (130.0, 26.0), (130.0, 10.0), (700.0, 26.0), (1100.0, 20.0)] {
+        // Справа — шапка правой панели (у чата там свои кнопки).
+        let right = frame.bounds.width
+        for (x, y) in [(20.0, 26.0), (130.0, 26.0), (130.0, 10.0), (700.0, 26.0), (1100.0, 20.0),
+                       (right - 40, 30.0), (right - 70, 30.0), (right - 40, height - 40),
+                       (right - 200, 250.0), (right - 40, height / 2 - 30), (right - 200, height * 0.75)] {
             let point = NSPoint(x: x, y: frame.isFlipped ? y : height - y)
             let hit = frame.hitTest(point)
             let inside = hit.map { $0.isDescendant(of: content) } ?? false
-            DebugLog.write("щелчок (\(Int(x)), \(Int(y))): \(hit.map { String(describing: type(of: $0)) } ?? "—") содержимое=\(inside)")
+            let place = hit.map { frame.convert($0.bounds, from: $0) }.map { " \(Int($0.minX)),\(Int(frame.isFlipped ? $0.minY : height - $0.maxY)) \(Int($0.width))×\(Int($0.height))" } ?? ""
+            DebugLog.write("щелчок (\(Int(x)), \(Int(y))): \(hit.map { String(describing: type(of: $0)) } ?? "—")\(place) содержимое=\(inside)")
         }
     }
 }

@@ -22,14 +22,14 @@ struct WeekView: View {
             VStack(spacing: 0) {
                 WeekToolbar()
                     .padding(.horizontal, Self.inset + 4)
-                    .padding(.top, 8)
+                    .padding(.top, Space.md)
                 HStack(alignment: .top, spacing: 0) {
                     Color.clear.frame(width: Self.inset + Self.hoursWidth, height: 1)
                     ForEach(days, id: \.self) { day in
                         WeekDayHeader(day: day).frame(width: columnWidth)
                     }
                 }
-                .padding(.top, 6)
+                .padding(.top, Space.sm)
                 .fixedSize(horizontal: false, vertical: true)
                 Divider()
                 grid(days: days, columnWidth: columnWidth)
@@ -65,7 +65,7 @@ struct WeekView: View {
                     if let index = days.firstIndex(where: { model.calendar.isDate($0, inSameDayAs: model.now) }) {
                         let scale = TimelineScale(dayStart: days[index], hourWidth: hourHeight)
                         Rectangle()
-                            .fill(Color.red)
+                            .fill(Palette.now)
                             .frame(width: columnWidth, height: 2)
                             .offset(x: Self.hoursWidth + CGFloat(index) * columnWidth, y: CGFloat(scale.x(for: model.now)) - 1)
                             .allowsHitTesting(false)
@@ -77,7 +77,7 @@ struct WeekView: View {
                     }
                 }
                 .frame(width: width, height: height, alignment: .topLeading)
-                .padding(.vertical, 8)
+                .padding(.vertical, Space.md)
                 .padding(.horizontal, Self.inset)
             }
             .simultaneousGesture(
@@ -121,7 +121,7 @@ private struct WeekDayHeader: View {
         let mail = model.unresolvedMail(on: day)
         let allDay = model.weekItems.filter { $0.isAllDay && calendar.isDate($0.time, inSameDayAs: day) }
 
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Space.xxs) {
             // Узкой колонке — по шагу: без температуры, счётчик писем
             // потеснее, без дня недели. Погода у даты уходит последней.
             ViewThatFits(in: .horizontal) {
@@ -132,14 +132,14 @@ private struct WeekDayHeader: View {
                 row(today: today, weekday: false, weather: .none, mail: mail, tightMail: true)
             }
             .popover(isPresented: $showsMail, arrowEdge: .bottom) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: Space.xxs) {
                             Text("Не разобрано · \(Format.dayTitle(day))")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.bottom, 4)
+                                .padding(.horizontal, Space.md)
+                                .padding(.bottom, Space.xs)
                             ScrollView {
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: Space.xxs) {
                                     ForEach(mail) { item in
                                         ItemRow(item: item) { showsMail = false }
                                     }
@@ -147,46 +147,47 @@ private struct WeekDayHeader: View {
                             }
                             .frame(maxHeight: 420)
                         }
-                        .padding(8)
+                        .padding(Space.md)
                         .frame(width: 380)
             }
             // На весь день — не больше двух строк, остальное числом.
             ForEach(allDay.prefix(2)) { item in
-                HStack(spacing: 4) {
+                HStack(spacing: Space.xs) {
                     if item.kind == .reminder {
                         ReminderCheckbox(item: item, size: 10)
                     }
                     Text(item.title).lineLimit(1)
                 }
-                .font(.system(size: 10.5, weight: .medium))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
+                .font(.app(.small, weight: .medium))
+                .padding(.horizontal, Space.xs)
+                .padding(.vertical, Space.hairline)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 4).fill(item.swiftUIColor.opacity(0.2)))
+                .background(RoundedRectangle(cornerRadius: Radius.xs).fill(item.swiftUIColor.opacity(0.2)))
                 .opacity(model.status(of: item).isDone ? 0.5 : 1)
                 .timelineItem(item, model: model)
             }
             if allDay.count > 2 {
-                Text("ещё \(allDay.count - 2)").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("ещё \(allDay.count - 2)").font(.app(.small)).foregroundStyle(.secondary)
             }
         }
-        .padding(.leading, 5)
-        .padding(.trailing, 5 + trailingInset)
-        .padding(.vertical, 4)
+        .padding(.leading, Space.xs)
+        .padding(.trailing, Space.xs + trailingInset)
+        .padding(.vertical, Space.xs)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor.opacity(0.14) : .clear))
-        .padding(.horizontal, 2)
-        .padding(.bottom, 4)
+        .background(RoundedRectangle(cornerRadius: Radius.sm).fill(selected ? Fill.accentSoft : .clear))
+        .padding(.horizontal, Space.xxs)
+        .padding(.bottom, Space.xs)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { model.openDay(day) }
         .onTapGesture { model.show(day: day) }
+        .actsAsRow(String(localized: "Показать день")) { model.show(day: day) }
         .help("\(Format.dayTitle(day)) — двойной щелчок откроет день целиком")
     }
 
     private func row(today: Bool, weekday: Bool, weather: WeatherChip.Style, mail: [TimelineItem],
                      tightMail: Bool) -> some View {
         let calendar = model.calendar
-        return HStack(spacing: 5) {
+        return HStack(spacing: Space.xs) {
             if weekday {
                 Text(Self.weekday.string(from: day).capitalized)
                     .font(.caption.weight(.semibold))
@@ -197,21 +198,14 @@ private struct WeekDayHeader: View {
                 .font(.callout.weight(today ? .bold : .medium).monospacedDigit())
                 .foregroundStyle(today ? Color.white : .primary)
                 .padding(.horizontal, today ? 6 : 0)
-                .background(Capsule().fill(today ? Color.red : .clear))
+                .background(Capsule().fill(today ? Palette.now : .clear))
                 .fixedSize()
             if weather != .none { WeatherChip(day: day, style: weather) }
             Spacer(minLength: 2)
             if !mail.isEmpty {
                 Button { showsMail = true } label: {
-                    HStack(spacing: tightMail ? 2 : 4) {
-                        Image(systemName: "envelope").font(.system(size: tightMail ? 9 : 11))
-                        Text("\(mail.count)")
-                    }
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .padding(.horizontal, tightMail ? 4 : 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.orange.opacity(0.25)))
-                        .fixedSize()
+                    Tag(text: "\(mail.count)", symbol: "envelope", tint: Palette.warning, style: .badge,
+                        size: tightMail ? .compact : .regular)
                 }
                 .buttonStyle(.plain)
                 .help("Неразобранных писем: \(mail.count) — показать")
@@ -250,7 +244,7 @@ private struct WeekHourGrid: View {
             Canvas { context, size in
                 let hour = CGFloat(hourHeight)
                 let left = WeekView.hoursWidth
-                let shade = Color.primary.opacity(0.035)
+                let shade = Fill.faint
                 let start = CGFloat(work.lowerBound), end = CGFloat(work.upperBound)
                 context.fill(Path(CGRect(x: left, y: 0, width: size.width - left, height: hour * start)), with: .color(shade))
                 context.fill(Path(CGRect(x: left, y: hour * end, width: size.width - left, height: size.height - hour * end)),
@@ -263,14 +257,14 @@ private struct WeekHourGrid: View {
                     var path = Path()
                     path.move(to: CGPoint(x: left - 4, y: CGFloat(index) * hour))
                     path.addLine(to: CGPoint(x: size.width, y: CGFloat(index) * hour))
-                    context.stroke(path, with: .color(.primary.opacity(0.1)), lineWidth: 1)
+                    context.stroke(path, with: .color(Fill.hover), lineWidth: 1)
                 }
                 for index in 0...columns {
                     var path = Path()
                     let x = left + CGFloat(index) * columnWidth
                     path.move(to: CGPoint(x: x, y: 0))
                     path.addLine(to: CGPoint(x: x, y: size.height))
-                    context.stroke(path, with: .color(.primary.opacity(0.12)), lineWidth: 1)
+                    context.stroke(path, with: .color(Fill.hover), lineWidth: 1)
                 }
             }
             ForEach(0..<24, id: \.self) { hour in
@@ -291,7 +285,7 @@ private struct WeekToolbar: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Space.lg) {
             Picker("", selection: $model.weekMode) {
                 ForEach(AppModel.WeekMode.allCases) { mode in
                     Label(mode.title, systemImage: mode.symbol).tag(mode)
@@ -331,7 +325,7 @@ struct WeatherChip: View {
 
     var body: some View {
         if let weather = model.weather(on: day), style != .none {
-            HStack(spacing: 3) {
+            HStack(spacing: Space.xxs) {
                 WeatherSymbol(code: weather.code)
                 if style == .wide {
                     Text("\(WeekWeather.degrees(weather.max)) / \(WeekWeather.degrees(weather.min))").monospacedDigit()
@@ -339,7 +333,7 @@ struct WeatherChip: View {
                     Text(WeekWeather.degrees(weather.max)).monospacedDigit()
                 }
             }
-            .font(.system(size: style == .wide ? 12 : 11, weight: .medium))
+            .font(.app(style == .wide ? .text : .label, weight: .medium))
             .foregroundStyle(.secondary)
             .fixedSize()
             .help(Self.help(weather, place: model.weekWeather?.place))
@@ -370,20 +364,20 @@ private struct WeekWeatherColumn: View {
             ForEach(hours, id: \.time) { hour in
                 let hourOfDay = model.calendar.component(.hour, from: hour.time)
                 let night = hourOfDay < 7 || hourOfDay >= 21
-                HStack(spacing: 4) {
+                HStack(spacing: Space.xs) {
                     WeatherSymbol(code: hour.code, night: night)
                     Text(WeekWeather.degrees(hour.temperature)).monospacedDigit()
                     Spacer(minLength: 0)
                     if hour.precipitation >= 30, width > 90 {
                         Text("\(hour.precipitation)%")
-                            .font(.system(size: 9.5).monospacedDigit())
+                            .font(.app(.tiny).monospacedDigit())
                             .foregroundStyle(Color.blue)
                     }
                 }
                 .font(.system(size: min(11, max(8, CGFloat(hourHeight) * 0.4)), weight: .medium))
-                .padding(.horizontal, 5)
+                .padding(.horizontal, Space.xs)
                 .frame(width: width, height: CGFloat(hourHeight) - 1, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 4)
+                .background(RoundedRectangle(cornerRadius: Radius.xs)
                     .fill(Color.blue.opacity(Double(hour.precipitation) / 100 * 0.35)))
                 .offset(y: CGFloat(scale.x(for: hour.time)))
                 .help("\(Format.time(hour.time)) · \(WeekWeather.title(hour.code)), \(WeekWeather.degrees(hour.temperature))"

@@ -443,6 +443,19 @@ public final class DemoCalendar: CalendarProvider {
             .filter { $0.kind == .reminder && $0.reminder?.isCompleted == false }
     }
 
+    /// Описание «Обзора квартального плана» с оформлением и картинкой из сети —
+    /// чтобы в тестовом режиме было видно плашку «Картинки не загружены».
+    public func richDescription(of item: TimelineItem) async throws -> MailBody? {
+        guard Self.baseKey(of: item.id)?.hasPrefix("review-") == true else { return nil }
+        return MailBody(html: """
+            <html><body style="font: 13px -apple-system, sans-serif">
+            <p><b>Повестка</b></p>
+            <ul><li>итоги III квартала</li><li>цели на IV квартал</li><li>риски по срокам</li></ul>
+            <p><img src="https://example.com/q3-chart.png" width="320" height="160" alt="График выручки"></p>
+            </body></html>
+            """)
+    }
+
     public func move(_ item: TimelineItem, to start: Date) async throws {
         guard let key = Self.baseKey(of: item.id) else { throw CalendarError.notFound }
         moved[key] = start
@@ -767,6 +780,13 @@ public final class DemoScheduling: SchedulingService {
 extension Demo {
     /// Выдуманная погода на три недели вокруг `now` — для тестового режима
     /// и снимков. Одна и та же при каждом запуске: день решает всё.
+    /// Письмо из карточки ассистента — для снимка окна письма (`--compose-window`).
+    public static let assistantLetter = (
+        to: [Person(name: "Дмитрий Орлов", address: "orlov@partner.test")],
+        subject: "Бюджет",
+        text: "Дмитрий, добрый день!\nБюджет посмотрю завтра."
+    )
+
     public static func weather(around now: Date, calendar: Calendar) -> WeekWeather {
         let today = calendar.startOfDay(for: now)
         let codes = [0, 2, 3, 61, 80, 1, 3, 45, 0, 63, 2, 3, 71, 1]

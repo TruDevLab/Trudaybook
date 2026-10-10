@@ -301,7 +301,15 @@ public actor EWSMailProvider: AccountMailProvider {
         if cache.body(uid: uid, mailbox: folder, account: account.id) == nil {
             _ = try? await body(of: itemID)
         }
-        try EWSRequest.requireSuccess(try await call("MoveItem", EWSRequest.move([try remoteID(uid)], to: target)))
+        do {
+            try EWSRequest.requireSuccess(try await call("MoveItem", EWSRequest.move([try remoteID(uid)], to: target)))
+        } catch MailNetworkError.gone(let text) {
+            // Убрано другой программой — из Входящих его всё равно нет;
+            // на таймлайне оно остаётся разобранным, как после нашего архива.
+            log("архив: письма уже нет на сервере")
+            try forgetHandled(uid, in: folder)
+            throw MailNetworkError.gone(text)
+        }
         try forgetHandled(uid, in: folder)
     }
 
