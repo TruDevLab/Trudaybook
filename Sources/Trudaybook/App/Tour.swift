@@ -6,7 +6,7 @@ import TrudaybookCore
 
 /// Части главного окна, на которые показывает обучение.
 enum TourSpot: Hashable {
-    case actionBar, create, timeline, inspector, mailList, month, note
+    case actionBar, create, timeline, inspector, mailList, month, note, assistantButton, assistant, phoneButton, phone
 }
 
 /// Где на экране эти части: собирается со всего окна через предпочтения.
@@ -31,7 +31,7 @@ extension View {
 
 /// Шаг обучения: что подсветить, что сказать и что попробовать руками.
 struct TourStep {
-    enum Task { case selectMail, archive, moveMeeting, create }
+    enum Task { case selectMail, archive, moveMeeting, create, openAssistant, askAssistant, useCard, openPhone, dial }
 
     let spots: [TourSpot]
     let symbol: String
@@ -70,9 +70,29 @@ struct TourStep {
             TourStep(spots: [.month, .note], symbol: "calendar",
                      title: String(localized: "Месяц и заметка дня"),
                      text: String(localized: "Щёлкните день — таймлайн перейдёт к нему; точки — дни со встречами. Ниже — заметка дня, ⌘J открывает её в окне. Месяц и встречи есть и в значке в строке меню.")),
+            TourStep(spots: [.assistantButton], symbol: "bubble.left.and.text.bubble.right",
+                     title: String(localized: "Ассистент"),
+                     text: String(localized: "Чат с ИИ, который знает ваши встречи, напоминания, письма и заметку дня. Он работает на этом Mac через Ollama — письма в интернет не уходят. Чат открывается над выбранным письмом, границу между ними можно двигать. ⌥⌘A — открыть и закрыть."),
+                     task: .openAssistant, taskTitle: String(localized: "Откройте ассистента")),
+            TourStep(spots: [.assistant], symbol: "square.grid.2x2",
+                     title: String(localized: "Плитки и вопросы"),
+                     text: String(localized: "Плитка — готовая просьба: «Мой день», «Ждут ответа», «Пересказать письмо»… Или спросите своими словами. Письмо или встречу приложат «+» или команды /mail и /cal со словами из темы. Зажмите кнопку отправки и говорите: отпустите — отправится, потяните вверх — запись без рук."),
+                     task: .askAssistant, taskTitle: String(localized: "Нажмите плитку или задайте вопрос")),
+            TourStep(spots: [.assistant], symbol: "rectangle.on.rectangle",
+                     title: String(localized: "Предлагает ассистент — решаете вы"),
+                     text: String(localized: "Напоминание, встречу, письмо или запись в заметку дня ассистент присылает карточкой — без вашего нажатия ничего не создаётся. Письмо откроется в отдельном окне, отправляете его сами. «Напомни в 9:00», сказанное после девяти, — это завтра, и карточка так и пишет."),
+                     task: .useCard, taskTitle: String(localized: "Нажмите «Создать» на карточке")),
+            TourStep(spots: [.phoneButton], symbol: "phone.fill",
+                     title: String(localized: "Телефон"),
+                     text: String(localized: "Звонки через АТС компании (SIP) — прямо в Trudaybook. Включается в Настройках → Телефон: адрес АТС, добавочный и пароль. Кнопка открывает телефон справа, на месте письма; во время разговора на ней идёт время, а у пропущенных — их число. ⌥⌘P — открыть и закрыть."),
+                     task: .openPhone, taskTitle: String(localized: "Откройте телефон")),
+            TourStep(spots: [.phone], symbol: "circle.grid.3x3.fill",
+                     title: String(localized: "Набор, недавние и номера"),
+                     text: String(localized: "Номер набирают клавишами панели или с клавиатуры. «Недавние» — журнал звонков, «Номера» — сохранённые, избранные со звёздочкой сверху. Номеру можно дать имя — правой кнопкой по звонку. Входящий покажет окошко в углу экрана со звуком, а Trunook — ещё и плашку в вырезе."),
+                     task: .dial, taskTitle: String(localized: "Позвоните — в обучении ответят понарошку")),
             TourStep(spots: [], symbol: "checkmark.seal",
                      title: String(localized: "Готово"),
-                     text: String(localized: "Подключите почту и календари — и таймлайн заполнится вашими делами. Пройти обучение снова можно в Настройках → Оформление или в меню «Справка».")),
+                     text: String(localized: "Подключите почту и календари — и таймлайн заполнится вашими делами. Ассистенту нужна Ollama: Настройки → ИИ предложат её установить. Пройти обучение снова можно в Настройках → Оформление или в меню «Справка».")),
         ]
     }
 }
@@ -84,6 +104,7 @@ final class TourState: ObservableObject {
     @Published var index = 0
     private var unresolvedBefore = 0
     private var meetingsBefore: [String] = []
+    private var callsBefore = 0
     let finish: (_ connectMail: Bool) -> Void
 
     init(start: Int, finish: @escaping (Bool) -> Void) {
@@ -106,11 +127,41 @@ final class TourState: ObservableObject {
         case .moveMeeting:
             meetingsBefore = Self.meetings(model)
             unresolvedBefore = model.unresolved.count
+        case .dial: callsBefore = model.phone.book.calls.count
         default: break
         }
-        if step.spots.contains(.inspector), model.selectedItem == nil {
+        let chat = step.spots.contains(.assistant)
+        if step.spots.contains(.inspector) || step.spots.contains(.assistantButton) || chat, model.selectedItem == nil {
             model.selectedID = (model.dayItems.first { $0.kind == .mail } ?? model.unresolved.first)?.id
         }
+        // Чат открыт только на своих шагах: вернулись к прежним — панель
+        // справа снова целиком у письма, как в рассказе о ней.
+        if chat {
+            withAnimation(Motion.move) { model.assistantOpen = true }
+        } else if !step.spots.isEmpty, !step.spots.contains(.assistantButton) {
+            withAnimation(Motion.move) { model.assistantOpen = false }
+        }
+        // Телефон — так же: открыт на своём шаге, на прежних — письмо.
+        // Кнопку телефона нажимает сам человек.
+        if step.spots.contains(.phone) {
+            withAnimation(Motion.move) { model.phoneOpen = true }
+        } else if !step.spots.isEmpty, !step.spots.contains(.phoneButton) {
+            withAnimation(Motion.move) { model.phoneOpen = false }
+        }
+        // Карточку показать и без Ollama: пример готового ответа.
+        if step.task == .useCard, !Self.hasCard(model) {
+            let calendar = model.calendar
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: model.now)) ?? model.now
+            let due = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
+            model.assistant.addExample(
+                question: String(localized: "Напомни в 9:00 позвонить Дмитрию Орлову"),
+                answer: String(localized: "Девять утра сегодня уже прошло — предлагаю завтра. Проверьте карточку и нажмите «Создать»."),
+                action: .reminder(title: String(localized: "Позвонить Дмитрию Орлову"), due: due))
+        }
+    }
+
+    private static func hasCard(_ model: AppModel) -> Bool {
+        model.assistant.dialogs.contains { $0.entries.contains { $0.actions.contains { $0.state == .pending } } }
     }
 
     func isDone(model: AppModel) -> Bool {
@@ -120,6 +171,15 @@ final class TourState: ObservableObject {
         // Перенесли встречу — или отложили письмо, бросив его на время.
         case .moveMeeting: return Self.meetings(model) != meetingsBefore || model.unresolved.count < unresolvedBefore
         case .create: return model.eventEditor != nil || model.draft != nil
+        case .openAssistant: return model.assistantOpen
+        case .askAssistant: return model.assistant.dialogs.contains { $0.entries.contains { $0.role == .user } }
+        case .useCard:
+            return model.assistant.dialogs.contains { $0.entries.contains { $0.actions.contains {
+                if case .done = $0.state { true } else { false }
+            } } }
+        case .openPhone: return model.phoneOpen
+        // Звонок идёт или уже в журнале — тестовый телефон «отвечает» сам.
+        case .dial: return model.phone.call != nil || model.phone.book.calls.count > callsBefore
         case nil: return false
         }
     }
@@ -226,6 +286,8 @@ enum TourWindow {
     private static func closed() {
         if let model {
             model.stop()
+            // Тестовый звонок не должен гудеть после обучения.
+            model.phone.shutdown()
             EventEditorWindow.detach(model: model)
         }
         if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
@@ -285,7 +347,7 @@ private struct TourOverlay: View {
                         .offset(x: hole.minX, y: hole.minY)
                         .allowsHitTesting(false)
                 }
-                TourCard(tour: tour)
+                TourCard(tour: tour, phone: model.phone)
                     .frame(width: Self.cardWidth)
                     .fixedSize(horizontal: false, vertical: true)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
@@ -379,6 +441,8 @@ private struct TourMask: Shape {
 private struct TourCard: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject var tour: TourState
+    /// Звонок меняет телефон, а не модель — без него «Получилось!» не появится.
+    @ObservedObject var phone: PhoneService
 
     var body: some View {
         let step = tour.step

@@ -207,6 +207,17 @@ final class AssistantSession: ObservableObject {
         }
     }
 
+    /// Готовый разговор с карточкой — для обучения: показать карточку можно
+    /// и без Ollama. Своей вкладкой «Пример», чтобы не путать с настоящим.
+    func addExample(question: String, answer: String, action: Assistant.Action) {
+        newDialog()
+        change(currentID) { dialog in
+            dialog.title = String(localized: "Пример")
+            dialog.entries.append(ChatEntry(role: .user, text: question))
+            dialog.entries.append(ChatEntry(role: .assistant, text: answer, actions: [ActionCard(action: action)]))
+        }
+    }
+
     /// Остановить ответ: модель на машине одна, и длинный ненужный ответ
     /// держал бы её для пересказа и меток.
     func stop() {

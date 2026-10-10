@@ -3,5 +3,5 @@
 "NSRemindersFullAccessUsageDescription" = "Trudaybook 在日时间轴上显示提醒，将其标记为完成，并按你的指令改期。";
 "NSLocationUsageDescription" = "Trudaybook 仅在 Trunook 未提供天气时使用你的位置来显示天气。坐标会取整到约 10 公里。";
 "NSLocationWhenInUseUsageDescription" = "Trudaybook 仅在 Trunook 未提供天气时使用你的位置来显示天气。坐标会取整到约 10 公里。";
-"NSMicrophoneUsageDescription" = "仅在您向助手口述问题时，Trudaybook 才会使用麦克风。语音在这台 Mac 上识别，不会发送到任何地方。";
+"NSMicrophoneUsageDescription" = "Trudaybook 仅在你向助手口述问题时（语音在这台 Mac 上识别）或使用 SIP 电话通话时（声音只通过你的交换机传给对方）使用麦克风。";
 "NSSpeechRecognitionUsageDescription" = "Trudaybook 将您向助手口述的问题转换为文字。识别只在这台 Mac 上进行，语音不会上传到网络。";

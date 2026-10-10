@@ -10,7 +10,7 @@ import TrudaybookMail
 @MainActor
 enum SettingsWindow {
     enum Tab: String, CaseIterable, Identifiable {
-        case mail, calendars, notifications, ai, trunook, appearance, updates
+        case mail, calendars, notifications, phone, ai, trunook, appearance, updates
         var id: String { rawValue }
 
         var title: String {
@@ -18,6 +18,7 @@ enum SettingsWindow {
             case .mail: String(localized: "Почта")
             case .calendars: String(localized: "Календари")
             case .notifications: String(localized: "Уведомления")
+            case .phone: String(localized: "Телефон")
             case .ai: String(localized: "ИИ")
             case .trunook: "Trunook"
             case .appearance: String(localized: "Оформление")
@@ -30,6 +31,7 @@ enum SettingsWindow {
             case .mail: "envelope.fill"
             case .calendars: "calendar"
             case .notifications: "bell.badge.fill"
+            case .phone: "phone.fill"
             case .ai: "sparkles"
             case .trunook: "rectangle.topthird.inset.filled"
             case .appearance: "paintpalette.fill"
@@ -42,6 +44,7 @@ enum SettingsWindow {
             case .mail: Palette.blue
             case .calendars: Palette.rose
             case .notifications: Palette.amber
+            case .phone: Palette.success
             case .ai: Palette.violet
             case .trunook: Palette.mint
             case .appearance: Palette.violet
@@ -107,6 +110,7 @@ struct SettingsView: View {
                     case .mail: AccountSettingsView()
                     case .calendars: CalendarSettingsView()
                     case .notifications: NotificationSettingsView(notifier: model.notifier)
+                    case .phone: PhoneSettingsView(phone: model.phone)
                     case .ai: AISettingsView(ai: model.ai)
                     case .trunook: TrunookSettingsView(bridge: model.trunook)
                     case .appearance: AppearanceSettingsView()

@@ -109,6 +109,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if model.options.labelMail { model.labelUnresolved(manual: true) }
             if model.options.dragProbe != nil, model.options.snapshotPath == nil { model.applyDebugSelection() }
             if model.options.assistant { model.assistantOpen = true }
+            if model.options.phone { model.phoneOpen = true }
+            if model.options.phoneCall { model.phone.simulateActive() }
+            if model.options.incomingCall { model.phone.simulateIncoming() }
             if let question = model.options.ask { model.assistant.send(question) }
             if let path = model.options.snapshotPath {
                 model.applyDebugSelection()
@@ -152,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     try? await Task.sleep(for: .seconds(1.5))
                 }
                 // Редактор встречи — отдельное окно поверх главного.
-                WindowSnapshot.write(menuBar?.popoverWindow ?? EventEditorWindow.current ?? TourWindow.current
+                WindowSnapshot.write(IncomingCallWindow.current ?? menuBar?.popoverWindow ?? EventEditorWindow.current ?? TourWindow.current
                                      ?? LetterWindow.current ?? ComposeWindow.current ?? NoteWindow.current ?? SettingsWindow.current
                                      ?? window, to: path)
                 NSApp.terminate(nil)
@@ -198,6 +201,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        model?.phone.shutdown()
+    }
 }
 
 /// Главное меню. «Правка» обязательна: без неё в полях ввода не работают
@@ -302,6 +309,9 @@ enum MainMenu {
             },
             ClosureItem(String(localized: "Чат с ИИ-ассистентом"), key: "a", modifiers: [.command, .option]) {
                 withAnimation(Motion.move) { model.assistantOpen.toggle() }
+            },
+            ClosureItem(String(localized: "Телефон"), key: "p", modifiers: [.command, .option]) {
+                withAnimation(Motion.move) { model.phoneOpen.toggle() }
             },
             ClosureItem(String(localized: "Вертикальный таймлайн"), key: "l", modifiers: [.command, .option]) {
                 withAnimation(HoverMotion.animation) { model.timelineVertical.toggle() }

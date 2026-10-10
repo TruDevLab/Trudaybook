@@ -324,13 +324,31 @@ extension MainView {
         let total = height - Self.gap
         let upper = total - Self.minSplitPart
         let chat = split ? min(max(total * assistantShare, Self.minSplitPart), upper) : height
-        return VStack(spacing: 0) {
+        // Телефон занимает колонку целиком — на месте письма или встречи.
+        return ZStack(alignment: .top) {
+            if model.phoneOpen {
+                panelCard(PhonePanel(phone: model.phone)
+                    .background(GlassPanelBackground(fallback: Color(nsColor: .textBackgroundColor))))
+                    .tourSpot(.phone)
+                    .transition(.opacity)
+            } else {
+                chatAndInspector(open: open, split: split, total: total, upper: upper, chat: chat)
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .animation(Motion.move, value: model.phoneOpen)
+    }
+
+    private func chatAndInspector(open: Bool, split: Bool, total: Double, upper: Double, chat: Double) -> some View {
+        VStack(spacing: 0) {
             if open {
                 assistantCard
                     .transition(.asymmetric(
                         insertion: .modifier(active: ChatReveal(height: 0), identity: ChatReveal(height: chat)),
                         removal: .modifier(active: ChatReveal(height: 0), identity: ChatReveal(height: chat))))
                     .frame(height: chat, alignment: .top)
+                    .tourSpot(.assistant)
                 if split {
                     ResizeHandle(value: Binding(get: { assistantShare * total }, set: { assistantShare = $0 / total }),
                                  current: chat, range: Self.minSplitPart...upper, dimension: .height,
@@ -339,7 +357,10 @@ extension MainView {
                 }
             }
             if !open || split {
-                panelCard(InspectorView())
+                // Под чатом — сколько осталось: приглашение со шкалой дня выше
+                // остатка и иначе раздвигало всё окно — панель действий
+                // уезжала вниз, низ окна обрезался.
+                panelCard(InspectorView().frame(minHeight: 0, maxHeight: .infinity, alignment: .top))
                     .transition(.opacity)
             }
         }
@@ -375,6 +396,41 @@ struct AssistantButton: View {
     }
 }
 
+/// «Телефон»: открывает набор номера справа. Во время разговора — зелёная
+/// с временем, у пропущенных — их число.
+struct PhoneButton: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var phone: PhoneService
+
+    var body: some View {
+        Button {
+            withAnimation(Motion.move) { model.phoneOpen.toggle() }
+        } label: {
+            HStack(spacing: Space.sm) {
+                Image(systemName: phone.inCall ? "phone.connection.fill" : "phone.fill")
+                    .foregroundStyle(phone.inCall || model.phoneOpen ? Palette.success : Color.primary)
+                if let call = phone.call, call.state == .active {
+                    SwiftUI.TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(PhoneFormat.duration(context.date.timeIntervalSince(call.answered ?? call.started)))
+                            .monospacedDigit()
+                            .foregroundStyle(Palette.success)
+                    }
+                } else if phone.unseenMissed > 0 {
+                    Text("\(phone.unseenMissed)")
+                        .font(.app(.label, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, Space.sm)
+                        .background(Capsule().fill(Palette.danger))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .glassCapsule()
+        .labelHelp(phone.unseenMissed > 0 ? String(localized: "Телефон: пропущенных — \(phone.unseenMissed) (⌥⌘P)")
+                                         : String(localized: "Телефон (⌥⌘P)"))
+    }
+}
+
 /// Панель действий. Кнопки работают и как цели перетаскивания: элемент
 /// с таймлайна или из списка бросают прямо на «В архив» или «Перенести».
 struct ActionBar: View {
@@ -397,7 +453,12 @@ struct ActionBar: View {
             UpdateCapsule(updates: model.updates)
             MailStatus()
                 .glassCapsule()
+            if model.phone.enabled {
+                PhoneButton(phone: model.phone)
+                    .tourSpot(.phoneButton)
+            }
             AssistantButton()
+                .tourSpot(.assistantButton)
             // «Создать» — отдельно от действий над выбранным, в правом краю.
             CreateButton()
                 .tourSpot(.create)

@@ -139,8 +139,9 @@ spring, flowers in summer. Russian, English
 and Chinese interface.
 
 **Tutorial** — on first launch Trudaybook walks you through the essentials on
-sample emails and meetings; skip it any time, take it again from Help →
-Trudaybook Tutorial or Settings → Appearance.
+sample emails and meetings, including the assistant chat: tiles, attached
+emails, voice and the cards you confirm yourself, plus the phone: dialing,
+recents and saved numbers. You can skip it and take it again from Help → Trudaybook Tutorial or Settings → Appearance.
 
 **AI on this Mac** — through [Ollama](https://ollama.com) (free; Trudaybook
 offers to install it and download a suitable model itself, Settings → AI):
@@ -164,6 +165,14 @@ offers to install it and download a suitable model itself, Settings → AI):
   the earlier conversation and drafts a reply that answers every question;
   it makes no decisions for you — those are left as [placeholders].
 
+**SIP phone** (Settings → Phone, off by default) — calls through your PBX right
+in Trudaybook. The Phone button (⌥⌘P) opens a dialer with a keypad, recent
+calls and saved numbers with favorites on the right; give a number a name and
+it shows up that way in calls and the log. Incoming calls appear in a small
+window in the top-right corner above all windows, with a ringtone; missed calls
+show as a count on the button. During a call: mute, touch tones and echo
+cancellation. UDP, TCP or TLS; with TLS the call is encrypted (SRTP).
+
 **Together with [Trunook](https://github.com/TruDevLab/Trunook)** — a MacBook
 notch app by the same author (optional, all off by default):
 - emails, invitations, upcoming meetings and snoozed emails coming back —
@@ -174,6 +183,7 @@ notch app by the same author (optional, all off by default):
 - while a Trunook timer runs, Trudaybook stays quiet and then sends one
   summary notification;
 - a shared day note;
+- incoming calls of the Trudaybook phone — as a banner with Answer and Decline;
 - weather in the calendar and for the Sky theme comes from Trunook.
 
 ---
@@ -196,6 +206,7 @@ notch app by the same author (optional, all off by default):
 | ⇧⌘H | Hide / show handled emails on the timeline |
 | ⌥⌘L | Timeline top to bottom |
 | ⌥⌘B | Timeline at the bottom of the window |
+| ⌥⌘P | Phone |
 | ↑ ↓ | Neighbouring item |
 
 ---
@@ -220,8 +231,13 @@ notch app by the same author (optional, all off by default):
   from an Ollama model on this Mac (`127.0.0.1`); Ollama cloud models are never
   offered or used, so neither emails nor notes go anywhere. The only downloads
   are Ollama itself (ollama.com) and models — when you press the button.
+- The **SIP phone** connects only to the PBX you entered; audio goes directly
+  to the other party or through the PBX. Without TLS, numbers and the call travel
+  unencrypted — choose TLS for calls over the internet. The password is in
+  Keychain; numbers and the call log stay on this Mac.
 - Trudaybook talks to Trunook only through files in `~/Library/Application Support`
-  on the same Mac.
+  on the same Mac; Trunook sees an incoming call through Accessibility, by the
+  call window.
 
 ---
 

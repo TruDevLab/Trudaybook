@@ -104,6 +104,12 @@ struct LaunchOptions {
     var chatInput: String?
     /// Нажатая плитка чата — для снимка: `--tile retell` (снимок ждёт ответа).
     var tile: String?
+    /// Панель телефона открыта: `--phone`.
+    var phone = false
+    /// Входящий звонок в тестовом режиме — окно и звонок: `--incoming-call`.
+    var incomingCall = false
+    /// Разговор в тестовом режиме — для снимка панели: `--phone-call`.
+    var phoneCall = false
     /// Письмо из файла `.eml` — отдельным окном: `--open-file /путь/письмо.eml`.
     var openFile: String?
     /// Выделить первые N строк списка, как ⇧-щелчком: `--multi 3`.
@@ -149,6 +155,11 @@ struct LaunchOptions {
             case "--timeline-drag": options.timelineDrag = iterator.next().flatMap(Double.init)
             case "--link-picker": options.linkPicker = true
             case "--assistant": options.assistant = true
+            case "--phone": options.phone = true
+            case "--incoming-call": options.incomingCall = true
+            case "--phone-call":
+                options.phone = true
+                options.phoneCall = true
             case "--ask":
                 options.assistant = true
                 options.ask = iterator.next()
@@ -232,6 +243,7 @@ final class AppModel: ObservableObject {
     @Published var selectedID: String? {
         didSet {
             guard selectedID != oldValue else { return }
+            if selectedID != nil, phoneOpen { phoneOpen = false }
             multiSelection = []
             selectionAnchor = nil
             draft = nil
@@ -310,7 +322,19 @@ final class AppModel: ObservableObject {
     let assistant = AssistantSession()
     /// Правая панель показывает чат, а не выбранное. Ответ или новое письмо
     /// из карточки открываются поверх, закрыли — снова чат.
-    @Published var assistantOpen = false
+    @Published var assistantOpen = false {
+        didSet { if assistantOpen, phoneOpen { phoneOpen = false } }
+    }
+    /// Телефон SIP: регистрация, звонки, номера.
+    let phone: PhoneService
+    /// Правая панель показывает телефон вместо выбранного. Выбрали письмо
+    /// или встречу — панель снова у них; разговор не прерывается.
+    @Published var phoneOpen = false {
+        didSet {
+            if phoneOpen, assistantOpen { assistantOpen = false }
+            if phoneOpen { phone.markMissedSeen() }
+        }
+    }
     private var lastAutoLabel: Date?
     /// «Не разобрано» — раскрывающимися разделами по датам.
     @Published var groupByDate = UserDefaults.standard.object(forKey: "groupByDate") as? Bool ?? true {
@@ -804,6 +828,7 @@ final class AppModel: ObservableObject {
     init(options: LaunchOptions) {
         self.options = options
         ai = LocalAI(demo: options.demo)
+        phone = PhoneService(demo: options.demo)
         let offset = options.fixedNow.map { $0.timeIntervalSinceNow } ?? 0
         clockOffset = offset
         let clock: @Sendable () -> Date = { Date().addingTimeInterval(offset) }
@@ -882,6 +907,12 @@ final class AppModel: ObservableObject {
             let asksModel = options.summary || options.labelMail || options.agenda || options.digest || options.template
             ai.enabled = true
             ai.autoLabel = false
+        }
+        if options.demo {
+            // Сводка и заметки тестовых данных — в кэше, и у обучения тоже:
+            // при включённой связи с Trunook оно писало тестовую сводку
+            // в настоящую папку поверх сводки живой почты, а запись
+            // ассистента в заметку дня ушла бы в общие заметки.
             // `--trunook-real-folders`: сводка — в настоящих папках, чтобы
             // живой Trunook увидел тестовую почту.
             if !options.trunookRealFolders {
@@ -992,6 +1023,7 @@ final class AppModel: ObservableObject {
             notifier.activate()
         }
         loadWeather()
+        phone.start(model: self)
         // Есть ли Ollama и какие модели — чтобы кнопки ИИ знали, что сказать.
         Task { await ai.refresh() }
         await calendarSource.requestAccess()

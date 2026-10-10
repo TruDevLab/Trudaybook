@@ -787,6 +787,30 @@ extension Demo {
         text: "Дмитрий, добрый день!\nБюджет посмотрю завтра."
     )
 
+    /// Кто звонит в тестовом режиме (`--incoming-call`).
+    public static let phoneCaller = (number: "+79161234567", name: "Ольга Смирнова")
+
+    /// Номера и журнал звонков тестового телефона — от «сейчас».
+    public static func phoneBook(now: Date) -> PhoneBook {
+        let contacts = [
+            PhoneContact(number: "+79161234567", name: "Ольга Смирнова", favorite: true),
+            PhoneContact(number: "205", name: "Дмитрий Орлов", favorite: true),
+            PhoneContact(number: "230", name: "Бухгалтерия"),
+            PhoneContact(number: "+74951112233", name: "Подрядчик — офис"),
+            PhoneContact(number: "240", name: "Склад"),
+        ]
+        func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
+        let calls = [
+            CallRecord(number: "205", direction: .incoming, outcome: .missed, start: ago(18)),
+            CallRecord(number: "+79161234567", direction: .outgoing, outcome: .answered, start: ago(52), duration: 312),
+            CallRecord(number: "+79035550101", name: "Курьер", direction: .incoming, outcome: .answered, start: ago(95), duration: 47),
+            CallRecord(number: "230", direction: .outgoing, outcome: .busy, start: ago(140)),
+            CallRecord(number: "+74951112233", direction: .incoming, outcome: .declined, start: ago(60 * 20)),
+            CallRecord(number: "240", direction: .outgoing, outcome: .answered, start: ago(60 * 26), duration: 128),
+        ]
+        return PhoneBook(contacts: contacts, calls: calls)
+    }
+
     public static func weather(around now: Date, calendar: Calendar) -> WeekWeather {
         let today = calendar.startOfDay(for: now)
         let codes = [0, 2, 3, 61, 80, 1, 3, 45, 0, 63, 2, 3, 71, 1]
