@@ -57,6 +57,10 @@ public final class CombinedCalendar: CalendarProvider {
         try await source(ofItem: item.id).move(item, to: start)
     }
 
+    public func setAllDay(_ reminder: TimelineItem, on day: Date) async throws {
+        try await source(ofItem: reminder.id).setAllDay(reminder, on: day)
+    }
+
     public func setCompleted(_ item: TimelineItem, _ done: Bool) async throws {
         try await source(ofItem: item.id).setCompleted(item, done)
     }

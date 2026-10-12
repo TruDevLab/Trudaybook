@@ -27,6 +27,7 @@ struct WeekView: View {
                     Color.clear.frame(width: Self.inset + Self.hoursWidth, height: 1)
                     ForEach(days, id: \.self) { day in
                         WeekDayHeader(day: day).frame(width: columnWidth)
+                            .modifier(AllDayDropTarget(day: day, occupied: true))
                     }
                 }
                 .padding(.top, Space.sm)
@@ -37,6 +38,7 @@ struct WeekView: View {
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
         }
         .background(Panel())
+        .modifier(DaySwipe())
     }
 
     private func grid(days: [Date], columnWidth: CGFloat) -> some View {

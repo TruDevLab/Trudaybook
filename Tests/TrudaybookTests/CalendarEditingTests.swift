@@ -290,6 +290,32 @@ struct DeclineTests {
         #expect(after.contains { $0.title == "Обед" })
     }
 
+    /// Брошено в шапку дня: встреча — событием на весь день, напоминание —
+    /// со сроком без времени; со шкалы они уходят в полосу над ней.
+    @Test func dropIntoDayHeaderMakesAllDay() async throws {
+        let demo = DemoCalendar(clock: { self.now })
+        let combined = CombinedCalendar([demo])
+        let dayStart = Calendar.current.startOfDay(for: now)
+        let nextDay = dayStart.addingTimeInterval(86_400)
+        let day = await combined.items(from: dayStart, to: nextDay)
+        let lunch = try #require(day.first { $0.title == "Обед" })
+        let reminder = try #require(day.first { $0.title == "Позвонить в банк" })
+        #expect(!lunch.isAllDay && !reminder.isAllDay)
+
+        var draft = try await combined.draft(for: lunch)
+        draft.isAllDay = true
+        draft.start = dayStart
+        draft.end = nextDay
+        try await combined.update(lunch, to: draft, scope: .thisEvent)
+        try await combined.setAllDay(reminder, on: dayStart)
+
+        let after = await combined.items(from: dayStart, to: nextDay)
+        let wholeLunch = try #require(after.first { $0.title == "Обед" })
+        let wholeReminder = try #require(after.first { $0.title == "Позвонить в банк" })
+        #expect(wholeLunch.isAllDay && wholeLunch.time == dayStart)
+        #expect(wholeReminder.isAllDay && wholeReminder.reminder?.hasTime == false)
+    }
+
     @Test func declineRequestIsWellFormed() throws {
         let envelope = try XMLTreeNode.parse(Data(EWSRequest.envelope(EWSCalendarRequest.decline("OCC&1=")).utf8))
         #expect(envelope.first("DeclineItem")?.child("ReferenceItemId")?.attributes["Id"] == "OCC&1=")

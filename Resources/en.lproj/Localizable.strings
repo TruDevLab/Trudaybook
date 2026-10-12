@@ -214,6 +214,7 @@
 "Выберите город." = "Choose a city.";
 "Выберите письмо или событие на таймлайне" = "Select an email or event on the timeline";
 "Выберите, с чего начать, или спросите сами. Отвечает модель на этом Mac; письмо, встречу и запись в заметку вы подтверждаете сами. Приложить письмо или встречу — /mail или /cal и слова из темы." = "Pick where to start or ask yourself. A model on this Mac answers; you confirm any email, meeting or note entry yourself. To attach an email or a meeting, type /mail or /cal and words from its subject.";
+"Выбранное не подключено — сейчас как в системе" = "Selected device not connected — using system default";
 "Выбранные письма — в «Корзину» ящика · ⌫" = "Selected messages to the mailbox Trash · ⌫";
 "Выбрано писем: %lld" = "Messages selected: %lld";
 "Выбрано: %lld" = "Selected: %lld";
@@ -255,7 +256,9 @@
 "Действия" = "Actions";
 "День" = "Day";
 "День или неделя (⌥⌘1 / ⌥⌘2)" = "Day or week (⌥⌘1 / ⌥⌘2)";
+"День — переключить на неделю (⌥⌘2)" = "Day — switch to week (⌥⌘2)";
 "Диалоги: письма одной переписки — одной строкой" = "Conversations: emails of one thread in a single row";
+"Динамик" = "Speaker";
 "Длительность новой встречи" = "New meeting duration";
 "Для всех встреч со ссылкой Zoom, Teams, Google Meet, Телемоста, Webex или Whereby. Не открываются: отменённые, отклонённые, на весь день и ссылки неизвестных сервисов — страницу из чужого приглашения без вашего нажатия открывать небезопасно. Для одной встречи — галочка «Созвон» в её окне; она сильнее этой настройки." = "For all meetings with a Zoom, Teams, Google Meet, Telemost, Webex or Whereby link. Not opened: cancelled, declined and all-day meetings, and links from unknown services — opening a page from someone else's invitation without your click is unsafe. For a single meeting, use the “Call” checkbox in its window; it overrides this setting.";
 "Дни рождения из Контактов" = "Birthdays from Contacts";
@@ -333,6 +336,7 @@
 "Звонков ещё не было" = "No calls yet";
 "Звонок" = "Call";
 "Звук входящего" = "Ring sound";
+"Звук клавиш набора" = "Keypad sounds";
 "Здесь читают и отвечают. Стрелки вверху справа открывают письмо в отдельном окне, рядом — приоритет и «Сохранить» в файл. У приглашения — «Принять» и «Отклонить»." = "Read and reply here. The arrows at the top right open the email in its own window; next to them are priority and “Save” to a file. Invitations have “Accept” and “Decline”.";
 "Зелёный" = "Green";
 "Зима" = "Winter";
@@ -356,6 +360,7 @@
 "Итоги дня" = "Day summary";
 "Итоги месяца" = "Month Summary";
 "Итоги недели" = "Week Summary";
+"Их же можно сменить в телефоне — значком в шапке, и посреди разговора тоже. Мелодия входящего играет на динамике по умолчанию в системе, чтобы звонок был слышен и без наушников." = "You can also change them in the phone panel with the icon in its header, even during a call. The ringtone plays on the system default speaker so you hear calls without headphones too.";
 "Ищу…" = "Searching…";
 "К встрече" = "To prepare";
 "К сегодняшнему дню · ⌘T" = "Go to today · ⌘T";
@@ -369,7 +374,8 @@
 "Каждый день" = "Every day";
 "Каждый месяц" = "Every month";
 "Как было" = "Reset";
-"Как в системе" = "Same as system";
+"Как в системе" = "System default";
+"Как в системе — %@" = "System default — %@";
 "Как везде" = "Same as elsewhere";
 "Как везде · %@" = "Same as elsewhere · %@";
 "Какие календари показывать" = "Which calendars to show";
@@ -430,6 +436,8 @@
 "Метка по заголовкам письма. Поменять — правой кнопкой по письму." = "Label from the email's headers. To change it, right-click the email.";
 "Метку поставила модель. Поменять — правой кнопкой по письму." = "The model set this label. To change it, right-click the email.";
 "Метку поставили вы." = "You set this label.";
+"Микрофон" = "Microphone";
+"Микрофон и динамик" = "Microphone and speaker";
 "Микрофон не включился: %@" = "The microphone did not start: %@";
 "Мне" = "Me";
 "Модель" = "Model";
@@ -459,6 +467,7 @@
 "Мята" = "Mint";
 "На 30 минут позже" = "30 minutes later";
 "На Mac" = "On Mac";
+"На весь день" = "All day";
 "На значке — сегодняшнее число; по нажатию — месяц и встречи дня с кнопкой «Подключиться»." = "The icon shows today’s date; click it for the month and the day’s meetings with a “Join” button.";
 "На напоминание отвечать некому" = "There's no one to reply to on a reminder";
 "На таймлайне" = "On timeline";
@@ -534,6 +543,7 @@
 "Не удалось перенести: %@" = "Couldn't move: %@";
 "Не удалось прочесть «%@»" = "Could not read “%@”";
 "Не удалось связаться с GitHub" = "Couldn't reach GitHub";
+"Не удалось сделать на весь день: %@" = "Couldn’t make it all-day: %@";
 "Не удалось сохранить картинку" = "Couldn't save the picture";
 "Не удалось удалить писем: %lld — %@" = "Couldn't delete %lld messages — %@";
 "Не удалось установить защищённое соединение (код %lld) — проверьте адрес и порт сервера" = "Couldn't establish a secure connection (code %lld) — check the server address and port";
@@ -549,6 +559,7 @@
 "Неделя" = "Week";
 "Неделя %lld" = "Week %lld";
 "Неделя %lld · %@" = "Week %lld · %@";
+"Неделя — переключить на день (⌥⌘1)" = "Week — switch to day (⌥⌘1)";
 "Неизвестный отправитель" = "Unknown sender";
 "Непонятный ответ сервера: %@" = "Unclear server response: %@";
 "Неразобранных писем: %lld — показать" = "Emails to handle: %lld — show";
@@ -1131,6 +1142,7 @@
 "Тема встречи" = "Meeting subject";
 "Тема: %@" = "Subject: %@";
 "Тестовый режим" = "Test mode";
+"Тихий тон цифры при нажатии на клавиши телефона; на трекпаде с Force Touch — ещё и лёгкий отклик." = "A quiet tone when you press the phone keys, plus a light tap on a Force Touch trackpad.";
 "Тишина, пока в Trunook идёт таймер" = "Stay quiet while a Trunook timer runs";
 "Только вы" = "Only you";
 "Только запрос к api.github.com о последней версии, с именем и номером версии приложения. Ни адресов, ни писем." = "Only a request to api.github.com for the latest version, with the app's name and version number. No addresses, no emails.";
@@ -1215,6 +1227,7 @@
 "Щёлкните по сетке, чтобы выбрать время" = "Click the grid to choose a time";
 "Элемент не найден в календаре — возможно, его уже удалили" = "The item wasn't found in the calendar — it may have been deleted already";
 "Это и все следующие" = "This and all following";
+"Это напоминание нельзя сделать на весь день" = "This reminder can’t be made all-day";
 "Это не документ, а файл, который запускает программу или команды. Открывайте, только если ждали его от этого отправителя." = "This isn't a document but a file that runs an app or commands. Open it only if you expected it from this sender.";
 "Это не картинка, которую умеет macOS" = "This isn't an image macOS can read";
 "Это не похоже на пароль приложения (вида abcd-efgh-ijkl-mnop). Обычный пароль Apple ID iCloud по почте не примет." = "This doesn't look like an app password (like abcd-efgh-ijkl-mnop). iCloud won't accept a regular Apple ID password for mail.";
@@ -1234,6 +1247,7 @@
 "в ответе нет тела" = "the response has no body";
 "важных: %lld" = "important: %lld";
 "весь день" = "all day";
+"весь день, %@" = "all day, %@";
 "видит картинки" = "sees images";
 "видно: %lld из %lld" = "visible: %lld of %lld";
 "вс" = "Su";

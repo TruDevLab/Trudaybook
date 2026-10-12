@@ -59,6 +59,8 @@ public protocol CalendarProvider: AnyObject {
     func move(_ item: TimelineItem, to start: Date) async throws
     /// Отметить напоминание выполненным или вернуть в невыполненные.
     func setCompleted(_ item: TimelineItem, _ done: Bool) async throws
+    /// Напоминание — на весь день `day`: срок без времени.
+    func setAllDay(_ reminder: TimelineItem, on day: Date) async throws
 
     /// Встреча в виде черновика — для редактора. У повторяющейся — вместе
     /// с правилом повтора всей серии.
@@ -85,6 +87,11 @@ public protocol CalendarProvider: AnyObject {
 public extension CalendarProvider {
     /// EventKit отдаёт описание только текстом.
     func richDescription(of item: TimelineItem) async throws -> MailBody? { nil }
+
+    /// У календаря нет напоминаний (Exchange напрямую) — и переносить нечего.
+    func setAllDay(_ reminder: TimelineItem, on day: Date) async throws {
+        throw CalendarError.notAllowed(String(localized: "Это напоминание нельзя сделать на весь день"))
+    }
 }
 
 public enum CalendarError: LocalizedError {
@@ -279,6 +286,17 @@ public final class EventKitCalendar: CalendarProvider {
         case .mail:
             break
         }
+    }
+
+    public func setAllDay(_ item: TimelineItem, on day: Date) async throws {
+        guard item.kind == .reminder, let reminder = reminder(of: item) else { throw CalendarError.notFound }
+        reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day], from: day)
+        // Сигнал со временем остался бы от прежнего срока — у напоминания
+        // на весь день его нет, как у созданного без времени.
+        for alarm in reminder.alarms ?? [] where alarm.absoluteDate != nil {
+            reminder.removeAlarm(alarm)
+        }
+        try store.save(reminder, commit: true)
     }
 
     public func setCompleted(_ item: TimelineItem, _ done: Bool) async throws {

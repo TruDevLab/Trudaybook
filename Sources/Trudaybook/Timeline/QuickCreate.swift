@@ -18,31 +18,50 @@ struct HoldToCreate: ViewModifier {
     @ViewState private var pressed = false
     @ViewState private var armed: Date?
     @ViewState private var holdTask: Task<Void, Never>?
+    /// День полосы «на весь день», в которую завели заготовку.
+    @ViewState private var allDay: Date?
+    /// Где дорожка в окне: жест — в координатах окна, чтобы видеть и полосы
+    /// над шкалой, а время считается от дорожки.
+    @ViewState private var origin: CGPoint = .zero
 
     static let holdDelay: Duration = .milliseconds(450)
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .topLeading) {
-                if let armed {
+                if let armed, allDay == nil {
                     NewEventGhost(start: armed, scale: scale, vertical: vertical)
                 }
             }
+            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { origin = $0 }
             .gesture(
-                DragGesture(minimumDistance: 0)
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
+                        let local = CGPoint(x: value.location.x - origin.x, y: value.location.y - origin.y)
                         if !pressed {
                             pressed = true
-                            let start = value.startLocation
+                            let start = CGPoint(x: value.startLocation.x - origin.x, y: value.startLocation.y - origin.y)
                             holdTask = Task { @MainActor in
                                 try? await Task.sleep(for: Self.holdDelay)
                                 guard !Task.isCancelled, pressed else { return }
                                 withAnimation(Motion.quick) { armed = time(at: start) }
+                                model.holdArmed = true
                                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                             }
                         }
                         if armed != nil {
-                            armed = time(at: value.location)
+                            // Завели в полосу дня — встреча будет на весь этот день.
+                            if let strip = model.allDayStrip(at: value.location) {
+                                if model.holdAllDayStrip != strip.id {
+                                    model.holdAllDayStrip = strip.id
+                                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                                }
+                                allDay = strip.day
+                            } else {
+                                if model.holdAllDayStrip != nil { model.holdAllDayStrip = nil }
+                                allDay = nil
+                                armed = time(at: local)
+                            }
                         } else if hypot(value.translation.width, value.translation.height) > 6 {
                             // Повели до срабатывания — это не «подержать».
                             holdTask?.cancel()
@@ -50,9 +69,16 @@ struct HoldToCreate: ViewModifier {
                     }
                     .onEnded { _ in
                         holdTask?.cancel()
-                        if let armed { model.startNewEvent(at: armed) }
+                        if let allDay {
+                            model.startNewEvent(allDayOn: allDay)
+                        } else if let armed {
+                            model.startNewEvent(at: armed)
+                        }
                         armed = nil
+                        allDay = nil
                         pressed = false
+                        model.holdArmed = false
+                        model.holdAllDayStrip = nil
                     }
             )
     }
@@ -309,6 +335,115 @@ struct TimelineDropDelegate: DropDelegate {
         } else {
             setTargeted(true)
         }
+    }
+}
+
+/// Шапка дня — полоса событий на весь день, заголовок колонки или дня
+/// недели — принимает встречу или напоминание: оно становится на весь
+/// этот день. Пока над ней держат, видно «На весь день».
+struct AllDayDropTarget: ViewModifier {
+    @EnvironmentObject private var model: AppModel
+    let day: Date
+    var enabled = true
+    /// В полосе уже есть события — пока над ней не держат, подписи нет,
+    /// только пунктир: иначе надпись легла бы на них.
+    var occupied = false
+    @ViewState private var isTargeted = false
+    @ViewState private var id = UUID().uuidString
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            let hovered = isTargeted || model.holdAllDayStrip == id
+            content
+                .overlay {
+                    // Тащат встречу или ведут заготовку — полоса видна пунктиром
+                    // заранее, над ней — ярче.
+                    if hovered || model.showsAllDayStrips {
+                        RoundedRectangle(cornerRadius: Radius.md)
+                            .fill(hovered ? Fill.accentSoft : Fill.accentFaint)
+                            // Над целью — непрозрачно: подпись не путается с событиями под ней.
+                            .background(RoundedRectangle(cornerRadius: Radius.md)
+                                .fill(Color(nsColor: .controlBackgroundColor).opacity(hovered ? 1 : 0)))
+                            .overlay(RoundedRectangle(cornerRadius: Radius.md)
+                                .strokeBorder(Color.accentColor.opacity(hovered ? 1 : 0.5),
+                                              style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])))
+                            .overlay {
+                                if hovered || !occupied {
+                                    Label("На весь день", systemImage: "sun.max")
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(hovered ? Color.accentColor : .secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(Motion.quick, value: model.showsAllDayStrips)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                    model.allDayStrips[id] = (day, frame)
+                }
+                .onChange(of: day) {
+                    if let frame = model.allDayStrips[id]?.frame { model.allDayStrips[id] = (day, frame) }
+                }
+                .onDisappear { model.allDayStrips[id] = nil }
+                .onDrop(of: [.url, .plainText], delegate: AllDayDropDelegate(model: model, day: day) { isTargeted = $0 })
+        } else {
+            content
+        }
+    }
+}
+
+struct AllDayDropDelegate: DropDelegate {
+    let model: AppModel
+    let day: Date
+    let setTargeted: (Bool) -> Void
+
+    /// «Создать» несёт ссылку — новая встреча на весь день; своё — строку
+    /// с номером. Письмо на весь день не ставится.
+    private func isNewItem(_ info: DropInfo) -> Bool { info.hasItemsConforming(to: [.url]) }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        isNewItem(info) || (info.hasItemsConforming(to: [.plainText]) && model.dragging?.kind != .mail)
+    }
+
+    func dropEntered(info: DropInfo) {
+        DebugLog.write("шапка дня: над ней тащат")
+        setTargeted(true)
+    }
+
+    func dropExited(info: DropInfo) { setTargeted(false) }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: isNewItem(info) ? .copy : .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        setTargeted(false)
+        let model = model, day = day
+        if isNewItem(info) {
+            guard let provider = info.itemProviders(for: [.url]).first else { return false }
+            _ = provider.loadObject(ofClass: NSURL.self) { object, _ in
+                // Только своя ссылка: ссылку из браузера в полосу не считаем.
+                guard let url = object as? NSURL, url.absoluteString == AppModel.newItemURL.absoluteString else { return }
+                Task { @MainActor in
+                    DebugLog.write("бросок в шапку дня: новая встреча")
+                    model.startNewEvent(allDayOn: day)
+                }
+            }
+            return true
+        }
+        guard let provider = info.itemProviders(for: [.plainText]).first else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let id = object as? NSString else { return }
+            let text = id as String
+            Task { @MainActor in
+                model.dragging = nil
+                model.dropAllDay(text, on: day)
+            }
+        }
+        return true
     }
 }
 

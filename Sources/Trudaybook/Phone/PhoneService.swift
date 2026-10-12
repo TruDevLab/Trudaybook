@@ -30,12 +30,25 @@ final class PhoneService: ObservableObject {
     @Published var ringSound: Bool {
         didSet { save(ringSound, "phoneRingSound") }
     }
+    /// Тихий тон и отклик трекпада на клавишах набора.
+    @Published var keySound: Bool {
+        didSet { save(keySound, "phoneKeySound") }
+    }
     @Published var echoCancellation: Bool {
         didSet {
             save(echoCancellation, "phoneEchoCancellation")
             media.echo = echoCancellation
         }
     }
+    /// Микрофон и динамик звонка (`uid` устройства); пусто — как в системе.
+    @Published var inputDevice: String {
+        didSet { devicesChanged(inputDevice, "phoneInputDevice") }
+    }
+    @Published var outputDevice: String {
+        didSet { devicesChanged(outputDevice, "phoneOutputDevice") }
+    }
+    @Published private(set) var inputDevices: [AudioDevice] = []
+    @Published private(set) var outputDevices: [AudioDevice] = []
     /// Пропущенные, которых человек ещё не видел в панели.
     @Published private(set) var unseenMissed = 0
     /// Что мешает звонить: нет микрофона и т. п.
@@ -49,6 +62,8 @@ final class PhoneService: ObservableObject {
     private let media = MediaRegistry()
     private var ringer: AVAudioPlayer?
     private var tone: AVAudioPlayer?
+    /// Тоны клавиш — несколько сразу: быстрый набор не обрывает предыдущий.
+    private var keyTones: [AVAudioPlayer] = []
     private var demoTimers: [DispatchWorkItem] = []
 
     static let passwordAccount = "sip-phone"
@@ -61,7 +76,17 @@ final class PhoneService: ObservableObject {
         ringtone = defaults.string(forKey: "phoneRingtone").flatMap(PhoneTones.Ringtone.init(rawValue:)) ?? .trill
         ringSound = defaults.object(forKey: "phoneRingSound") as? Bool ?? true
         echoCancellation = defaults.object(forKey: "phoneEchoCancellation") as? Bool ?? true
+        keySound = defaults.object(forKey: "phoneKeySound") as? Bool ?? true
+        inputDevice = defaults.string(forKey: "phoneInputDevice") ?? ""
+        outputDevice = defaults.string(forKey: "phoneOutputDevice") ?? ""
         media.echo = echoCancellation
+        media.setDevices(input: inputDevice, output: outputDevice)
+        refreshDevices()
+        // Подключили наушники — сразу в списке; отключили — список без них,
+        // а звонок продолжается на системных.
+        AudioDevices.observe { [weak self] in
+            MainActor.assumeIsolated { self?.refreshDevices() }
+        }
         if demo {
             account.server = "pbx.demo"
             account.username = "101"
@@ -69,6 +94,18 @@ final class PhoneService: ObservableObject {
         } else {
             book = PhoneBook.load(from: Self.bookURL)
         }
+    }
+
+    private func devicesChanged(_ value: String, _ key: String) {
+        save(value, key)
+        media.setDevices(input: inputDevice, output: outputDevice)
+        // Гудки — туда же, куда и голос.
+        tone?.currentDevice = outputDevice.isEmpty ? nil : outputDevice
+    }
+
+    func refreshDevices() {
+        inputDevices = AudioDevices.list(input: true)
+        outputDevices = AudioDevices.list(input: false)
     }
 
     private func save(_ value: Any, _ key: String) {
@@ -360,6 +397,17 @@ final class PhoneService: ObservableObject {
         ringer = nil
     }
 
+    /// Клавиша набора: тихий тон этой цифры (те же частоты, что у тонового
+    /// набора) и лёгкий отклик трекпада с Force Touch.
+    func keyFeedback(_ digit: Character) {
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        guard keySound, let player = try? AVAudioPlayer(data: PhoneTones.key(digit)) else { return }
+        player.currentDevice = outputDevice.isEmpty ? nil : outputDevice
+        keyTones.removeAll { !$0.isPlaying }
+        keyTones.append(player)
+        player.play()
+    }
+
     /// Послушать мелодию в настройках.
     func previewRingtone() {
         playTone(PhoneTones.ringtone(ringtone), loop: false)
@@ -368,6 +416,7 @@ final class PhoneService: ObservableObject {
     private func playTone(_ data: Data, loop: Bool) {
         tone?.stop()
         tone = try? AVAudioPlayer(data: data)
+        tone?.currentDevice = outputDevice.isEmpty ? nil : outputDevice
         tone?.numberOfLoops = loop ? -1 : 0
         tone?.play()
     }
@@ -424,6 +473,8 @@ final class MediaRegistry: @unchecked Sendable {
     private let lock = NSLock()
     private var calls: [String: CallAudio] = [:]
     private var _echo = true
+    private var input = ""
+    private var output = ""
 
     var echo: Bool {
         get { lock.lock(); defer { lock.unlock() }; return _echo }
@@ -443,8 +494,18 @@ final class MediaRegistry: @unchecked Sendable {
         lock.lock()
         let audio = calls[plan.callID]
         let echo = _echo
+        let input = self.input, output = self.output
         lock.unlock()
-        audio?.start(plan, echoCancellation: echo)
+        audio?.start(plan, echoCancellation: echo, input: input, output: output)
+    }
+
+    func setDevices(input: String, output: String) {
+        lock.lock()
+        self.input = input
+        self.output = output
+        let active = Array(calls.values)
+        lock.unlock()
+        for audio in active { audio.setDevices(input: input, output: output) }
     }
 
     func stop(_ id: String) {

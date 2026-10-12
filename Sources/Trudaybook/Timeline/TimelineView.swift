@@ -45,6 +45,7 @@ struct TimelineView: View {
     @Environment(\.timelineMetrics) private var metrics
     @EnvironmentObject private var model: AppModel
     @ViewState private var pinchBase: Double?
+    @ViewState private var edges = SwipeEdges()
 
     private var scale: TimelineScale {
         TimelineScale(dayStart: model.day, hourWidth: model.hourWidth)
@@ -59,6 +60,7 @@ struct TimelineView: View {
             lanes
         }
         .background(Panel())
+        .modifier(DaySwipe(edges: edges))
     }
 
     private var lanes: some View {
@@ -88,6 +90,7 @@ struct TimelineView: View {
                 .padding(.horizontal, metrics.edge)
                 .padding(.vertical, Space.lg)
             }
+            .trackSwipeEdges(edges)
             // Масштаб — под ширину: видно столько часов, сколько в настройках.
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
                 model.fitTimeline(width: Double(width - metrics.edge * 2))
@@ -350,98 +353,15 @@ extension View {
             .contextMenu { ItemContextMenu(item: item).environmentObject(model) }
     }
 
-    /// Перетаскивание элемента с плашкой прямо под курсором.
+    /// Перетаскивание элемента с плашкой прямо под курсором — тем же сеансом
+    /// AppKit, что и у строк списка (`ListDragSource`).
+    ///
+    /// Было `onDrag`: его сеанс разрешает только «скопировать», а шкала
+    /// просит «переместить» — macOS отказывала в броске, и встреча или
+    /// напоминание возвращались на место (в журнале — «перетаскивание
+    /// начато» без «бросок на шкалу»; из списка бросок доходил).
     func itemDraggable(_ item: TimelineItem) -> some View {
-        modifier(CursorDragSource(item: item))
-    }
-}
-
-/// Перетаскивание, у которого плашка висит под курсором, а не сбоку.
-///
-/// macOS ставит картинку перетаскивания туда, где лежал сам элемент,
-/// сохраняя смещение от точки захвата. Плашка шириной 280 у строки списка
-/// в 760 точек уезжала в сторону на сотни точек — ровно на то место, где
-/// строку схватили, и попасть ею в «В архив» было трудно.
-///
-/// Поэтому картинка — прозрачный холст размером с сам элемент, а плашка
-/// нарисована на нём в точке захвата. Холст совпадает с элементом, значит
-/// плашка встаёт под курсор — как бы система ни привязывала картинку:
-/// к углу элемента или к его середине.
-private struct CursorDragSource: ViewModifier {
-    @EnvironmentObject private var model: AppModel
-    let item: TimelineItem
-    /// Где курсор внутри элемента — последнее положение перед нажатием.
-    /// Лежит в ящике, а не в состоянии вида: оно меняется при каждом
-    /// движении мыши, и перерисовка строки на каждый шаг курсора (особенно
-    /// в системном списке) срывала начавшееся перетаскивание.
-    @ViewState private var grab = GrabPoint()
-    @ViewState private var size: CGSize = .zero
-
-    final class GrabPoint {
-        var point: CGPoint?
-    }
-
-    func body(content: Content) -> some View {
-        content
-            .onContinuousHover(coordinateSpace: .local) { phase in
-                if case .active(let point) = phase { grab.point = point }
-            }
-            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
-            // `onDrag`, а не `draggable`: замыкание зовётся в начале
-            // перетаскивания — шкала узнаёт, что тащат, и показывает, на
-            // какое время оно встанет (строку с номером до броска не прочесть).
-            .onDrag {
-                model.dragging = item
-                DebugLog.write("перетаскивание начато: \(item.kind.rawValue)")
-                return NSItemProvider(object: item.id as NSString)
-            } preview: {
-                DragCanvas(item: item, size: size, grab: grab.point)
-            }
-    }
-}
-
-/// Холст картинки перетаскивания: размер элемента, плашка в точке захвата.
-private struct DragCanvas: View {
-    let item: TimelineItem
-    let size: CGSize
-    let grab: CGPoint?
-
-    /// Уже этого — не плашка с темой, а круглый значок: узкая карточка
-    /// таймлайна не вместит текст, а обрезанная плашка хуже значка.
-    private static let chipMinimum: CGFloat = 120
-    private static let badge: CGFloat = 30
-
-    var body: some View {
-        if size.width < 1 || size.height < 1 {
-            DragPreview(item: item)
-        } else {
-            let wide = size.width >= Self.chipMinimum
-            let chip = CGSize(width: min(size.width - 8, 280), height: min(size.height, 30))
-            let own = wide ? chip : CGSize(width: Self.badge, height: Self.badge)
-            let point = grab ?? CGPoint(x: size.width / 2, y: size.height / 2)
-            // Плашка целиком на холсте: у края элемента она сдвигается внутрь,
-            // иначе её обрезало бы.
-            let x = min(max(point.x, own.width / 2), max(size.width - own.width / 2, own.width / 2))
-            let y = min(max(point.y, own.height / 2), max(size.height - own.height / 2, own.height / 2))
-            ZStack(alignment: .topLeading) {
-                Color.clear
-                Group {
-                    if wide {
-                        DragPreview(item: item)
-                            .frame(maxWidth: chip.width)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Image(systemName: item.symbol)
-                            .font(.app(.body, weight: .semibold))
-                            .foregroundStyle(Color.accentColor)
-                            .frame(width: Self.badge, height: Self.badge)
-                            .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
-                    }
-                }
-                .position(x: x, y: y)
-            }
-            .frame(width: size.width, height: size.height)
-        }
+        modifier(ListDragSource(item: item, fromTimeline: true))
     }
 }
 

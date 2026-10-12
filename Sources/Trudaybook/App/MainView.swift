@@ -130,6 +130,10 @@ struct MainView: View {
         let before = Format.range(item.time, item.end)
         let after = sameDay ? Format.range(move.date, newEnd) : "\(Format.dayTitle(move.date)), \(Format.range(move.date, newEnd))"
         let guests = item.event?.attendees.filter { !$0.isMe }.count ?? 0
+        if move.allDay {
+            let whole = sameDay ? String(localized: "весь день") : String(localized: "весь день, \(Format.dayTitle(move.date))")
+            return String(localized: "Было: \(before). Станет: \(whole). Участники (\(guests)) получат обновлённое приглашение.")
+        }
         return String(localized: "Было: \(before). Станет: \(after). Участники (\(guests)) получат обновлённое приглашение.")
     }
 
@@ -647,26 +651,36 @@ struct DayHeader: View {
             }
             .help("К сегодняшнему дню и текущему времени (⌘T)")
 
-            // В неделе события на весь день — в шапках дней.
+            // В неделе события на весь день — в шапках дней. Сюда же бросают
+            // встречу или напоминание, чтобы сделать его на весь день.
+            // У вертикального вида полоса — своя у каждого дня, над колонками.
+            let strip = !week && !model.timelineVertical
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Space.sm) {
-                    if !week {
+                    if strip {
                         ForEach(allDay) { item in
                             AllDayChip(item: item)
                         }
                     }
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 26)
+            .contentShape(Rectangle())
+            .modifier(AllDayDropTarget(day: model.day, enabled: strip, occupied: !allDay.isEmpty))
 
+            // Значками, как кнопки рядом: «1» — день, «7» — неделя.
             Picker("", selection: $model.timelineSpan) {
-                Text("День").tag(AppModel.TimelineSpan.day)
-                Text("Неделя").tag(AppModel.TimelineSpan.week)
+                Image(systemName: "1.calendar")
+                    .accessibilityLabel(Text("День"))
+                    .tag(AppModel.TimelineSpan.day)
+                Image(systemName: "7.calendar")
+                    .accessibilityLabel(Text("Неделя"))
+                    .tag(AppModel.TimelineSpan.week)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-            .help("День или неделя (⌥⌘1 / ⌥⌘2)")
+            .help(week ? String(localized: "Неделя — переключить на день (⌥⌘1)") : String(localized: "День — переключить на неделю (⌥⌘2)"))
 
             // Разобранные письма — прятать с таймлайна или показывать с галочкой.
             Button {

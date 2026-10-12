@@ -42,9 +42,15 @@ On the right: the whole email or meeting — replies with formatting,
 attachments, invitations with Accept and Decline, attendees and the online
 meeting link.
 
-The timeline can run top to bottom too — the button next to “Day | Week” —
+Swipe two fingers on the trackpad to go to the next or previous day (week in
+the week view). The timeline can run top to bottom too — the button next to
+the day/week switch —
 or sit below the email list: drag it by the ≡ handle left of the date,
-or press ⌥⌘B. Working hours are lighter; which hours
+or press ⌥⌘B. Top to bottom in a wide window shows two days: today always
+on the left, the right one pages. Each day has an all-day strip; drop a meeting
+or reminder onto it (or onto a week-day header) to make it all-day — while you
+drag, the strips are outlined. Drop “Create” onto a strip, or drag a
+press-and-hold placeholder into it, for a new all-day meeting. Working hours are lighter; which hours
 they are and how many hours you see at once (12 by default) — Settings →
 Calendars → Timeline. A checkmark on an email or a bundle means handled;
 a past meeting simply fades.
@@ -171,7 +177,8 @@ calls and saved numbers with favorites on the right; give a number a name and
 it shows up that way in calls and the log. Incoming calls appear in a small
 window in the top-right corner above all windows, with a ringtone; missed calls
 show as a count on the button. During a call: mute, touch tones and echo
-cancellation. UDP, TCP or TLS; with TLS the call is encrypted (SRTP).
+cancellation; switch the microphone and speaker right in the phone, even
+mid-call. UDP, TCP or TLS; with TLS the call is encrypted (SRTP).
 
 **Together with [Trunook](https://github.com/TruDevLab/Trunook)** — a MacBook
 notch app by the same author (optional, all off by default):

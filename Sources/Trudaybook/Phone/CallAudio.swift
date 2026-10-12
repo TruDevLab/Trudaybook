@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 import TrudaybookCore
 
 /// Звук звонка: RTP по UDP, G.711, микрофон и динамик.
@@ -36,6 +37,10 @@ final class CallAudio: @unchecked Sendable {
 
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
+    private var echoCancellation = true
+    /// Выбранные микрофон и динамик (`uid`); пусто — как в системе.
+    private var inputUID = ""
+    private var outputUID = ""
     private let playFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, channels: 1, interleaved: false)!
     private let captureFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 8000, channels: 1, interleaved: true)!
 
@@ -68,14 +73,30 @@ final class CallAudio: @unchecked Sendable {
 
     /// Включить звук по договорённости из SDP. Повторный вызов (re-INVITE)
     /// меняет адрес, кодек и ключи, не трогая микрофон.
-    func start(_ plan: SIPMediaPlan, echoCancellation: Bool) {
+    func start(_ plan: SIPMediaPlan, echoCancellation: Bool, input: String, output: String) {
         queue.async {
             self.configure(plan)
             guard !self.started else { return }
             self.started = true
+            self.echoCancellation = echoCancellation
+            self.inputUID = input
+            self.outputUID = output
             self.listen()
-            self.startEngine(echoCancellation: echoCancellation)
+            self.startEngine()
             self.startSending()
+        }
+    }
+
+    /// Сменить микрофон или динамик посреди разговора: звук перезапускается
+    /// на новых устройствах, звонок и сеть не трогаются (пропадает доля секунды).
+    func setDevices(input: String, output: String) {
+        queue.async {
+            guard input != self.inputUID || output != self.outputUID else { return }
+            self.inputUID = input
+            self.outputUID = output
+            guard self.engine != nil else { return }
+            self.stopEngine()
+            self.startEngine()
         }
     }
 
@@ -105,13 +126,22 @@ final class CallAudio: @unchecked Sendable {
                 close(self.socket)
             }
             self.source = nil
-            if let engine = self.engine {
-                engine.inputNode.removeTap(onBus: 0)
-                engine.stop()
-            }
-            self.engine = nil
-            self.player = nil
+            self.stopEngine()
         }
+    }
+
+    private func stopEngine() {
+        if let engine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+        engine = nil
+        player = nil
+        lock.lock()
+        queued = 0
+        playing = false
+        captured.removeAll()
+        lock.unlock()
     }
 
     /// Тоновый набор (RFC 4733). `false` — та сторона его не понимает:
@@ -178,7 +208,8 @@ final class CallAudio: @unchecked Sendable {
         player.scheduleBuffer(buffer) { [weak self] in
             guard let self else { return }
             self.lock.lock()
-            self.queued -= 1
+            // После смены устройств счёт обнулён, а старые буферы ещё отчитываются.
+            self.queued = max(self.queued - 1, 0)
             self.lock.unlock()
         }
         if begin { player.play() }
@@ -186,11 +217,22 @@ final class CallAudio: @unchecked Sendable {
 
     // MARK: - Микрофон и динамик
 
-    private func startEngine(echoCancellation: Bool) {
+    private func startEngine() {
         let engine = AVAudioEngine()
         let input = engine.inputNode
         // Подавление эха системой: без него собеседник слышит себя из динамиков.
         if echoCancellation { try? input.setVoiceProcessingEnabled(true) }
+        // Устройства — после подавления эха: оно заменяет узлы ввода и вывода,
+        // и выбор, сделанный раньше, пропал бы. Нет устройства (наушники
+        // отключили) — остаётся системное.
+        if let device = AudioDevices.deviceID(uid: inputUID), let unit = input.audioUnit {
+            let status = AudioDevices.route(unit, to: device)
+            if status != noErr { DebugLog.write("телефон: микрофон не выбран — код \(status)") }
+        }
+        if let device = AudioDevices.deviceID(uid: outputUID), let unit = engine.outputNode.audioUnit {
+            let status = AudioDevices.route(unit, to: device)
+            if status != noErr { DebugLog.write("телефон: динамик не выбран — код \(status)") }
+        }
         let player = AVAudioPlayerNode()
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: playFormat)
@@ -340,6 +382,32 @@ enum PhoneTones {
         }
         return wav(samples)
     }
+
+    /// Клавиша: пара частот тонового набора, 90 мс и тихо — щелчок с тоном,
+    /// а не гудок на всю комнату.
+    static func key(_ digit: Character) -> Data {
+        if let cached = keyCache.withLock({ $0[digit] }) { return cached }
+        let rows: [Character: Double] = ["1": 697, "2": 697, "3": 697, "4": 770, "5": 770, "6": 770,
+                                         "7": 852, "8": 852, "9": 852, "*": 941, "0": 941, "#": 941]
+        let columns: [Character: Double] = ["1": 1209, "4": 1209, "7": 1209, "*": 1209,
+                                            "2": 1336, "5": 1336, "8": 1336, "0": 1336,
+                                            "3": 1477, "6": 1477, "9": 1477, "#": 1477]
+        let low = rows[digit] ?? 852, high = columns[digit] ?? 1336
+        let count = Int(rate * 0.09)
+        let fade = Int(rate * 0.008)
+        let samples: [Float] = (0..<count).map { index in
+            let time = Double(index) / rate
+            var envelope = 1.0
+            if index < fade { envelope = Double(index) / Double(fade) }
+            if index > count - fade { envelope = Double(count - index) / Double(fade) }
+            return Float((sin(2 * .pi * low * time) + sin(2 * .pi * high * time)) / 2 * envelope * 0.06)
+        }
+        let data = wav(samples)
+        keyCache.withLock { $0[digit] = data }
+        return data
+    }
+
+    private static let keyCache = OSAllocatedUnfairLock(initialState: [Character: Data]())
 
     /// Гудок «вызов» по ГОСТ: 425 Гц, секунда звука, четыре тишины.
     static var ringback: Data { wav(note(425, 1, decay: 0, level: 0.25) + silence(4)) }

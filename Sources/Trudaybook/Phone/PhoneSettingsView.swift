@@ -123,6 +123,23 @@ struct PhoneSettingsView: View {
                         .labelHelp(String(localized: "Послушать"))
                 }
                 SettingsHint(String(localized: "Входящий звонок показывается окошком в правом верхнем углу экрана — поверх всех окон."))
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Space.lg, verticalSpacing: Space.md) {
+                    GridRow {
+                        Text("Микрофон").foregroundStyle(.secondary)
+                        Picker("", selection: $phone.inputDevice) { AudioDeviceOptions(phone: phone, input: true) }
+                            .labelsHidden()
+                            .fixedSize()
+                    }
+                    GridRow {
+                        Text("Динамик").foregroundStyle(.secondary)
+                        Picker("", selection: $phone.outputDevice) { AudioDeviceOptions(phone: phone, input: false) }
+                            .labelsHidden()
+                            .fixedSize()
+                    }
+                }
+                SettingsHint(String(localized: "Их же можно сменить в телефоне — значком в шапке, и посреди разговора тоже. Мелодия входящего играет на динамике по умолчанию в системе, чтобы звонок был слышен и без наушников."))
+                Toggle("Звук клавиш набора", isOn: $phone.keySound)
+                SettingsHint(String(localized: "Тихий тон цифры при нажатии на клавиши телефона; на трекпаде с Force Touch — ещё и лёгкий отклик."))
                 Toggle("Подавлять эхо", isOn: $phone.echoCancellation)
                 SettingsHint(String(localized: "Нужно, когда говорите без наушников: иначе собеседник слышит себя из ваших динамиков."))
             }

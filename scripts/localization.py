@@ -112,6 +112,8 @@ EXCLUDE = {
     ('MailProvider.swift', '"отв:"'),
     ('MailProvider.swift', '"ответ:"'),
     ('MailLabel.swift', '"важн"'),
+    ('PhonePanel.swift', '"Наушник"'),
+    ('PhonePanel.swift', '"Гарнитур"'),
     ('MailLabel.swift', '"срочн"'),
     ('MailLabel.swift', '"перепис"'),
     ('MailLabel.swift', '"личн"'),

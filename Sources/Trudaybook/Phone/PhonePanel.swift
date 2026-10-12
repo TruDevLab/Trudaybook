@@ -89,6 +89,7 @@ struct PhonePanel: View {
             Text("Телефон").font(.app(.body, weight: .semibold))
             RegistrationBadge(state: phone.registration, enabled: phone.enabled, user: phone.account.username)
             Spacer(minLength: Space.sm)
+            AudioDeviceMenu(phone: phone)
             Button { SettingsWindow.show(model: model, tab: .phone) } label: {
                 Image(systemName: "gearshape")
                     .frame(width: 24, height: 24)
@@ -146,7 +147,7 @@ struct PhonePanel: View {
             }
             .padding(.horizontal, Space.xl)
             matchLine
-            Keypad { phone.dialed.append($0) }
+            Keypad(phone: phone) { phone.dialed.append($0) }
             RoundCallButton(symbol: "phone.fill", tint: Palette.success, title: String(localized: "Позвонить")) { callDialed() }
                 .disabled(PhoneNumber.dialable(phone.dialed).isEmpty || !phone.isRegistered)
         }
@@ -283,7 +284,7 @@ private struct CallCard: View {
             .padding(.horizontal, Space.xl)
             controls
             if keypad, call.state == .active {
-                Keypad { phone.digit($0) }
+                Keypad(phone: phone) { phone.digit($0) }
                     .transition(.opacity)
             }
         }
@@ -395,6 +396,7 @@ struct Avatar: View {
 
 /// Клавиши 1–9, *, 0, #. С клавиатуры Mac цифры набираются в поле номера.
 struct Keypad: View {
+    let phone: PhoneService
     let press: (Character) -> Void
 
     private static let keys: [(Character, String)] = [
@@ -410,7 +412,10 @@ struct Keypad: View {
                 GridRow {
                     ForEach(0..<3, id: \.self) { column in
                         let key = Self.keys[row * 3 + column]
-                        KeypadKey(digit: key.0, letters: key.1) { press(key.0) }
+                        KeypadKey(digit: key.0, letters: key.1) {
+                            phone.keyFeedback(key.0)
+                            press(key.0)
+                        }
                     }
                 }
             }
@@ -733,5 +738,71 @@ enum PhoneFormat {
         case .busy, .rejected, .unanswered, .notFound, .failed: true
         default: false
         }
+    }
+}
+
+// MARK: - Звук
+
+/// Микрофон и динамик звонка — меню в шапке телефона. Выбор сохраняется
+/// и действует сразу, в том числе посреди разговора.
+struct AudioDeviceMenu: View {
+    @ObservedObject var phone: PhoneService
+
+    var body: some View {
+        Menu {
+            AudioDevicePickers(phone: phone).pickerStyle(.inline)
+        } label: {
+            Image(systemName: icon)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .labelHelp(String(localized: "Микрофон и динамик"))
+    }
+
+    /// Наушники выбраны — значок наушников: видно, куда пойдёт звук.
+    private var icon: String {
+        let name = phone.outputDevices.first { $0.uid == phone.outputDevice }?.name
+            ?? AudioDevices.defaultName(input: false) ?? ""
+        let headset = ["AirPods", "Headphone", "Headset", "Наушник", "Гарнитур", "Beats", "耳机"]
+        return headset.contains { name.localizedCaseInsensitiveContains($0) } ? "headphones" : "speaker.wave.2"
+    }
+}
+
+/// Два списка — «Микрофон» и «Динамик» — для меню телефона.
+struct AudioDevicePickers: View {
+    @ObservedObject var phone: PhoneService
+
+    var body: some View {
+        Picker("Микрофон", selection: $phone.inputDevice) { AudioDeviceOptions(phone: phone, input: true) }
+        Picker("Динамик", selection: $phone.outputDevice) { AudioDeviceOptions(phone: phone, input: false) }
+    }
+}
+
+/// Пункты списка устройств: «Как в системе», подключённые и выбранное,
+/// если его сейчас нет.
+struct AudioDeviceOptions: View {
+    @ObservedObject var phone: PhoneService
+    let input: Bool
+
+    var body: some View {
+        let devices = input ? phone.inputDevices : phone.outputDevices
+        let selected = input ? phone.inputDevice : phone.outputDevice
+        Text(systemTitle).tag("")
+        ForEach(devices) { Text($0.name).tag($0.uid) }
+        // Выбранное отключено (наушники убрали) — звук идёт на системное,
+        // а выбор остаётся: подключат снова — звук вернётся туда.
+        if !selected.isEmpty, !devices.contains(where: { $0.uid == selected }) {
+            Text("Выбранное не подключено — сейчас как в системе").tag(selected)
+        }
+    }
+
+    private var systemTitle: String {
+        if let name = AudioDevices.defaultName(input: input) {
+            return String(localized: "Как в системе — \(name)")
+        }
+        return String(localized: "Как в системе")
     }
 }

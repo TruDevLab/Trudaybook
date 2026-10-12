@@ -41,6 +41,8 @@ struct LaunchOptions {
     var aurora = false
     /// Вертикальный таймлайн: `--vertical`.
     var vertical = false
+    /// `--shift N` (с `--demo`) — листнуть день N раз (минус — назад), как ⌘] и ⌘[.
+    var shift = 0
     /// Фон для снимка: `--background gradient|color|system` или имя градиента («Закат»).
     var backgroundKind: String?
     /// Кнопка панели действий «под курсором» — для снимка: `--hover archive`.
@@ -150,6 +152,7 @@ struct LaunchOptions {
             case "--year": options.year = true
             case "--aurora": options.aurora = true
             case "--vertical": options.vertical = true
+            case "--shift": options.shift = iterator.next().flatMap { Int($0) } ?? 0
             case "--week": options.week = true
             case "--drop-preview": options.dropPreview = iterator.next()
             case "--timeline-drag": options.timelineDrag = iterator.next().flatMap(Double.init)
@@ -534,8 +537,24 @@ final class AppModel: ObservableObject {
     /// Дни вертикального таймлайна: выбранный и следующий. Второй виден,
     /// если хватает ширины, но грузятся оба — ширина меняется без перезагрузки.
     var verticalDays: [Date] {
-        [day] + (calendar.date(byAdding: .day, value: 1, to: day).map { [$0] } ?? [])
+        let next = { (date: Date) in self.calendar.date(byAdding: .day, value: 1, to: date).map { [$0] } ?? [] }
+        guard pinsToday else { return [day] + next(day) }
+        // Два дня: слева всегда сегодня, справа — листаемый день
+        // (пока выбран сам сегодняшний — завтра).
+        let today = calendar.startOfDay(for: now)
+        return isToday ? [today] + next(today) : [today, day]
     }
+
+    /// Вертикальному виду хватает ширины на два дня — пишет сам вид.
+    @Published var verticalTwoDays = false {
+        didSet {
+            // Дни вида поменялись — встречи второго дня грузятся заново.
+            if verticalTwoDays != oldValue, timelineVertical, !showsWeek { Task { await reload() } }
+        }
+    }
+
+    /// Сегодня закреплено слева, листается только второй день.
+    var pinsToday: Bool { timelineVertical && !showsWeek && verticalTwoDays }
 
     /// Встречи и напоминания дня из загруженных нескольких дней.
     func events(on date: Date) -> [TimelineItem] {
@@ -1078,8 +1097,11 @@ final class AppModel: ObservableObject {
         // В неделе — от её понедельника: письма показываются на всех днях.
         // Несколько дней: неделя или два дня вертикального вида.
         let span: [Date]? = showsWeek ? weekDays : timelineVertical ? verticalDays : nil
-        let spanEnd = span?.last.flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
-        let mailFrom = min(span?.first ?? day, mailCutoff)
+        // Не по порядку: у вертикального вида сегодня слева, а второй день
+        // бывает и вчерашним.
+        let spanStart = span?.min()
+        let spanEnd = span?.max().flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
+        let mailFrom = min(spanStart ?? day, mailCutoff)
         let mailTo = max(spanEnd ?? dayEnd, now.addingTimeInterval(60))
         do {
             allMail = try await mail.messages(from: mailFrom, to: mailTo)
@@ -1088,7 +1110,7 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = String(localized: "Почта не загрузилась: \(error.localizedDescription)")
         }
-        if let first = span?.first, let spanEnd {
+        if let first = spanStart, let spanEnd {
             // Все дни одним запросом; выбранный — из них же.
             weekItems = await calendarSource.items(from: first, to: spanEnd)
             events = weekItems.filter { $0.time < dayEnd && ($0.end ?? $0.time.addingTimeInterval(1)) > day }
@@ -2727,10 +2749,42 @@ final class AppModel: ObservableObject {
     /// письмо это или встреча.
     static let newItemURL = URL(string: "trudaybook://new-item")!
 
-    /// Элемент, который сейчас тащат по шкале (`CursorDragSource`), — чтобы
-    /// показать, на какое время он встанет. Не `@Published`: меняется
-    /// в начале перетаскивания, перерисовывать ради этого нечего.
-    var dragging: TimelineItem?
+    /// Элемент, который сейчас тащат по шкале (`ListDragSource`), — чтобы
+    /// показать, на какое время он встанет. Не `@Published`: перерисовывать
+    /// всё окно ради него нечего — видно только `draggingCalendarItem`.
+    var dragging: TimelineItem? {
+        didSet {
+            let calendarItem = dragging.map { $0.kind != .mail } ?? false
+            if calendarItem != draggingCalendarItem { draggingCalendarItem = calendarItem }
+        }
+    }
+    /// Тащат встречу или напоминание — полосы «на весь день» видны заранее,
+    /// чтобы было понятно, куда бросить.
+    @Published private(set) var draggingCalendarItem = false
+    /// Заготовку новой встречи ведут удержанием мыши — полосы тоже видны:
+    /// в полосу её можно завести, и встреча будет на весь день.
+    @Published var holdArmed = false
+    /// Над какой полосой сейчас заготовка, которую ведут удержанием.
+    @Published var holdAllDayStrip: String?
+    /// Полосы «на весь день» на экране — где (в координатах окна) и чей день.
+    /// Удержание мыши — жест, а не перетаскивание: полоса сама его не видит,
+    /// и заготовка узнаёт, что над полосой, отсюда.
+    var allDayStrips: [String: (day: Date, frame: CGRect)] = [:]
+
+    var showsAllDayStrips: Bool { draggingCalendarItem || holdArmed }
+
+    func allDayStrip(at point: CGPoint) -> (id: String, day: Date)? {
+        allDayStrips.first { $0.value.frame.contains(point) }.map { ($0.key, $0.value.day) }
+    }
+
+    /// Новая встреча на весь день — «Создать» или заготовку завели в полосу дня.
+    func startNewEvent(allDayOn date: Date) {
+        let start = calendar.startOfDay(for: date)
+        startNewEvent(at: start)
+        eventEditor?.draft.isAllDay = true
+        eventEditor?.draft.start = start
+        eventEditor?.draft.end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+    }
 
     /// Время под курсором при броске — до пяти минут, как и перенос.
     static func dropTime(_ date: Date) -> Date {
@@ -2743,13 +2797,69 @@ final class AppModel: ObservableObject {
         let id = UUID()
         let item: TimelineItem
         let date: Date
+        /// Брошено в шапку дня — встреча станет событием на весь день.
+        var allDay = false
     }
     @Published var pendingMove: PendingMove?
 
     func confirmMove() {
         guard let move = pendingMove else { return }
         pendingMove = nil
-        reschedule(move.item, to: move.date)
+        if move.allDay {
+            makeAllDay(move.item, on: move.date)
+        } else {
+            reschedule(move.item, to: move.date)
+        }
+    }
+
+    /// Встречу или напоминание бросили в шапку дня — на весь этот день.
+    func dropAllDay(_ id: String, on day: Date) {
+        guard let item = item(id) else {
+            DebugLog.write("бросок в шапку дня: элемент не найден")
+            return
+        }
+        DebugLog.write("бросок в шапку дня: \(item.kind.rawValue)")
+        // Письмо на весь день не отложить — для него есть шкала.
+        guard item.kind != .mail else { return }
+        let start = calendar.startOfDay(for: day)
+        if item.isAllDay, calendar.isDate(item.time, inSameDayAs: start) { return }
+        if case .disabled(let reason) = availability(of: .reschedule, for: item) {
+            errorMessage = reason
+            return
+        }
+        if hasGuests(item) {
+            pendingMove = PendingMove(item: item, date: start, allDay: true)
+            return
+        }
+        makeAllDay(item, on: start)
+    }
+
+    /// Сделать встречу событием на весь день (у повторяющейся — только это
+    /// вхождение), напоминание — со сроком без времени.
+    func makeAllDay(_ item: TimelineItem, on day: Date) {
+        let start = calendar.startOfDay(for: day)
+        Task {
+            do {
+                switch item.kind {
+                case .reminder:
+                    try await calendarSource.setAllDay(item, on: start)
+                case .event:
+                    var draft = try await calendarSource.draft(for: item)
+                    draft.isAllDay = true
+                    draft.start = start
+                    draft.end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+                    try await calendarSource.update(item, to: draft, scope: .thisEvent)
+                    // Время начала — в идентификаторе встречи: это уже другой элемент.
+                    if selectedID == item.id { selectedID = nil }
+                case .mail:
+                    return
+                }
+                await reload()
+                await loadBusyDays()
+            } catch {
+                errorMessage = String(localized: "Не удалось сделать на весь день: \(MailAccounts.describe(error))")
+            }
+        }
     }
 
     /// Есть ли у встречи участники, кроме меня.
@@ -3410,6 +3520,18 @@ final class AppModel: ObservableObject {
 
     /// ⌘[ ⌘] и стрелки у даты: в неделе — на неделю.
     func shiftDay(_ offset: Int) {
+        if pinsToday {
+            // Листается только правый день; на сегодня он не встаёт — сегодня
+            // и так слева, — а перескакивает через него.
+            let today = calendar.startOfDay(for: now)
+            let second = isToday ? calendar.date(byAdding: .day, value: 1, to: today) ?? today : day
+            var target = calendar.date(byAdding: .day, value: offset, to: second) ?? second
+            if calendar.isDate(target, inSameDayAs: today) {
+                target = calendar.date(byAdding: .day, value: offset, to: target) ?? target
+            }
+            show(day: target)
+            return
+        }
         let step = showsWeek ? offset * 7 : offset
         if let target = calendar.date(byAdding: .day, value: step, to: day) { show(day: target) }
     }
@@ -3508,6 +3630,13 @@ final class AppModel: ObservableObject {
                     send(.leftMouseUp, NSPoint(x: start.x + 72, y: start.y + 48))
                 }
             }
+        }
+        if options.demo, options.shift != 0 {
+            for _ in 0..<abs(options.shift) { shiftDay(options.shift > 0 ? 1 : -1) }
+        }
+        // `--drop-preview allday` — тащат встречу: полосы «на весь день» подсвечены.
+        if options.dropPreview == "allday" {
+            dragging = dayItems.first { $0.kind == .event && !$0.isAllDay }
         }
         if let list = options.list { show(list: .folder(list)) }
         if let scope = options.searchScope { searchScope = scope }

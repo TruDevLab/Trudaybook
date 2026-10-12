@@ -2,17 +2,22 @@ import AppKit
 import SwiftUI
 import TrudaybookCore
 
-/// Перетаскивание строки из нижнего списка — своим сеансом AppKit.
+/// Перетаскивание строки из нижнего списка и карточки таймлайна — своим
+/// сеансом AppKit.
 ///
 /// `onDrag` в строке системного `List` не работает: таблица под списком
 /// забирает перетаскивание себе, и ни плашки под курсором, ни броска не
 /// получается (проверено синтетическими событиями: замыкание `onDrag`
 /// зовётся, а сеанс так и не начинается). Поэтому строка ловит сдвиг мыши
 /// жестом и сама начинает сеанс у своего `NSView` — с той же строкой
-/// номера на доске обмена, что ждут шкала и кнопки действий.
+/// номера на доске обмена, что ждут шкала и кнопки действий. Сеанс
+/// разрешает «переместить» — этого и ждёт шкала (у `onDrag` только
+/// «скопировать», и бросок на шкалу не принимался).
 struct ListDragSource: ViewModifier {
     @EnvironmentObject private var model: AppModel
     let item: TimelineItem
+    /// Тащат с таймлайна, а не из списка — для журнала.
+    var fromTimeline = false
     @ViewState private var anchor = ListDragAnchor()
 
     func body(content: Content) -> some View {
@@ -23,7 +28,7 @@ struct ListDragSource: ViewModifier {
                     .onChanged { _ in
                         guard !anchor.started else { return }
                         anchor.started = true
-                        anchor.begin(item, model: model)
+                        anchor.begin(item, fromTimeline: fromTimeline, model: model)
                     }
                     .onEnded { _ in anchor.started = false }
             )
@@ -37,7 +42,7 @@ final class ListDragAnchor: NSObject, NSDraggingSource {
     var started = false
     private weak var model: AppModel?
 
-    func begin(_ item: TimelineItem, model: AppModel) {
+    func begin(_ item: TimelineItem, fromTimeline: Bool, model: AppModel) {
         guard let view, let event = NSApp.currentEvent,
               [.leftMouseDragged, .leftMouseDown].contains(event.type) else {
             started = false
@@ -54,7 +59,7 @@ final class ListDragAnchor: NSObject, NSDraggingSource {
                            width: image.size.width, height: image.size.height)
         let dragging = NSDraggingItem(pasteboardWriter: item.id as NSString)
         dragging.setDraggingFrame(frame, contents: image)
-        DebugLog.write("перетаскивание начато: \(item.kind.rawValue), из списка")
+        DebugLog.write("перетаскивание начато: \(item.kind.rawValue), \(fromTimeline ? "с таймлайна" : "из списка")")
         let session = view.beginDraggingSession(with: [dragging], event: event, source: self)
         session.animatesToStartingPositionsOnCancelOrFail = true
     }

@@ -408,6 +408,8 @@ public final class DemoCalendar: CalendarProvider {
     private let calendar: Calendar
     private var moved: [String: Date] = [:]
     private var completed: Set<String> = []
+    /// Напоминания, брошенные в шапку дня, — на весь день.
+    private var allDay: Set<String> = []
     /// Правки в памяти: встреча дня (`имя-день`) и серия (`имя`).
     private var overrides: [String: EventDraft] = [:]
     private var seriesOverrides: [String: EventDraft] = [:]
@@ -459,6 +461,14 @@ public final class DemoCalendar: CalendarProvider {
     public func move(_ item: TimelineItem, to start: Date) async throws {
         guard let key = Self.baseKey(of: item.id) else { throw CalendarError.notFound }
         moved[key] = start
+        allDay.remove(key)
+        onChange?()
+    }
+
+    public func setAllDay(_ item: TimelineItem, on day: Date) async throws {
+        guard let key = Self.baseKey(of: item.id) else { throw CalendarError.notFound }
+        moved[key] = nil
+        allDay.insert(key)
         onChange?()
     }
 
@@ -596,6 +606,12 @@ public final class DemoCalendar: CalendarProvider {
                 start = moved[baseKey] ?? Demo.at(day, parts.hour ?? hour, parts.minute ?? minute, calendar: calendar)
                 minutes = Int(edit.duration / 60)
             }
+            // Встречу сделали событием на весь день — она уходит в полосу над шкалой.
+            let whole = edit?.isAllDay == true
+            if whole {
+                start = day
+                minutes = 24 * 60
+            }
             let mine = organizer == nil || organizer == Demo.me || attendees.isEmpty
             let guests = attendees.map { Attendee(person: $0, response: .accepted) }
                 + (attendees.isEmpty ? [] : [Attendee(person: Demo.me, response: myResponse, isMe: true)])
@@ -604,6 +620,7 @@ public final class DemoCalendar: CalendarProvider {
                 title: title,
                 time: start,
                 end: start.addingTimeInterval(Double(minutes) * 60),
+                isAllDay: whole,
                 color: color,
                 detail: .event(EventInfo(
                     calendarTitle: calendarTitle,
@@ -624,7 +641,7 @@ public final class DemoCalendar: CalendarProvider {
         // Созданные в этом запуске: в свой день и, если повторяются, в дни повтора.
         for (number, draft) in created where occurs(draft, on: day) {
             let parts = calendar.dateComponents([.hour, .minute], from: draft.start)
-            let start = Demo.at(day, parts.hour ?? 9, parts.minute ?? 0, calendar: calendar)
+            let start = draft.isAllDay ? day : Demo.at(day, parts.hour ?? 9, parts.minute ?? 0, calendar: calendar)
             let calendarTitle = draft.calendarID.map { String($0.dropFirst("demo-cal-".count)) } ?? String(localized: "Работа")
             result.append(TimelineItem(
                 id: "event:demo-new-\(number)-\(key)@\(Int(start.timeIntervalSince1970))",
@@ -662,18 +679,19 @@ public final class DemoCalendar: CalendarProvider {
                       doneIfPast: Bool = true) {
             let baseKey = "\(name)-\(key)"
             if deleted.contains(baseKey) { return }
-            let due = moved[baseKey] ?? Demo.at(day, hour ?? 0, 0, calendar: calendar)
+            let whole = allDay.contains(baseKey) || (hour == nil && moved[baseKey] == nil)
+            let due = whole ? day : moved[baseKey] ?? Demo.at(day, hour ?? 0, 0, calendar: calendar)
             let isDone = completed.contains(baseKey) || (doneIfPast && day < today)
             result.append(TimelineItem(
                 id: "reminder:demo-\(baseKey)",
                 title: title,
                 time: due,
-                isAllDay: hour == nil && moved[baseKey] == nil,
+                isAllDay: whole,
                 color: Self.tasks,
                 detail: .reminder(ReminderInfo(
                     listTitle: list,
                     isCompleted: isDone,
-                    hasTime: hour != nil || moved[baseKey] != nil
+                    hasTime: !whole
                 ))
             ))
         }

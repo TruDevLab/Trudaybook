@@ -67,12 +67,18 @@ struct VerticalTimelineView: View {
             let columns = columns(width: geometry.size.width)
             VStack(spacing: 0) {
                 header(columns)
+                allDayRow(columns)
                 Divider()
                 content(columns)
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
         }
         .background(Panel())
+        .modifier(DaySwipe())
+        // Хватает ли ширины на два дня — от этого зависит, закреплено ли сегодня.
+        .onGeometryChange(for: Bool.self) { proxy in
+            proxy.size.width - Self.hoursWidth - Self.inset * 2 - Self.dayGap >= Self.minDayWidth * 2
+        } action: { model.verticalTwoDays = $0 }
     }
 
     /// Заголовки — ровно над своими колонками; у двух дней — и дата.
@@ -100,6 +106,32 @@ struct VerticalTimelineView: View {
         .padding(.vertical, Space.xs)
         .fixedSize(horizontal: false, vertical: true)
     }
+
+    /// Полоса событий на весь день — у каждого дня своя, над его колонками.
+    /// В неё же бросают встречу или напоминание, чтобы сделать на весь день;
+    /// пока тащат, она подсвечена пунктиром.
+    private func allDayRow(_ columns: [DayColumns]) -> some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear.frame(height: Self.allDayHeight)
+            ForEach(columns, id: \.day) { column in
+                let whole = items(on: column.day).filter(\.isAllDay).sorted { $0.title < $1.title }
+                HStack(spacing: Space.sm) {
+                    ForEach(whole) { item in
+                        AllDayChip(item: item)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(width: column.end - column.x, height: Self.allDayHeight, alignment: .leading)
+                .clipped()
+                .contentShape(Rectangle())
+                .modifier(AllDayDropTarget(day: column.day, occupied: !whole.isEmpty))
+                .offset(x: Self.inset + column.x)
+            }
+        }
+        .padding(.bottom, Space.xs)
+    }
+
+    static let allDayHeight: CGFloat = 26
 
     private func content(_ columns: [DayColumns]) -> some View {
         let first = scale(for: model.day)
