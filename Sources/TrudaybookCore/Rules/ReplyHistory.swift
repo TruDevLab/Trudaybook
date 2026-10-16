@@ -49,3 +49,31 @@ public enum ReplyHistory {
         return result.reversed()
     }
 }
+
+/// Начатый ответ на письмо: черновик в «Черновиках», отвечающий на него.
+public enum ReplyDrafts {
+    /// Черновик ответа на `original` — самый свежий из тех, чей `In-Reply-To`
+    /// (или последняя ссылка `References`) — это письмо.
+    public static func draft(for original: TimelineItem, in drafts: [TimelineItem]) -> TimelineItem? {
+        guard let messageID = original.mail?.messageID else { return nil }
+        return drafts
+            .filter { target(of: $0) == messageID }
+            .max { $0.time < $1.time }
+    }
+
+    /// На какое письмо отвечает черновик.
+    public static func target(of draft: TimelineItem) -> String? {
+        draft.mail.flatMap { $0.inReplyTo ?? $0.references.last }
+    }
+
+    /// Свой текст черновика без цитаты: её `MessageBuilder` дописывает
+    /// в текстовую часть под подписью «… пишет:», а в окне ответа цитата —
+    /// отдельно, из самого письма.
+    public static func ownText(_ text: String, attribution: String?) -> String {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        if let attribution, let range = normalized.range(of: "\n\n" + attribution) {
+            return String(normalized[..<range.lowerBound])
+        }
+        return ReplyHistory.stripQuoted(normalized)
+    }
+}

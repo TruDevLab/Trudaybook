@@ -102,6 +102,9 @@ public struct MailInfo: Hashable, Sendable {
     /// к исходному письму (`In-Reply-To`, `References`).
     public var messageID: String?
     public var references: [String]
+    /// `In-Reply-To`: на какое письмо это ответ — по нему черновик ответа
+    /// находит своё письмо.
+    public var inReplyTo: String?
     public var snippet: String
     public var isRead: Bool
     /// Сервер знает, что на письмо ответили: флаг `\Answered` в IMAP или
@@ -129,6 +132,7 @@ public struct MailInfo: Hashable, Sendable {
         cc: [Person] = [],
         messageID: String? = nil,
         references: [String] = [],
+        inReplyTo: String? = nil,
         snippet: String = "",
         isRead: Bool = false,
         isAnsweredOnServer: Bool = false,
@@ -146,6 +150,7 @@ public struct MailInfo: Hashable, Sendable {
         self.cc = cc
         self.messageID = messageID
         self.references = references
+        self.inReplyTo = inReplyTo
         self.snippet = snippet
         self.isRead = isRead
         self.isAnsweredOnServer = isAnsweredOnServer

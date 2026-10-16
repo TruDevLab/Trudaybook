@@ -15,6 +15,11 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
     /// Текст поправил человек (или вставка с отменой) — для сохранения
     /// заметки. Загрузка через `load` сюда не приходит.
     var onChange: (() -> Void)?
+    /// Правка выделенного моделью — пункт «ИИ» в меню правой кнопки.
+    /// `nil` — пункта нет (заметки, выключенный ИИ).
+    var onRewrite: ((ModelPrompts.Rewrite) -> Void)?
+    /// Выделено ли что-то — для кнопки ИИ над полем.
+    @Published private(set) var hasSelection = false
 
     var attributed: NSAttributedString {
         textView.map { NSAttributedString(attributedString: $0.attributedString()) } ?? NSAttributedString()
@@ -86,6 +91,69 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
         edit(range) { storage.replaceCharacters(in: range, with: text) }
         textView.setSelectedRange(NSRange(location: range.location + text.length, length: 0))
         textView.scrollRangeToVisible(NSRange(location: range.location, length: 0))
+    }
+
+    // MARK: - Правка моделью
+
+    /// Выделенный кусок — что отдать модели и куда потом вернуть ответ.
+    func selection() -> (range: NSRange, text: String)? {
+        guard let view = textView else { return nil }
+        let range = view.selectedRange()
+        guard range.length > 0 else { return nil }
+        let text = (view.string as NSString).substring(with: range)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : (range, text)
+    }
+
+    /// Поставить ответ модели на место выделенного, с отменой по ⌘Z.
+    /// `false` — пока модель думала, этот кусок поправили руками:
+    /// не затирать сделанное человеком.
+    func replace(_ range: NSRange, expected: String, with text: String) -> Bool {
+        guard let view = textView, let storage = view.textStorage, NSMaxRange(range) <= storage.length,
+              (storage.string as NSString).substring(with: range) == expected else { return false }
+        // Шрифт и цвет — как у начала выделенного: правка не должна
+        // перекрашивать письмо в чужой цвет или размер.
+        var attributes: [NSAttributedString.Key: Any] = [.font: Self.bodyFont, .foregroundColor: NSColor.textColor]
+        if range.length > 0 {
+            let first = storage.attributes(at: range.location, effectiveRange: nil)
+            if let font = first[.font] as? NSFont {
+                attributes[.font] = NSFontManager.shared.convert(font, toNotHaveTrait: [.boldFontMask, .italicFontMask])
+            }
+            if let color = first[.foregroundColor] { attributes[.foregroundColor] = color }
+        }
+        edit(range) { storage.replaceCharacters(in: range, with: NSAttributedString(string: text, attributes: attributes)) }
+        let replaced = NSRange(location: range.location, length: (text as NSString).length)
+        view.setSelectedRange(replaced)
+        view.scrollRangeToVisible(replaced)
+        return true
+    }
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        let selected = (textView?.selectedRange().length ?? 0) > 0
+        if selected != hasSelection { hasSelection = selected }
+    }
+
+    /// Меню правой кнопки: «ИИ» с правками выделенного — над пунктами системы.
+    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+        guard onRewrite != nil, selection() != nil else { return menu }
+        let submenu = NSMenu()
+        for action in ModelPrompts.Rewrite.allCases {
+            let item = NSMenuItem(title: action.title, action: #selector(rewriteFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = action.rawValue
+            item.image = NSImage(systemSymbolName: action.symbol, accessibilityDescription: nil)
+            submenu.addItem(item)
+        }
+        let root = NSMenuItem(title: String(localized: "ИИ"), action: nil, keyEquivalent: "")
+        root.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+        root.submenu = submenu
+        menu.insertItem(root, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
+    }
+
+    @objc private func rewriteFromMenu(_ item: NSMenuItem) {
+        guard let raw = item.representedObject as? String, let action = ModelPrompts.Rewrite(rawValue: raw) else { return }
+        onRewrite?(action)
     }
 
     // MARK: - Цвет и выделение
@@ -212,8 +280,6 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
             }
         }
     }
-
-    var hasSelection: Bool { (textView?.selectedRange().length ?? 0) > 0 }
 
     // MARK: - Заголовок
 
@@ -453,6 +519,30 @@ struct RichFormatControls: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .labelHelp(String(localized: "Вставить таблицу (столбцы × строки)"))
+    }
+}
+
+extension ModelPrompts.Rewrite {
+    var title: String {
+        switch self {
+        case .fix: String(localized: "Исправить ошибки")
+        case .improve: String(localized: "Улучшить написание")
+        case .structure: String(localized: "Улучшить формат и структуру")
+        case .shorter: String(localized: "Сократить")
+        case .formal: String(localized: "Деловой тон")
+        case .friendly: String(localized: "Дружелюбный тон")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .fix: "textformat.abc"
+        case .improve: "wand.and.stars"
+        case .structure: "list.bullet.indent"
+        case .shorter: "text.badge.minus"
+        case .formal: "briefcase"
+        case .friendly: "face.smiling"
+        }
     }
 }
 

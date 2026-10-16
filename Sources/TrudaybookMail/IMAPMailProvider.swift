@@ -354,6 +354,62 @@ public actor IMAPMailProvider: MailProvider {
         changeHandler?()
     }
 
+    // MARK: - Черновики
+
+    /// Метка черновика: `mid:<Message-ID>` — по нему находятся все версии;
+    /// `uid:<номер>` — чужой черновик без Message-ID.
+    static func draftParts(_ handle: String?) -> (messageID: String?, uid: UInt32?) {
+        guard let handle else { return (nil, nil) }
+        if handle.hasPrefix("mid:") { return (String(handle.dropFirst(4)), nil) }
+        if handle.hasPrefix("uid:") { return (nil, UInt32(handle.dropFirst(4))) }
+        return (nil, nil)
+    }
+
+    /// Новая версия — в «Черновики» с флагом `\Draft`, прежние (тот же
+    /// Message-ID) — стираются: иначе папка копила бы каждое автосохранение.
+    public func saveDraft(_ mail: OutgoingMail) async throws -> String {
+        guard let drafts = mailbox(for: .drafts) else { throw DraftError.noFolder }
+        let previous = Self.draftParts(mail.draftHandle)
+        let messageID = previous.messageID ?? MessageBuilder.newMessageID(for: account.email)
+        let data = MessageBuilder.build(mail, from: account.me, messageID: messageID, includeBcc: true)
+        let old: [UInt32] = try await perform {
+            try await select(drafts)
+            // Ищем до APPEND — новая версия в список на удаление не попадёт.
+            let found = try await client.uidSearch("HEADER Message-ID \(IMAPArgument.quoted("<\(messageID)>"))")
+            try await client.append(data, to: drafts, flags: "(\\Seen \\Draft)")
+            let old = Array(Set(found + [previous.uid].compactMap { $0 }))
+            try await client.uidExpunge(old)
+            return old
+        }
+        if !old.isEmpty { try? cache.delete(old, mailbox: drafts, account: account.id) }
+        log("черновик сохранён")
+        changeHandler?()
+        return "mid:\(messageID)"
+    }
+
+    public func deleteDraft(_ handle: String) async throws {
+        guard let drafts = mailbox(for: .drafts) else { throw DraftError.noFolder }
+        let parts = Self.draftParts(handle)
+        let old: [UInt32] = try await perform {
+            try await select(drafts)
+            var old = [parts.uid].compactMap { $0 }
+            if let messageID = parts.messageID {
+                old += try await client.uidSearch("HEADER Message-ID \(IMAPArgument.quoted("<\(messageID)>"))")
+            }
+            try await client.uidExpunge(old)
+            return old
+        }
+        if !old.isEmpty { try? cache.delete(old, mailbox: drafts, account: account.id) }
+        log("черновик убран")
+        changeHandler?()
+    }
+
+    public func draftHandle(of itemID: String) async -> String? {
+        guard let (folder, uid) = Self.parse(itemID), folder == mailbox(for: .drafts) else { return nil }
+        let messageID = cache.message(uid: uid, mailbox: folder, account: account.id).flatMap { item($0).mail?.messageID }
+        return messageID.map { "mid:\($0)" } ?? "uid:\(uid)"
+    }
+
     // MARK: - Папки и поиск
 
     public func folders() async throws -> [MailFolder] {

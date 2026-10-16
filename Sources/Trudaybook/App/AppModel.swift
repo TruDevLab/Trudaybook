@@ -134,6 +134,8 @@ struct LaunchOptions {
     /// перетаскивания. Сам бросок так не проверить: сеанс следит за
     /// настоящим курсором.
     var dragProbe: String?
+    /// `--scroll-probe x,y,dy` — прокрутка колёсиком в точке окна (сверху слева).
+    var scrollProbe: String?
     /// Кнопка поиска для снимка: `--search-scope from|to|cc`.
     var searchScope: MailSearchQuery.Scope?
 
@@ -179,6 +181,7 @@ struct LaunchOptions {
             case "--summary": options.summary = true
             case "--template": options.template = true
             case "--drag-probe": options.dragProbe = iterator.next()
+            case "--scroll-probe": options.scrollProbe = iterator.next()
             case "--search-scope": options.searchScope = iterator.next().flatMap(MailSearchQuery.Scope.init(rawValue:))
             case "--label-mail": options.labelMail = true
             case "--note": options.note = iterator.next().flatMap(NotePeriod.init(rawValue:)) ?? .day
@@ -748,6 +751,13 @@ final class AppModel: ObservableObject {
     /// Открытый черновик ответа и письмо, на которое отвечаем.
     @Published var draft: OutgoingMail?
     private(set) var draftReplyTo: String?
+    /// Номер открытого черновика: новый ответ — новое окно ввода, а не
+    /// старое с чужим текстом (и чужим черновиком в папке).
+    @Published private(set) var draftSerial = 0
+    /// Черновики всех ящиков — начатый ответ видно прямо у письма.
+    @Published private(set) var draftItems: [TimelineItem] = []
+    /// Message-ID писем, на которые начат ответ, — значок в списке.
+    @Published private(set) var replyDraftTargets: Set<String> = []
     @Published var rescheduleTarget: TimelineItem?
     /// Встреча или напоминание, которые просят отклонить, — ждут подтверждения.
     @Published var declineTarget: TimelineItem?
@@ -1539,6 +1549,17 @@ final class AppModel: ObservableObject {
         if case .folder(let id) = listMode, !folders.contains(where: { $0.id == id }), !folders.isEmpty || accounts.isEmpty {
             show(list: .unresolved)
         }
+        await loadReplyDrafts()
+    }
+
+    /// Черновики из «Черновиков» всех ящиков.
+    func loadReplyDrafts() async {
+        var found: [TimelineItem] = []
+        for folder in folders where folder.role == .drafts {
+            found += (try? await mail.messages(inFolder: folder.id, limit: 200)) ?? []
+        }
+        draftItems = found
+        replyDraftTargets = Set(found.compactMap(ReplyDrafts.target))
     }
 
     func show(list mode: ListMode) {
@@ -1918,6 +1939,27 @@ final class AppModel: ObservableObject {
     /// Возвращает текст или объяснение, почему его нет. Письма прошлой
     /// переписки читаются только прочитанные и свои: тело непрочитанного
     /// письма пометило бы его прочитанным, а это не то, о чём просили.
+    /// Правка выделенного в письме местной моделью. В журнал — только что
+    /// и сколько знаков, сам текст — нет.
+    func rewrite(_ text: String, _ action: ModelPrompts.Rewrite) async -> Result<String, ReplyTemplateError> {
+        if let problem = ai.problem {
+            return .failure(.init(code: "disabled", message: problem))
+        }
+        guard text.count <= ModelPrompts.maxRewriteText else {
+            return .failure(.init(code: "long", message: String(localized: "Выделено слишком много — модель правит до \(ModelPrompts.maxRewriteText) знаков за раз.")))
+        }
+        let prompt = ModelPrompts.rewrite(text, action, language: AppLanguage.code)
+        switch await ai.complete(prompt, purpose: "правка текста (\(action.rawValue)), знаков \(text.count)") {
+        case .success(let answer):
+            guard let result = ModelPrompts.rewriteText(answer, original: text) else {
+                return .failure(.init(code: "empty", message: String(localized: "Модель вернула пустой текст.")))
+            }
+            return .success(result)
+        case .failure(let failure):
+            return .failure(.init(code: failure.code, message: failure.message))
+        }
+    }
+
     func prepareReplyTemplate(for item: TimelineItem) async -> Result<String, ReplyTemplateError> {
         guard item.kind == .mail, let info = item.mail else {
             return .failure(.init(code: "kind", message: String(localized: "Шаблон ответа готовится только на письмо.")))
@@ -2457,6 +2499,11 @@ final class AppModel: ObservableObject {
     /// `prefill` — готовый текст ответа (черновик помощника Trunook):
     /// ляжет в поле, но не уйдёт, пока его не отправят.
     func startReply(to item: TimelineItem, all: Bool, prefill: String? = nil) {
+        // Ответ уже начат — продолжить его, а не завести второй черновик.
+        if prefill == nil, let started = replyDraft(for: item) {
+            continueReply(to: item, draft: started)
+            return
+        }
         let id = item.id
         Task {
             let quoted = item.kind == .mail ? try? await mail.body(of: id) : nil
@@ -2466,6 +2513,7 @@ final class AppModel: ObservableObject {
             if let prefill { reply?.text = prefill }
             draft = reply
             draftReplyTo = item.kind == .mail ? id : nil
+            draftSerial += 1
         }
     }
 
@@ -2484,6 +2532,7 @@ final class AppModel: ObservableObject {
                 if let replyTo { mark(replyTo) { $0.answeredAt = self.now } }
                 self.draft = nil
                 draftReplyTo = nil
+                if let handle = draft.draftHandle { await deleteDraft(handle) }
             } catch {
                 errorMessage = String(localized: "Письмо не отправлено: \(MailAccounts.describe(error))")
             }
@@ -2575,6 +2624,7 @@ final class AppModel: ObservableObject {
         selectedID = nil
         draftReplyTo = nil
         draft = OutgoingMail(to: people, subject: subject, text: text, accountID: newMailAccountID)
+        draftSerial += 1
     }
 
     /// Ящик для нового письма: выбранный по умолчанию, если он ещё подключён.
@@ -2693,6 +2743,7 @@ final class AppModel: ObservableObject {
         guard !(draft.to + draft.cc + draft.bcc).isEmpty else { return String(localized: "Не указан получатель") }
         do {
             try await mail.send(draft, replyingTo: nil)
+            if let handle = draft.draftHandle { await deleteDraft(handle) }
             return nil
         } catch {
             return String(localized: "Письмо не отправлено: \(MailAccounts.describe(error))")
@@ -2935,6 +2986,109 @@ final class AppModel: ObservableObject {
         reply?.accountID = senderAccount(for: item)
         draft = reply
         draftReplyTo = fromMailbox ? item.id : nil
+        draftSerial += 1
+    }
+
+    // MARK: - Черновики
+
+    /// Сохранить черновик в «Черновики» ящика. Ошибка — словами, для окна письма.
+    func saveDraft(_ mail: OutgoingMail) async -> Result<String, ReplyTemplateError> {
+        do {
+            let handle = try await self.mail.saveDraft(mail)
+            DebugLog.write("черновик сохранён: получателей \((mail.to + mail.cc + mail.bcc).count), вложений \(mail.attachments.count)")
+            if isShowingDrafts { await reloadList() }
+            await loadReplyDrafts()
+            return .success(handle)
+        } catch {
+            DebugLog.write("черновик не сохранён: \(MailAccounts.describe(error))")
+            return .failure(.init(code: "draft", message: String(localized: "Черновик не сохранён: \(MailAccounts.describe(error))")))
+        }
+    }
+
+    func deleteDraft(_ handle: String) async {
+        do {
+            try await mail.deleteDraft(handle)
+            DebugLog.write("черновик убран")
+            if isShowingDrafts { await reloadList() }
+            await loadReplyDrafts()
+        } catch {
+            DebugLog.write("черновик не убран: \(MailAccounts.describe(error))")
+        }
+    }
+
+    /// Начатый ответ на письмо — черновик в «Черновиках».
+    func replyDraft(for item: TimelineItem) -> TimelineItem? {
+        guard item.kind == .mail, hasReplyDraft(item) else { return nil }
+        return ReplyDrafts.draft(for: item, in: draftItems)
+    }
+
+    func hasReplyDraft(_ item: TimelineItem) -> Bool {
+        item.mail?.messageID.map(replyDraftTargets.contains) ?? false
+    }
+
+    /// Продолжить начатый ответ прямо у письма: цитата — из самого письма,
+    /// свой текст, адреса, тема и вложения — из черновика; сохранение
+    /// заменит эту версию.
+    func continueReply(to item: TimelineItem, draft started: TimelineItem) {
+        guard let info = started.mail else { return }
+        let id = item.id
+        Task {
+            let quoted = try? await mail.body(of: id)
+            guard let saved = try? await mail.body(of: started.id) else {
+                errorMessage = String(localized: "Черновик не открылся")
+                return
+            }
+            let handle = await mail.draftHandle(of: started.id)
+            guard selectedID == id || selectedID == nil || selectedID == started.id,
+                  var reply = ReplyBuilder.reply(to: item, body: quoted, all: false, ownAddresses: mail.ownAddresses) else { return }
+            reply.to = info.to
+            reply.cc = info.cc
+            reply.subject = started.title
+            reply.text = ReplyDrafts.ownText(saved.plainText, attribution: reply.quote?.attribution)
+            reply.attachments = saved.attachments
+            reply.accountID = info.accountID
+            reply.draftHandle = handle
+            if selectedID != id { selectedID = id }
+            draft = reply
+            draftReplyTo = id
+            draftSerial += 1
+        }
+    }
+
+    /// Письмо из открытой внизу папки «Черновики».
+    func isDraft(_ item: TimelineItem) -> Bool {
+        isShowingDrafts && folderItems.contains { $0.id == item.id }
+    }
+
+    /// Внизу открыта папка «Черновики».
+    var isShowingDrafts: Bool {
+        guard case .folder(let id) = listMode else { return false }
+        return folders.first { $0.id == id }?.role == .drafts
+    }
+
+    /// Письмо из «Черновиков» — продолжить в отдельном окне: правая панель
+    /// остаётся папке. Текст — простой: оформление чужой программы
+    /// в поле ввода не переносим (HTML в поле — это и загрузки из сети).
+    func continueDraft(_ item: TimelineItem) {
+        guard let info = item.mail else { return }
+        // Ответ на известное письмо — продолжить у самого письма, с цитатой.
+        if let target = ReplyDrafts.target(of: item),
+           let original = (allMail + liveMatches).first(where: { $0.mail?.messageID == target }) {
+            continueReply(to: original, draft: item)
+            return
+        }
+        Task {
+            do {
+                let body = try await mail.body(of: item.id)
+                var draft = OutgoingMail(to: info.to, cc: info.cc, subject: item.title, text: body.plainText,
+                                         references: info.references, accountID: info.accountID,
+                                         attachments: body.attachments)
+                draft.draftHandle = await mail.draftHandle(of: item.id)
+                ComposeWindow.show(draft, model: self)
+            } catch {
+                errorMessage = String(localized: "Черновик не открылся: \(MailAccounts.describe(error))")
+            }
+        }
     }
 
     /// Нажатие по виджету: `trudaybook://today`, `…/unresolved`,
@@ -3628,6 +3782,23 @@ final class AppModel: ObservableObject {
                     send(.leftMouseDown, start)
                     for step in 1...12 { send(.leftMouseDragged, NSPoint(x: start.x + Double(step) * 6, y: start.y + Double(step) * 4)) }
                     send(.leftMouseUp, NSPoint(x: start.x + 72, y: start.y + 48))
+                }
+            }
+        }
+        // Колёсико — прямо виду под точкой: так видно, кому достаётся
+        // прокрутка (описание встречи отдаёт её панели).
+        if options.demo, let probe = options.scrollProbe {
+            let parts = probe.split(separator: ",").compactMap { Double($0) }
+            if parts.count == 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+                          let content = window.contentView,
+                          let wheel = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+                                              wheel1: Int32(parts[2]), wheel2: 0, wheel3: 0),
+                          let event = NSEvent(cgEvent: wheel) else { return }
+                    let target = content.hitTest(NSPoint(x: parts[0], y: content.bounds.height - parts[1]))
+                    DebugLog.write("проба прокрутки: \(target.map { String(describing: type(of: $0)) } ?? "мимо")")
+                    target?.scrollWheel(with: event)
                 }
             }
         }

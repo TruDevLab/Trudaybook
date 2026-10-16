@@ -76,6 +76,10 @@ struct ItemRow: View {
                     Image(systemName: "calendar.badge.clock").font(.caption).foregroundStyle(Color.accentColor)
                         .help("Приглашение на встречу")
                 }
+                if model.hasReplyDraft(item) || thread?.items.contains(where: model.hasReplyDraft) == true {
+                    Image(systemName: "square.and.pencil").font(.caption).foregroundStyle(Palette.warning)
+                        .help("Начат ответ — черновик")
+                }
                 if item.mail?.hasAttachments == true {
                     Image(systemName: "paperclip").font(.caption).foregroundStyle(.secondary)
                 }
@@ -90,7 +94,9 @@ struct ItemRow: View {
             // Двойное нажатие: письмо — в отдельное окно, встреча и
             // напоминание — к их дню на таймлайне.
             model.selectedID = item.id
-            if item.kind == .mail {
+            if model.isDraft(item) {
+                model.continueDraft(item)
+            } else if item.kind == .mail {
                 LetterWindow.show(item, model: model)
             } else {
                 model.show(day: model.effectiveTime(of: item))

@@ -307,6 +307,16 @@ public actor IMAPClient {
         try await run(capabilities.contains("UIDPLUS") ? "UID EXPUNGE \(set)" : "EXPUNGE")
     }
 
+    /// Стереть письма из выбранной папки насовсем. Только для прежних версий
+    /// своего черновика: всё остальное приложение перекладывает, а не стирает.
+    public func uidExpunge(_ uids: [UInt32]) async throws {
+        guard !uids.isEmpty else { return }
+        let set = IMAPArgument.uidSet(uids)
+        try await run("UID STORE \(set) +FLAGS.SILENT (\\Deleted)")
+        // Без UIDPLUS простой EXPUNGE вычистит и чужие пометки «удалено» в папке.
+        try await run(capabilities.contains("UIDPLUS") ? "UID EXPUNGE \(set)" : "EXPUNGE")
+    }
+
     /// Положить письмо в папку — копию отправленного в «Отправленные».
     public func append(_ message: Data, to mailbox: String, flags: String = "(\\Seen)") async throws {
         try await run("APPEND \(IMAPArgument.quoted(mailbox)) \(flags)", literals: [message])

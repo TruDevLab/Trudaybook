@@ -34,6 +34,7 @@ enum CachedItem {
                 cc: header.cc,
                 messageID: header.messageID,
                 references: header.references,
+                inReplyTo: header.inReplyTo,
                 isRead: flags.contains("\\seen"),
                 isAnsweredOnServer: answered,
                 hasAttachments: type?.type == "multipart/mixed",

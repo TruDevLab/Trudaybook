@@ -352,6 +352,37 @@ public actor EWSMailProvider: AccountMailProvider {
         changeHandler?()
     }
 
+    // MARK: - Черновики
+
+    /// Метка черновика — Id письма в Exchange. Новая версия создаётся
+    /// заново (MIME у готового письма не заменить), прежняя удаляется.
+    public func saveDraft(_ mail: OutgoingMail) async throws -> String {
+        let messageID = MessageBuilder.newMessageID(for: account.email)
+        let data = MessageBuilder.build(mail, from: account.me, messageID: messageID, includeBcc: true)
+        let response = try await call("CreateItem", EWSRequest.saveDraft(mime: data))
+        try EWSRequest.requireSuccess(response)
+        guard let id = response.first("ItemId")?.attributes["Id"] else {
+            throw MailNetworkError.protocolError(String(localized: "Exchange не вернул черновик"))
+        }
+        if let old = mail.draftHandle {
+            try? EWSRequest.requireSuccess(try await call("DeleteItem", EWSRequest.deleteDraft(old)))
+        }
+        log("черновик сохранён")
+        changeHandler?()
+        return id
+    }
+
+    public func deleteDraft(_ handle: String) async throws {
+        try EWSRequest.requireSuccess(try await call("DeleteItem", EWSRequest.deleteDraft(handle)))
+        log("черновик убран")
+        changeHandler?()
+    }
+
+    public func draftHandle(of itemID: String) async -> String? {
+        guard let (folder, uid) = try? locate(itemID), folder == "drafts" else { return nil }
+        return cache.remoteID(uid: uid, account: account.id)
+    }
+
     // MARK: - Папки и поиск
 
     public func folders() async throws -> [MailFolder] {

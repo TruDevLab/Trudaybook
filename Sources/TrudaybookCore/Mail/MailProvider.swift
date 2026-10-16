@@ -74,6 +74,9 @@ public struct OutgoingMail: Hashable, Sendable {
     public var accountID: String?
     /// Прикреплённые файлы (с содержимым).
     public var attachments: [MailBody.Attachment]
+    /// Сохранённая версия в «Черновиках» (что вернул `saveDraft`): следующее
+    /// сохранение её заменит, отправка — уберёт. `nil` — ещё не сохраняли.
+    public var draftHandle: String?
 
     public init(to: [Person], cc: [Person] = [], bcc: [Person] = [], subject: String, text: String, html: String? = nil,
                 quote: Quote? = nil, inReplyTo: String? = nil, references: [String] = [],
@@ -164,11 +167,36 @@ public protocol MailProvider: AnyObject, Sendable {
     /// Ответ на приглашение из письма `itemID`: Exchange — своими командами
     /// (и календарь обновит сам), остальные — письмом iTIP организатору.
     func respond(to itemID: String, invitation: Invitation, response: InvitationResponse, comment: String?) async throws
+
+    /// Черновик — в «Черновики» ящика. Версия `mail.draftHandle` после
+    /// этого убирается: в папке остаётся одна, последняя. Возвращает метку
+    /// новой версии.
+    func saveDraft(_ mail: OutgoingMail) async throws -> String
+    /// Убрать сохранённый черновик: письмо отправили или решили не хранить.
+    func deleteDraft(_ handle: String) async throws
+    /// Метка черновика из папки «Черновики» — чтобы продолжить его и заменить.
+    func draftHandle(of itemID: String) async -> String?
 }
 
 public extension MailProvider {
+    func saveDraft(_ mail: OutgoingMail) async throws -> String { throw DraftError.unsupported }
+    func deleteDraft(_ handle: String) async throws { throw DraftError.unsupported }
+    func draftHandle(of itemID: String) async -> String? { nil }
+
     func respond(to itemID: String, invitation: Invitation, response: InvitationResponse, comment: String?) async throws {
         throw InvitationError.unsupported
+    }
+}
+
+public enum DraftError: LocalizedError, Equatable {
+    case unsupported
+    case noFolder
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupported: String(localized: "этот ящик не умеет хранить черновики")
+        case .noFolder: String(localized: "на сервере нет папки «Черновики»")
+        }
     }
 }
 

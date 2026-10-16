@@ -14,6 +14,7 @@ struct InspectorView: View {
                 // Ответ на выбранное или новое письмо.
                 ComposerView(item: model.draftItem, draft: $model.draft, isSending: model.isSending,
                              onSend: model.sendDraft, onCancel: model.cancelDraft)
+                    .id(model.draftSerial)
             } else if model.multiSelection.count > 1 {
                 SelectionSummary()
             } else if let item = model.selectedItem {
@@ -168,6 +169,20 @@ private struct MailDetail: View {
                         .id(item.id)
                 }
 
+                if let started = model.replyDraft(for: item) {
+                    ReplyDraftPlaque(item: item, draft: started)
+                }
+
+                if model.isDraft(item) {
+                    Button {
+                        model.continueDraft(item)
+                    } label: {
+                        Label("Продолжить черновик", systemImage: "square.and.pencil")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .help("Открыть письмо в окне и дописать; сохранится сюда же, вместо этой версии")
+                }
+
                 HStack(spacing: Space.sm) {
                     ActionButtons(item: item, titles: [.reschedule: String(localized: "Отложить"), .replyAll: String(localized: "Ответить всем")])
                     HoverIconButton(title: String(localized: "Встреча"), symbol: "calendar.badge.plus",
@@ -197,6 +212,32 @@ private struct MailDetail: View {
             }
         }
         .id(item.id)
+    }
+}
+
+/// Начатый ответ — прямо над письмом: продолжить, не открывая «Черновики».
+private struct ReplyDraftPlaque: View {
+    @EnvironmentObject private var model: AppModel
+    let item: TimelineItem
+    let draft: TimelineItem
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.md) {
+            Image(systemName: "square.and.pencil").foregroundStyle(Palette.warning)
+            VStack(alignment: .leading, spacing: Space.xxs) {
+                Text("Черновик ответа · \(Format.relative(draft.time, now: model.now))")
+                    .font(.callout.weight(.semibold))
+                if let snippet = draft.mail?.snippet, !snippet.isEmpty {
+                    Text(snippet).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            Spacer(minLength: Space.sm)
+            Button("Продолжить") { model.continueReply(to: item, draft: draft) }
+                .buttonStyle(.borderedProminent)
+                .help("Открыть начатый ответ с наработанным текстом")
+        }
+        .padding(Space.lg)
+        .background(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(Palette.warning.opacity(0.1)))
     }
 }
 
@@ -425,20 +466,28 @@ struct MailBodyView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> MailWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         // Без памяти между письмами: куки и кэш удалённых картинок иначе
         // связывали бы одно письмо с другим (трекинг рассылок).
         configuration.websiteDataStore = .nonPersistent()
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        InlineImages.install(in: configuration.userContentController, handler: context.coordinator)
+        let view = MailWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
+        view.images = context.coordinator
         view.setValue(false, forKey: "drawsBackground")
         return view
     }
 
-    func updateNSView(_ view: WKWebView, context: Context) {
+    func updateNSView(_ view: MailWebView, context: Context) {
         context.coordinator.onHeight = onHeight
+        // Описание встречи вытянуто во всю высоту внутри прокрутки панели:
+        // своей прокрутки у него нет, колёсико и трекпад — панели.
+        view.forwardsScroll = onHeight != nil
+        view.onWidthChange = onHeight == nil ? nil : { [weak view, coordinator = context.coordinator] in
+            if let view { coordinator.measure(view) }
+        }
         let dark = colorScheme == .dark
         let onPaper = dark && (paper ?? Self.hasOwnColors(body.html))
         let html = document() + (dark ? (onPaper ? Self.paperStyle : Self.darkStyle) : "")
@@ -473,18 +522,41 @@ struct MailBodyView: NSViewRepresentable {
             """
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var loadedKey: String?
         var onHeight: ((CGFloat) -> Void)?
+        /// Картинка, по которой щёлкнули правой кнопкой, — для пунктов меню.
+        var menuImage: MailBody.Attachment?
 
         /// Скрипты письма выключены; высоту спрашивает само приложение — в своём
         /// мире (`defaultClient`), письму этот вызов не виден.
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            measure(webView)
+        }
+
+        func measure(_ webView: WKWebView) {
             guard let onHeight else { return }
             webView.evaluateJavaScript("document.documentElement.scrollHeight", in: nil, in: .defaultClient) { result in
                 if case .success(let value) = result, let height = value as? Double {
                     MainActor.assumeIsolated { onHeight(CGFloat(height)) }
                 }
+            }
+        }
+
+        /// Сообщения скрипта картинок (`InlineImages`): щелчок — открыть,
+        /// правая кнопка — запомнить для меню.
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard let body = message.body as? [String: Any], let kind = body["kind"] as? String else { return }
+            let file = (body["src"] as? String).flatMap { src in
+                InlineImage.attachment(fromDataURI: src, number: max(body["number"] as? Int ?? 1, 1))
+            }
+            switch kind {
+            case "open":
+                guard let file else { return }
+                DebugLog.write("картинка из письма: открыта (\(file.mimeType), \(file.size) байт)")
+                AttachmentSaver.open(file)
+            default:
+                menuImage = file
             }
         }
 
@@ -510,6 +582,93 @@ struct MailBodyView: NSViewRepresentable {
             }
         }
     }
+}
+
+/// Просмотр письма. Две вещи сверх WebKit: описание встречи, вытянутое
+/// во всю высоту, отдаёт прокрутку панели; в меню правой кнопки у картинки
+/// из письма — свои «Открыть» и «Сохранить»: пункты WebKit без окна
+/// браузера и загрузок, которых у просмотра нет, ничего не делают.
+final class MailWebView: WKWebView {
+    var forwardsScroll = false
+    var onWidthChange: (() -> Void)?
+    weak var images: MailBodyView.Coordinator?
+
+    override func scrollWheel(with event: NSEvent) {
+        // Вбок — себе: широкая таблица в описании листается сама.
+        if forwardsScroll, abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX), let next = nextResponder {
+            next.scrollWheel(with: event)
+        } else {
+            super.scrollWheel(with: event)
+        }
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = abs(newSize.width - frame.width) > 0.5
+        super.setFrameSize(newSize)
+        // Уже стала панель — текст переносится и описание растёт.
+        if changed { onWidthChange?() }
+    }
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        let useless: Set<String> = ["WKMenuItemIdentifierOpenImageInNewWindow", "WKMenuItemIdentifierDownloadImage"]
+        guard let index = menu.items.firstIndex(where: { useless.contains($0.identifier?.rawValue ?? "") }) else { return }
+        menu.items.filter { useless.contains($0.identifier?.rawValue ?? "") }.forEach(menu.removeItem)
+        let open = NSMenuItem(title: String(localized: "Открыть картинку"), action: #selector(openImage), keyEquivalent: "")
+        let save = NSMenuItem(title: String(localized: "Сохранить картинку…"), action: #selector(saveImage), keyEquivalent: "")
+        for (offset, item) in [open, save].enumerated() {
+            item.target = self
+            menu.insertItem(item, at: min(index + offset, menu.items.count))
+        }
+    }
+
+    /// Картинку из сети (её адрес — не `data:`) не открыть: пусто — молча.
+    @objc private func openImage() {
+        guard let file = images?.menuImage else { return NSSound.beep() }
+        DebugLog.write("картинка из письма: открыта из меню (\(file.mimeType))")
+        AttachmentSaver.open(file)
+    }
+
+    @objc private func saveImage() {
+        guard let file = images?.menuImage else { return NSSound.beep() }
+        do {
+            _ = try AttachmentSaver.saveAs(file)
+        } catch {
+            DebugLog.write("картинка из письма: не сохранена — \(error.localizedDescription)")
+        }
+    }
+}
+
+/// Скрипт приложения для картинок письма — в своём мире: скрипты самого
+/// письма выключены, а этот письму не виден и в его переменные не ходит.
+/// Щелчок по картинке (не по ссылке) открывает её в Просмотре.
+@MainActor
+enum InlineImages {
+    static let world = WKContentWorld.world(name: "trudaybook-images")
+
+    static func install(in controller: WKUserContentController, handler: WKScriptMessageHandler) {
+        controller.add(handler, contentWorld: world, name: "image")
+        controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd,
+                                              forMainFrameOnly: true, in: world))
+    }
+
+    private static let script = """
+        (() => {
+          const post = (kind, img) => window.webkit.messageHandlers.image.postMessage({
+            kind, src: img ? img.src : "", number: img ? Array.from(document.images).indexOf(img) + 1 : 0 });
+          const imageAt = (target) => target && target.closest ? target.closest("img") : null;
+          document.addEventListener("click", (event) => {
+            const img = imageAt(event.target);
+            if (!img || img.closest("a") || !img.src.startsWith("data:")) return;
+            event.preventDefault();
+            post("open", img);
+          }, true);
+          document.addEventListener("contextmenu", (event) => post("menu", imageAt(event.target)), true);
+          const style = document.createElement("style");
+          style.textContent = 'img[src^="data:"]:not(a img) { cursor: zoom-in; }';
+          document.documentElement.appendChild(style);
+        })();
+        """
 }
 
 /// Правило WebKit, запрещающее любые загрузки из сети. Компилируется один раз.
@@ -694,7 +853,7 @@ private struct EventDetail: View {
                                     RemoteImagesNotice(letter: rich) { showRemote = true }
                                 }
                                 MailBodyView(body: rich, allowRemote: showRemote, onHeight: { height in
-                                    descriptionHeight = min(max(height, 40), 4000)
+                                    descriptionHeight = min(max(height, 40), 30_000)
                                 })
                                 .frame(height: descriptionHeight)
                                 .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
@@ -794,6 +953,9 @@ struct ComposerView: View {
     var onSend: () -> Void
     var onCancel: () -> Void
     @StateObject private var editor = RichTextController()
+    @StateObject private var keeper = DraftKeeper()
+    /// «Отмена» с правками — спросить, оставить ли черновик.
+    @ViewState private var askKeep = false
     @ViewState private var to: [Person] = []
     @ViewState private var cc: [Person] = []
     @ViewState private var bcc: [Person] = []
@@ -811,6 +973,8 @@ struct ComposerView: View {
     @ViewState private var showLink = false
     /// Шаблон ответа от Trunook: готовится, не вышел или ещё не просили.
     @ViewState private var assist: ReplyAssist = .idle
+    /// Правка выделенного моделью: идёт, не вышла или нет.
+    @ViewState private var rewriting: ReplyAssist = .idle
     /// Высота цитаты под ручкой — одна на все ответы.
     @AppStorage("composerQuoteHeight") private var quoteHeight = ComposerView.defaultQuoteHeight
 
@@ -826,6 +990,7 @@ struct ComposerView: View {
                 Label(item == nil ? String(localized: "Новое письмо") : item?.kind == .mail ? String(localized: "Ответ") : String(localized: "Письмо участникам"),
                       systemImage: item == nil ? "square.and.pencil" : "arrowshape.turn.up.left")
                     .font(.headline)
+                draftStatus
                 Spacer()
                 if model.accounts.count > 1 {
                     Text("от").font(.caption).foregroundStyle(.secondary)
@@ -924,12 +1089,74 @@ struct ComposerView: View {
         }
         .onAppear {
             load()
+            keeper.model = model
+            editor.onChange = { keeper.changed() }
+            editor.onRewrite = model.aiEnabled ? { rewrite($0) } : nil
             if model.options.template, model.options.snapshotPath != nil, let item, item.kind == .mail {
                 requestTemplate(item)
             }
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             AttachmentFiles.dropped(providers) { addAttachments($0) }
+        }
+        .onChange(of: to) { keeper.changed() }
+        .onChange(of: cc) { keeper.changed() }
+        .onChange(of: bcc) { keeper.changed() }
+        .onChange(of: subject) { keeper.changed() }
+        .onChange(of: includeQuote) { keeper.changed() }
+        .onChange(of: draft?.attachments.count) { keeper.changed() }
+        .onChange(of: draft) { _, new in if let new { base = new } }
+        // Отправка не удалась — окно осталось, правки снова сохраняются.
+        .onChange(of: isSending) { _, sending in if !sending { keeper.sendFailed() } }
+        // Выбрали другое письмо, закрыли окно — письмо остаётся в «Черновиках».
+        .onDisappear { keeper.left() }
+        .confirmationDialog(String(localized: "Сохранить письмо в «Черновиках»?"), isPresented: $askKeep) {
+            Button("Сохранить") {
+                keeper.saveAndFinish()
+                onCancel()
+            }
+            Button("Не сохранять", role: .destructive) {
+                keeper.discard(keepingOpened: openedDraft)
+                onCancel()
+            }
+            Button("Продолжить", role: .cancel) {}
+        } message: {
+            Text(openedDraft ? String(localized: "Не сохранив, вы потеряете правки после последнего сохранения.")
+                             : String(localized: "Письмо можно будет продолжить из папки «Черновики»."))
+        }
+    }
+
+    /// Черновик открыли из папки «Черновики» — «Не сохранять» его не стирает.
+    private var openedDraft: Bool { initialHandle != nil }
+
+    @ViewState private var initialHandle: String?
+    /// Черновик, каким его видели последним: модель обнуляет `draft`
+    /// при выборе другого письма раньше, чем окно ввода уходит.
+    @ViewState private var base: OutgoingMail?
+
+    /// «Сохранено» у заголовка — видно, что письмо не потеряется.
+    @ViewBuilder
+    private var draftStatus: some View {
+        switch keeper.status {
+        case .saving:
+            Text("Сохраняется…").font(.caption).foregroundStyle(.secondary)
+        case .saved(let time):
+            Text("Черновик · \(Format.time(time))").font(.caption).foregroundStyle(.secondary)
+                .help("Письмо сохранено в «Черновики» ящика — его можно продолжить оттуда")
+        case .failed(let message):
+            Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(Palette.warning)
+                .help(message)
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    private func cancel() {
+        if keeper.isEdited {
+            askKeep = true
+        } else {
+            keeper.discard(keepingOpened: openedDraft)
+            onCancel()
         }
     }
 
@@ -964,10 +1191,11 @@ struct ComposerView: View {
 
     private var sendButtons: some View {
         HStack(spacing: Space.sm) {
-            Button("Отмена") { onCancel() }
+            Button("Отмена") { cancel() }
                 .keyboardShortcut(.cancelAction)
             Button {
                 commit()
+                keeper.sendStarted()
                 onSend()
             } label: {
                 if isSending { ProgressView().controlSize(.small) } else { Text("Отправить") }
@@ -1039,9 +1267,59 @@ struct ComposerView: View {
                 }
                 .padding(Space.lg)
             }
+            if model.aiEnabled {
+                Divider().frame(height: 16).padding(.horizontal, Space.xs)
+                rewriteMenu
+            }
             Spacer()
         }
         .buttonStyle(.borderless)
+    }
+
+    /// ИИ над выделенным: исправить ошибки, улучшить написание, структуру,
+    /// тон. Ответ модели встаёт на место выделенного; ⌘Z возвращает как было.
+    @ViewBuilder
+    private var rewriteMenu: some View {
+        Menu {
+            if !editor.hasSelection {
+                Text("Выделите текст в письме")
+            }
+            ForEach(ModelPrompts.Rewrite.allCases, id: \.self) { action in
+                Button { rewrite(action) } label: { Label(action.title, systemImage: action.symbol) }
+                    .disabled(!editor.hasSelection)
+            }
+        } label: {
+            Image(systemName: "sparkles").frame(width: 26, height: 22)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(rewriting == .loading)
+        .labelHelp(String(localized: "ИИ: исправить ошибки, улучшить написание или структуру выделенного текста. Модель — только на этом Mac."))
+        switch rewriting {
+        case .loading:
+            ProgressView().controlSize(.small).padding(.leading, Space.xs)
+            Text("Модель правит текст…").font(.caption).foregroundStyle(.secondary)
+        case let .failed(code, message):
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warning).padding(.leading, Space.xs)
+            Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .help(SummaryPlaque.advice(code) ?? message)
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    private func rewrite(_ action: ModelPrompts.Rewrite) {
+        guard rewriting != .loading, let (range, text) = editor.selection() else { return }
+        rewriting = .loading
+        Task {
+            switch await model.rewrite(text, action) {
+            case .success(let result):
+                rewriting = editor.replace(range, expected: text, with: result) ? .idle
+                    : .failed(code: "changed", message: String(localized: "Текст поменяли, пока модель работала, — выделите его и попробуйте снова."))
+            case .failure(let error):
+                rewriting = .failed(code: error.code, message: error.message)
+            }
+        }
     }
 
     /// «Подготовить шаблон ответа»: только с включённой связью с Trunook.
@@ -1105,16 +1383,26 @@ struct ComposerView: View {
         bcc = draft.bcc
         showBcc = !draft.bcc.isEmpty
         subject = draft.subject
+        initialHandle = draft.draftHandle
+        base = draft
         // Поле текста появляется чуть позже — текст и подпись после него.
         let text = draft.text
         DispatchQueue.main.async {
             editor.prefill(text)
-            applySignature()
+            if draft.draftHandle == nil {
+                applySignature()
+            } else {
+                // Продолжаем черновик: подпись в тексте уже есть.
+                appliedSignature = model.signatureForDraft(accountID: draft.accountID, isReply: item != nil)
+            }
+            if let start = snapshot() { keeper.start(start, snapshot: snapshot) }
         }
     }
 
-    private func commit() {
-        guard var updated = draft else { return }
+    /// Письмо как сейчас в окне. `nil` — поля ввода уже нет (окно закрыто):
+    /// пустой текст вместо настоящего черновик бы затёр.
+    private func snapshot() -> OutgoingMail? {
+        guard var updated = draft ?? base, editor.textView != nil else { return nil }
         let text = editor.attributed
         updated.to = PeopleField.merged(to, typed: toText)
         updated.cc = PeopleField.merged(cc, typed: ccText)
@@ -1123,6 +1411,12 @@ struct ComposerView: View {
         updated.text = text.string
         updated.html = RichTextHTML.html(from: text)
         if !includeQuote { updated.quote = nil }
+        updated.draftHandle = keeper.handle
+        return updated
+    }
+
+    private func commit() {
+        guard let updated = snapshot() else { return }
         draft = updated
     }
 }

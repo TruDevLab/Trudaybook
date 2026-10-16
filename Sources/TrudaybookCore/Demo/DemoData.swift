@@ -105,6 +105,9 @@ public actor DemoMailProvider: MailProvider {
     private var archived: Set<String> = []
     private var answered: Set<String> = []
     private var trashed: Set<String> = []
+    /// «Черновики» тестового ящика — в памяти, до выхода.
+    private var drafts: [String: (item: TimelineItem, mail: OutgoingMail)] = [:]
+    private var draftCount = 0
 
     public init(clock: @escaping @Sendable () -> Date, calendar: Calendar = .current,
                 accountID: String = "demo", me: Person = Demo.me, variant: Int = 0) {
@@ -136,6 +139,9 @@ public actor DemoMailProvider: MailProvider {
     }
 
     public func body(of itemID: String) -> MailBody {
+        if let draft = drafts.values.first(where: { $0.item.id == itemID })?.mail {
+            return MailBody(html: draft.html, text: draft.text, attachments: draft.attachments)
+        }
         if itemID.hasSuffix("-invite") { return invitationBody() }
         if itemID.hasSuffix("-cancel") { return cancellationBody() }
         let seed = itemID.unicodeScalars.reduce(7) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF_FFFF }
@@ -158,11 +164,13 @@ public actor DemoMailProvider: MailProvider {
             return MailBody(text: text, attachments: attachments)
         }
         // Часть писем — HTML с картинкой из сети: на них видно, что внешние
-        // загрузки по умолчанию заблокированы.
+        // загрузки по умолчанию заблокированы. Вторая картинка — из самого
+        // письма (так `MIME` вставляет `cid:`): её открывают щелчком.
         let html = """
             <html><body style="font-family: -apple-system, Helvetica; font-size: 14px; color: #222;">
             <p><img src="https://images.example.test/banner.png" width="480" height="80" alt="Баннер рассылки"></p>
             \(paragraphs.map { "<p>\($0.replacingOccurrences(of: "\n", with: "<br>"))</p>" }.joined())
+            <p><img src="data:image/png;base64,\(DemoCalendar.inlinePicture)" width="192" height="64" alt="Схема"></p>
             <p style="color:#888;font-size:12px">Это письмо отправлено автоматически. <a href="https://example.test/unsubscribe">Отписаться</a></p>
             </body></html>
             """
@@ -194,6 +202,7 @@ public actor DemoMailProvider: MailProvider {
         [
             MailFolder(id: "INBOX", name: String(localized: "Входящие"), role: .inbox),
             MailFolder(id: "Sent", name: String(localized: "Отправленные"), role: .sent),
+            MailFolder(id: "Drafts", name: String(localized: "Черновики"), role: .drafts),
             MailFolder(id: "Archive", name: String(localized: "Архив"), role: .archive),
             MailFolder(id: "Spam", name: String(localized: "Спам"), role: .junk),
             MailFolder(id: "Work/Projects", name: String(localized: "Проекты"), role: .other, path: String(localized: "Работа / Проекты")),
@@ -226,6 +235,8 @@ public actor DemoMailProvider: MailProvider {
                                            to: [original.mail?.from].compactMap { $0 }, isRead: true))
                 )
             }
+        case "Drafts":
+            items = drafts.values.map(\.item)
         default:
             items = []
         }
@@ -245,6 +256,31 @@ public actor DemoMailProvider: MailProvider {
     }
 
     public func refresh() {}
+
+    /// Черновик тестового ящика: новая версия — новое письмо в папке,
+    /// прежняя уходит, как на сервере.
+    public func saveDraft(_ mail: OutgoingMail) -> String {
+        if let old = mail.draftHandle { drafts[old] = nil }
+        draftCount += 1
+        let handle = "draft-\(draftCount)"
+        var stored = mail
+        stored.draftHandle = handle
+        let item = TimelineItem(
+            id: "mail:\(accountID):\(handle)", title: mail.subject, time: clock(),
+            detail: .mail(MailInfo(accountID: accountID, from: me, to: mail.to, cc: mail.cc,
+                                   references: mail.references, inReplyTo: mail.inReplyTo,
+                                   snippet: String(mail.text.prefix(120)), isRead: true)))
+        drafts[handle] = (item, stored)
+        return handle
+    }
+
+    public func deleteDraft(_ handle: String) {
+        drafts[handle] = nil
+    }
+
+    public func draftHandle(of itemID: String) -> String? {
+        drafts.first { $0.value.item.id == itemID }?.key
+    }
 
     /// Ответ на тестовое приглашение — никуда не уходит.
     public func respond(to itemID: String, invitation: Invitation, response: InvitationResponse, comment: String?) {}
@@ -447,16 +483,26 @@ public final class DemoCalendar: CalendarProvider {
 
     /// Описание «Обзора квартального плана» с оформлением и картинкой из сети —
     /// чтобы в тестовом режиме было видно плашку «Картинки не загружены».
+    /// Повестка длинная — длиннее панели: на ней видно, что описание
+    /// листается вместе с панелью.
     public func richDescription(of item: TimelineItem) async throws -> MailBody? {
         guard Self.baseKey(of: item.id)?.hasPrefix("review-") == true else { return nil }
+        let sections = ["Итоги III квартала", "Цели на IV квартал", "Риски по срокам", "Бюджет", "Найм", "Разное"]
+        let agenda = sections.enumerated().map { index, title in
+            "<p><b>\(index + 1). \(title)</b></p><ul><li>докладчик — руководитель направления</li><li>10 минут на доклад, 5 на вопросы</li><li>решение фиксируем в протоколе</li></ul>"
+        }.joined()
         return MailBody(html: """
             <html><body style="font: 13px -apple-system, sans-serif">
             <p><b>Повестка</b></p>
-            <ul><li>итоги III квартала</li><li>цели на IV квартал</li><li>риски по срокам</li></ul>
+            \(agenda)
+            <p><img src="data:image/png;base64,\(Self.inlinePicture)" width="192" height="64" alt="Схема"></p>
             <p><img src="https://example.com/q3-chart.png" width="320" height="160" alt="График выручки"></p>
             </body></html>
             """)
     }
+
+    /// Картинка 96×32 — полоски на синем, в тело письма и описание встречи.
+    static let inlinePicture = "iVBORw0KGgoAAAANSUhEUgAAAGAAAAAgCAIAAABiouoDAAABOUlEQVR42u3XN1qCURSEYZYjKIIiKIIiKK4Jc845ophzzi5CMCAYEAwIBgQD7kDn/v3tLCzmPF851dsdVYbrSFSBvOpKr7rKhzTVPk3NMcqsPRHVnWbVKzWcaRuRX9vkz24+F7WggK41oGsLIn17UN9xgXI6L0VdV7ndSj3Xhl4UMvSF8vpvRAMobBwMG4ciyDQcMY3covzRO5H7vmBMafzB7EFR80S0cPJRNIVilumYZSaOrLNx69wTKpp/Fi28FC8qLb3allHCtpIoWX0TraGkfT1p30ghx2bKsfWOSrc/RDufZbtKe1/OfZR2HqTLD79VBCIQgQhEIAIRiEAEItCfAP1ITgYk28uAZHsZkGwvA5LtCUQgAhGIQAQiEIEIRCACEeg/A/FZJRCBCEQgAhGIQAQiEIEA9AtJb1I7bUPaJAAAAABJRU5ErkJggg=="
 
     public func move(_ item: TimelineItem, to start: Date) async throws {
         guard let key = Self.baseKey(of: item.id) else { throw CalendarError.notFound }

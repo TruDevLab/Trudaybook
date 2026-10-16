@@ -25,6 +25,48 @@ struct CombinedMailTests {
         return (start, start.addingTimeInterval(86_400))
     }
 
+    @Test("Черновик: версия заменяет прежнюю, смена ящика «от» уносит его в другой ящик")
+    func draftsReplaceVersionsAndFollowSender() async throws {
+        let (combined, first, second) = boxes()
+        var mail = OutgoingMail(to: [home], subject: "Отчёт", text: "черновик", accountID: "A")
+        let v1 = try await combined.saveDraft(mail)
+        mail.draftHandle = v1
+        mail.text = "черновик, вторая версия"
+        let v2 = try await combined.saveDraft(mail)
+        let inA = await first.messages(inFolder: "Drafts", limit: 10)
+        #expect(inA.count == 1)
+        #expect(try await combined.body(of: inA[0].id).text == "черновик, вторая версия")
+        #expect(await combined.draftHandle(of: inA[0].id) == v2)
+
+        mail.draftHandle = v2
+        mail.accountID = "B"
+        let v3 = try await combined.saveDraft(mail)
+        #expect(await first.messages(inFolder: "Drafts", limit: 10).isEmpty)
+        #expect(await second.messages(inFolder: "Drafts", limit: 10).count == 1)
+
+        try await combined.deleteDraft(v3)
+        #expect(await second.messages(inFolder: "Drafts", limit: 10).isEmpty)
+    }
+
+    @Test("Начатый ответ находится у своего письма, свой текст — без цитаты")
+    func replyDraftFindsItsLetter() async throws {
+        let (combined, first, _) = boxes()
+        let letters = try await first.messages(from: today.0, to: today.1)
+        let original = try #require(letters.first { $0.mail?.messageID != nil })
+        var reply = try #require(ReplyBuilder.reply(to: original, body: MailBody(text: "Исходное"), all: false,
+                                                    ownAddresses: combined.ownAddresses))
+        reply.text = "Отвечаю по пунктам"
+        reply.accountID = "A"
+        _ = try await combined.saveDraft(reply)
+        let drafts = await first.messages(inFolder: "Drafts", limit: 10)
+        #expect(ReplyDrafts.draft(for: original, in: drafts)?.id == drafts.first?.id)
+        #expect(ReplyDrafts.draft(for: letters.first { $0.id != original.id && $0.mail?.messageID != nil }!, in: drafts) == nil)
+
+        let stored = MessageBuilder.plainText(of: reply)
+        #expect(ReplyDrafts.ownText(stored, attribution: reply.quote?.attribution) == "Отвечаю по пунктам")
+        #expect(ReplyDrafts.ownText("Свой\n\n> чужое", attribution: nil) == "Свой")
+    }
+
     @Test func timelineHasMailOfBothBoxes() async throws {
         let (combined, first, second) = boxes()
         let all = try await combined.messages(from: today.0, to: today.1)

@@ -297,3 +297,23 @@ struct EWSRichDescriptionTests {
         #expect(EWSCalendarRequest.getAttachments(["A\"1"]).contains(#"Id="A&quot;1""#))
     }
 }
+
+@Suite("Черновики на сервере")
+struct DraftRequestTests {
+    @Test func exchangeDraftIsUnsentAndOldVersionGoesToRecoverable() {
+        let create = EWSRequest.saveDraft(mime: Data("письмо".utf8))
+        #expect(create.contains(#"MessageDisposition="SaveOnly""#))
+        #expect(create.contains(#"Id="drafts""#))
+        #expect(create.contains(#"PropertyTag="0x0E07""#) && create.contains("<t:Value>8</t:Value>"))
+        let delete = EWSRequest.deleteDraft("AA\"1")
+        #expect(delete.contains(#"DeleteType="SoftDelete""#))
+        #expect(delete.contains(#"Id="AA&quot;1""#))
+    }
+
+    @Test func imapHandleKeepsMessageIDOrNumber() {
+        #expect(IMAPMailProvider.draftParts("mid:abc@x.ru").messageID == "abc@x.ru")
+        #expect(IMAPMailProvider.draftParts("uid:42").uid == 42)
+        #expect(IMAPMailProvider.draftParts(nil).messageID == nil)
+        #expect(IMAPMailProvider.draftParts("что-то").uid == nil)
+    }
+}

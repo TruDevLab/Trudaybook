@@ -101,6 +101,41 @@ public final class CombinedMailProvider: MailProvider {
         try await box.provider.send(mail, replyingTo: sameBox ? itemID : nil)
     }
 
+    // MARK: - Черновики
+
+    /// Метка черновика — с ящиком: `ящик\u{1}метка ящика`.
+    static func draftHandle(_ accountID: String, _ inner: String) -> String { "\(accountID)\u{1}\(inner)" }
+
+    static func splitDraftHandle(_ handle: String) -> (account: String, inner: String)? {
+        guard let separator = handle.firstIndex(of: "\u{1}") else { return nil }
+        return (String(handle[..<separator]), String(handle[handle.index(after: separator)...]))
+    }
+
+    public func saveDraft(_ mail: OutgoingMail) async throws -> String {
+        let accountID = mail.accountID ?? boxes.first?.accountID
+        guard let box = boxes.first(where: { $0.accountID == accountID }) else { throw Failure.unknownAccount }
+        var inner = mail
+        let previous = mail.draftHandle.flatMap(Self.splitDraftHandle)
+        inner.draftHandle = previous?.account == box.accountID ? previous?.inner : nil
+        let saved = try await box.provider.saveDraft(inner)
+        // Сменили ящик «от» — прежняя версия лежит в другом ящике.
+        if let previous, previous.account != box.accountID {
+            try? await deleteDraft(Self.draftHandle(previous.account, previous.inner))
+        }
+        return Self.draftHandle(box.accountID, saved)
+    }
+
+    public func deleteDraft(_ handle: String) async throws {
+        guard let (account, inner) = Self.splitDraftHandle(handle),
+              let box = boxes.first(where: { $0.accountID == account }) else { throw Failure.unknownAccount }
+        try await box.provider.deleteDraft(inner)
+    }
+
+    public func draftHandle(of itemID: String) async -> String? {
+        guard let box = try? box(ofItem: itemID), let inner = await box.provider.draftHandle(of: itemID) else { return nil }
+        return Self.draftHandle(box.accountID, inner)
+    }
+
     // MARK: - Папки
 
     public func folders() async throws -> [MailFolder] {

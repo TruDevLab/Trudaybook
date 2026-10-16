@@ -223,6 +223,24 @@ enum EWSRequest {
         """
     }
 
+    /// Черновик в «Черновики». Флаг «не отправлено» (`PR_MESSAGE_FLAGS` = 8)
+    /// ставится только при создании — без него письмо из MIME Outlook
+    /// считал бы полученным, а не черновиком.
+    static func saveDraft(mime: Data) -> String {
+        """
+        <m:CreateItem MessageDisposition="SaveOnly"><m:SavedItemFolderId>\(folderRef("drafts"))</m:SavedItemFolderId>\
+        <m:Items><t:Message><t:MimeContent CharacterSet="UTF-8">\(mime.base64EncodedString())</t:MimeContent>\
+        <t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer"/><t:Value>8</t:Value></t:ExtendedProperty>\
+        </t:Message></m:Items></m:CreateItem>
+        """
+    }
+
+    /// Прежняя версия черновика — в «Восстанавливаемые», не в «Удалённые»:
+    /// там копилось бы каждое автосохранение.
+    static func deleteDraft(_ id: String) -> String {
+        "<m:DeleteItem DeleteType=\"SoftDelete\"><m:ItemIds>\(itemRef(id))</m:ItemIds></m:DeleteItem>"
+    }
+
     // MARK: - Папки
 
     static func findFolders() -> String {

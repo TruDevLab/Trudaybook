@@ -89,6 +89,11 @@ the count of unhandled emails. Meetings you haven't answered, or answered
   shows whether you are a recipient (“Me”, red if only you) or in Cc.
 - Replies and new emails with formatting, quotes and attachments; recipients
   as chips with address book suggestions, Bcc on demand; a signature per mailbox.
+  Drafts save themselves to the mailbox’s Drafts — a few seconds after an edit and
+  when the message is closed; Cancel asks whether to keep the draft. Continue a draft
+  from the folder with a double-click or “Continue Draft”. A started reply shows
+  right at its email — a “Reply draft” banner with “Continue” and a ✎ in the list;
+  Reply also continues it instead of starting over.
 - Priorities (yours and the sender's); swipe actions on list rows — which
   ones is up to you in Settings.
 - Meeting invitations: a card with that day's calendar and answer buttons.
@@ -169,7 +174,10 @@ offers to install it and download a suitable model itself, Settings → AI):
   week and month summaries from your daily notes;
 - “Prepare reply template” in the reply window: the model reads the email and
   the earlier conversation and drafts a reply that answers every question;
-  it makes no decisions for you — those are left as [placeholders].
+  it makes no decisions for you — those are left as [placeholders];
+- ✨ in the message window (and “AI” in the right-click menu) edits the selection:
+  fix mistakes, improve the writing, format and structure, make it shorter,
+  a formal or friendly tone; the new text replaces the selection, ⌘Z undoes it.
 
 **SIP phone** (Settings → Phone, off by default) — calls through your PBX right
 in Trudaybook. The Phone button (⌥⌘P) opens a dialer with a keypad, recent
@@ -229,6 +237,8 @@ notch app by the same author (optional, all off by default):
 - **Remote images in emails** don't load until you click “Load” above the email —
   otherwise the sender would learn you opened the email. JavaScript in emails
   is always off.
+  An image inside the email itself opens with a click (or right-click → “Open
+  Image”, “Save Image…”) — in Preview, like an attachment.
 - **Passwords** — in the macOS Keychain, never written to the log. The mail
   cache on disk is encrypted with a key kept in the Keychain.
 - **Weather** comes from Trunook, if installed. Without it — only if you turn it

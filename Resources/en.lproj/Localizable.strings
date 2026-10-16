@@ -39,6 +39,7 @@
 "7 дней" = "7 days";
 "Exchange напрямую" = "Exchange direct";
 "Exchange не вернул встречу" = "Exchange didn't return the meeting";
+"Exchange не вернул черновик" = "Exchange did not return the draft";
 "Exchange не отдал письмо" = "Exchange didn't return the email";
 "Exchange через macOS" = "Exchange via macOS";
 "Gmail не узнал пароль приложения. Создайте новый на myaccount.google.com/apppasswords и вставьте его целиком — пробелы можно не убирать" = "Gmail didn't recognize the app password. Create a new one at myaccount.google.com/apppasswords and paste it whole — no need to remove the spaces";
@@ -221,6 +222,8 @@
 "Выбрать" = "Select";
 "Выбрать город" = "Choose a city";
 "Выделенные письма — в корзину" = "Move Selected Messages to Trash";
+"Выделено слишком много — модель правит до %lld знаков за раз." = "Too much is selected — the model edits up to %lld characters at a time.";
+"Выделите текст в письме" = "Select text in the message";
 "Выделить всё" = "Select All";
 "Выделить цветом" = "Highlight";
 "Вызов отменён" = "Call cancelled";
@@ -254,6 +257,7 @@
 "Двумя пальцами по трекпаду по строке письма. Короткий свайп показывает кнопку, длинный — сразу выполняет. Повторный свайп приоритета снимает его." = "Two fingers on the trackpad across an email row. A short swipe reveals the button, a long one acts right away. Swiping priority again removes it.";
 "Девять утра сегодня уже прошло — предлагаю завтра. Проверьте карточку и нажмите «Создать»." = "9 AM has already passed today, so I suggest tomorrow. Check the card and click “Create”.";
 "Действия" = "Actions";
+"Деловой тон" = "Formal tone";
 "День" = "Day";
 "День или неделя (⌥⌘1 / ⌥⌘2)" = "Day or week (⌥⌘1 / ⌥⌘2)";
 "День — переключить на неделю (⌥⌘2)" = "Day — switch to week (⌥⌘2)";
@@ -281,6 +285,7 @@
 "Другое" = "Other";
 "Другой" = "Other";
 "Другой город" = "Another city";
+"Дружелюбный тон" = "Friendly tone";
 "Думает… Местной модели нужно до минуты." = "Thinking… A local model can take up to a minute.";
 "Дюны" = "Dunes";
 "Если вы собирали Trudaybook сами, обновляйтесь так же: git pull и make install." = "If you built Trudaybook yourself, update the same way: git pull and make install.";
@@ -344,6 +349,7 @@
 "ИИ" = "AI";
 "ИИ в Trudaybook" = "AI in Trudaybook";
 "ИИ выключен в Настройках → ИИ." = "AI is turned off in Settings → AI.";
+"ИИ: исправить ошибки, улучшить написание или структуру выделенного текста. Модель — только на этом Mac." = "AI: fix mistakes, improve the writing or structure of the selected text. The model runs only on this Mac.";
 "Идёт запись — нажмите, чтобы остановить. Ничего не отправится" = "Recording — click to stop. Nothing will be sent";
 "Из любой программы: идущая или ближайшая сегодня онлайн-встреча открывается в Zoom, Teams, Телемосте… Подключаться не к чему — откроется окошко с днём." = "From any app: the ongoing or next online meeting today opens in Zoom, Teams, Telemost… Nothing to join — the day’s pop-up opens instead.";
 "Из моих встреч" = "From my meetings";
@@ -355,6 +361,7 @@
 "Имя" = "Name";
 "Имя номера" = "Number name";
 "Искать «%@» в тексте писем на сервере  ⏎" = "Search “%@” in email text on the server  ⏎";
+"Исправить ошибки" = "Fix Mistakes";
 "Исходящий" = "Outgoing";
 "Итоги · %@" = "Summary · %@";
 "Итоги дня" = "Day summary";
@@ -389,6 +396,7 @@
 "Календарь «%@» только для чтения" = "The “%@” calendar is read-only";
 "Календарь по умолчанию" = "Default Calendar";
 "Картинка" = "Picture";
+"Картинка %lld" = "Image %lld";
 "Картинка копируется в папку Trudaybook (уменьшенной); исходный файл можно удалить или переместить. Доступа к нему приложение не сохраняет." = "The picture is copied to the Trudaybook folder (downscaled); you can delete or move the original. The app keeps no access to it.";
 "Картинка не подошла: %@" = "The picture didn't work: %@";
 "Картинки из сети не загружены — так отправитель не узнает, что письмо открыто." = "Pictures from the web aren't loaded — so the sender won't know the email was opened.";
@@ -443,6 +451,7 @@
 "Модель" = "Model";
 "Модель вернула пустой ответ." = "The model returned an empty answer.";
 "Модель вернула пустой пересказ." = "The model returned an empty summary.";
+"Модель вернула пустой текст." = "The model returned empty text.";
 "Модель вернула пустой шаблон." = "The model returned an empty template.";
 "Модель готовит повестку…" = "The model is preparing the agenda…";
 "Модель для чата — только на этом Mac" = "Model for the chat — only on this Mac";
@@ -452,6 +461,7 @@
 "Модель подведёт итоги недели по заметкам дней" = "The model will summarize the week from the daily notes";
 "Модель подводит итоги месяца…" = "The model is summarizing the month…";
 "Модель подводит итоги недели…" = "The model is summarizing the week…";
+"Модель правит текст…" = "The model is editing the text…";
 "Модель прочтёт письмо и прошлую переписку и подготовит черновик, где отвечено на каждый вопрос. Решений за вас она не принимает — на их месте пометки в [скобках]. Модель — только на этом Mac." = "The model reads the email and the earlier conversation and prepares a draft that answers every question. It makes no decisions for you — placeholders in [brackets] mark them. The model runs only on this Mac.";
 "Модель разметит неразобранные письма: важное, переписка, уведомления, рассылки. Модель — только на этом Mac." = "The model will label unprocessed emails: important, conversations, notifications, newsletters. The model runs only on this Mac.";
 "Модель соберёт повестку: главное на день, встречи с местом для протокола, напоминания и важные письма" = "The model will build the agenda: key items for the day, meetings with space for minutes, reminders and important emails";
@@ -518,6 +528,7 @@
 "Настройки телефона" = "Phone settings";
 "Настройки…" = "Settings…";
 "Начало просьбы появится в поле — допишите и нажмите ↩" = "The start of the request appears in the field — finish it and press ↩";
+"Начат ответ — черновик" = "Reply started — draft";
 "Начать" = "Start";
 "Не договорились о звуке" = "Could not agree on audio";
 "Не дозвонились" = "Failed";
@@ -537,7 +548,9 @@
 "Не разобрано" = "To handle";
 "Не разобрано · %@" = "To handle · %@";
 "Не разобрано: %lld" = "To handle: %lld";
+"Не сохранив, вы потеряете правки после последнего сохранения." = "If you don’t save, changes since the last save will be lost.";
 "Не сохранилось: %@" = "Not saved: %@";
+"Не сохранять" = "Don’t Save";
 "Не удалось войти: %@" = "Couldn't sign in: %@";
 "Не удалось войти: проверьте логин и пароль" = "Couldn't sign in: check your login and password";
 "Не удалось перенести: %@" = "Couldn't move: %@";
@@ -695,10 +708,13 @@
 "Открыть встречу" = "Open meeting";
 "Открыть выбранное письмо в отдельном окне · ⌘O" = "Open the selected message in a separate window · ⌘O";
 "Открыть заметку в окне: оформление, списки, повестка дня" = "Open the note in a window: formatting, lists, daily agenda";
+"Открыть картинку" = "Open Image";
 "Открыть месяц" = "Open month";
 "Открыть настройки" = "Open Settings";
+"Открыть начатый ответ с наработанным текстом" = "Open the started reply with the text written so far";
 "Открыть письмо" = "Open email";
 "Открыть письмо в окне" = "Open Message in Window";
+"Открыть письмо в окне и дописать; сохранится сюда же, вместо этой версии" = "Open the message in a window and finish it; it is saved here, replacing this version";
 "Открыть письмо в отдельном окне · ⌘O" = "Open the message in a separate window · ⌘O";
 "Открыть с помощью" = "Open With";
 "Открыть ссылку на встречу в момент начала" = "Open the meeting link when it starts";
@@ -787,12 +803,14 @@
 "Письмо ещё загружается" = "The message is still loading";
 "Письмо и встреча" = "Email and meeting";
 "Письмо или встреча — справа" = "Email or meeting — on the right";
+"Письмо можно будет продолжить из папки «Черновики»." = "You can continue the message from the Drafts folder.";
 "Письмо не загрузилось — проверьте подключение к почте." = "The message didn't load — check your mail connection.";
 "Письмо не открылось — шаблон не подготовить." = "The email didn't open — can't prepare a template.";
 "Письмо не отправлено: %@" = "The email wasn't sent: %@";
 "Письмо не удалось переложить в архив: %@" = "Couldn't move the email to the archive: %@";
 "Письмо не удалось удалить: %@" = "Couldn't delete the message: %@";
 "Письмо отклонить нельзя — его можно убрать в архив" = "An email can't be declined — you can archive it";
+"Письмо сохранено в «Черновики» ящика — его можно продолжить оттуда" = "The message is saved to the mailbox’s Drafts — you can continue it from there";
 "Письмо только вам — других получателей нет" = "For you alone — no other recipients";
 "Письмо уже в архиве" = "The email is already archived";
 "Письмо уйдёт в архив" = "The email will be archived";
@@ -939,6 +957,8 @@
 "Прогноз получен в %@" = "Forecast received at %@";
 "Прогноз — от Trunook" = "Forecast from Trunook";
 "Прогноз — у Open-Meteo (open-meteo.com): бесплатно, без ключей и учётных записей. Наружу уходят только координаты, округлённые примерно до 10 км, или название города при поиске." = "The forecast comes from Open-Meteo (open-meteo.com): free, no keys or accounts. Only coordinates rounded to about 10 km leave your Mac — or a city name when you search.";
+"Продолжить" = "Continue";
+"Продолжить черновик" = "Continue Draft";
 "Пройти обучение" = "Take the Tutorial";
 "Прокси" = "Proxy";
 "Пропустить обучение" = "Skip Tutorial";
@@ -1076,6 +1096,7 @@
 "Создать напоминание" = "Create reminder";
 "Создать новое письмо" = "Create a new message";
 "Создать пароль приложения" = "Create an app password";
+"Сократить" = "Make Shorter";
 "Сообщается о новых непрочитанных письмах во Входящих — не о своих и не о старых, которые догрузились при листании дней. Щелчок по уведомлению открывает письмо." = "Notifies about new unread emails in the Inbox — not your own and not old ones loaded while browsing days. Clicking the notification opens the email.";
 "Сообщать о новых письмах" = "Notify about new emails";
 "Сортировать по приоритету" = "Sort by Priority";
@@ -1089,11 +1110,14 @@
 "Сохранить и подключить" = "Save and connect";
 "Сохранить и разослать" = "Save and send";
 "Сохранить как…" = "Save As…";
+"Сохранить картинку…" = "Save Image…";
 "Сохранить номер…" = "Save number…";
 "Сохранить письмо" = "Save Message";
+"Сохранить письмо в «Черновиках»?" = "Save the message to Drafts?";
 "Сохранить письмо файлом · ⇧⌘S. Можно и перетащить — на полку Trunook или в Finder" = "Save the message as a file · ⇧⌘S. You can also drag it to the Trunook shelf or to Finder";
 "Сохранить письмо…" = "Save Message…";
 "Сохранить сюда" = "Save Here";
+"Сохраняется…" = "Saving…";
 "Сохранённых номеров нет. Дайте номеру имя — из недавних звонков или кнопкой «Добавить номер»." = "No saved numbers. Give a number a name — from recent calls or with the Add number button.";
 "Спам" = "Junk";
 "Список" = "List";
@@ -1132,6 +1156,7 @@
 "Таймлайн сверху вниз (⌥⌘L)" = "Timeline top to bottom (⌥⌘L)";
 "Таймлайн слева направо (⌥⌘L)" = "Timeline left to right (⌥⌘L)";
 "Так будет выглядеть уведомление о новом письме" = "This is how a new email notification will look";
+"Текст поменяли, пока модель работала, — выделите его и попробуйте снова." = "The text changed while the model was working — select it and try again.";
 "Телефон" = "Phone";
 "Телефон (⌥⌘P)" = "Phone (⌥⌘P)";
 "Телефон SIP" = "SIP phone";
@@ -1173,6 +1198,8 @@
 "Удалить повторяющуюся встречу" = "Delete recurring meeting";
 "Удалить…" = "Delete…";
 "Уже прошло" = "Already past";
+"Улучшить написание" = "Improve Writing";
+"Улучшить формат и структуру" = "Improve Format and Structure";
 "Уменьшить текст в чате" = "Smaller text in chat";
 "Устанавливаем…" = "Installing…";
 "Установить Ollama" = "Install Ollama";
@@ -1204,6 +1231,11 @@
 "Через 1 час" = "In 1 hour";
 "Через неделю" = "In a week";
 "Через час" = "In an hour";
+"Черновик · %@" = "Draft · %@";
+"Черновик не открылся" = "The draft did not open";
+"Черновик не открылся: %@" = "The draft did not open: %@";
+"Черновик не сохранён: %@" = "The draft was not saved: %@";
+"Черновик ответа · %@" = "Reply draft · %@";
 "Черновики" = "Drafts";
 "Чт" = "Th";
 "Что важно в этот день…" = "What matters this day…";
@@ -1307,6 +1339,7 @@
 "можно бросить письмо" = "accepts dropped messages";
 "на сервере нет папки «Архив»" = "there's no “Archive” folder on the server";
 "на сервере нет папки «Корзина»" = "the server has no Trash folder";
+"на сервере нет папки «Черновики»" = "the server has no Drafts folder";
 "напоминания со сроками" = "reminders with due dates";
 "не выбрано" = "none";
 "не найден в адресной книге компании" = "not found in the company address book";
@@ -1391,6 +1424,7 @@
 "что записать" = "what to write down";
 "чужое письмо" = "someone else's email";
 "ширина правой панели" = "right panel width";
+"этот ящик не умеет хранить черновики" = "this mailbox cannot store drafts";
 "ящик" = "mailbox";
 "ящика" = "mailboxes";
 "ящиков" = "mailboxes";
