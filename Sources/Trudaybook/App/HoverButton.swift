@@ -6,7 +6,9 @@ enum HoverMotion {
     /// Мягкая пружина без отскока: подпись проявляется, соседи плавно
     /// отъезжают. Меняется внутри `withAnimation` — тогда анимируется
     /// раскладка всего ряда, а не одна кнопка (иначе соседи прыгали).
-    static let animation = Animation.spring(response: 0.42, dampingFraction: 0.9)
+    static var animation: Animation {
+        SystemLook.reduceMotion ? Motion.quick : .spring(response: 0.42, dampingFraction: 0.9)
+    }
 }
 
 /// Вид кнопки: значок и — когда раскрыта — подпись.
@@ -80,28 +82,25 @@ struct HoverIconButton: View {
     }
 }
 
-/// Меню с тем же видом: значок, подпись при наведении.
-struct HoverMenu<Content: View>: View {
-    let title: String
+/// Значок в шапке письма: «белый лист», приоритет, сохранить, открыть
+/// в окне. Без рамки — это второстепенное рядом с заголовком; под
+/// курсором подсвечен, чтобы было видно, что нажимается. Раньше рядом
+/// стояли три разных вида: без рамки, в рамке и в пунктире.
+struct HeaderIcon: View {
     let symbol: String
     var tint: Color?
-    var help: String?
-    @ViewBuilder var content: Content
     @ViewState private var hovered = false
 
     var body: some View {
-        Menu {
-            content
-        } label: {
-            HoverLabel(title: title, symbol: symbol, expanded: hovered, tint: tint)
-                .background(HoverChrome(hovered: hovered))
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .onHover { inside in withAnimation(HoverMotion.animation) { hovered = inside } }
-        .help(help ?? title)
+        Image(systemName: symbol)
+            .font(.app(.text, weight: .medium))
+            // `Color.primary`, а не `.primary`: у `.borderless` иерархическое
+            // `.primary` — вторичное, значок казался выключенным.
+            .foregroundStyle(tint ?? Color.primary)
+            .frame(width: 28, height: 28)
+            .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .fill(hovered ? Fill.hover : .clear))
+            .contentShape(Rectangle())
+            .onHover { hovered = $0 }
     }
 }

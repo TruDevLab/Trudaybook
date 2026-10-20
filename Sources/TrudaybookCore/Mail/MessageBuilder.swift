@@ -59,10 +59,28 @@ public enum MessageBuilder {
         lines.append("")
         lines.append(base64Lines(Data(plainText(of: mail).utf8)))
         lines.append("--\(alternative)")
+        // Картинки в тексте — рядом с HTML, в `multipart/related`: так их
+        // показывают сразу, а не списком вложений.
+        let images = mail.inlineImages.filter { $0.data != nil && $0.contentID != nil }
+        let related = "rel-" + boundary
+        if !images.isEmpty {
+            lines.append("Content-Type: multipart/related; boundary=\"\(related)\"; type=\"text/html\"")
+            lines.append("")
+            lines.append("--\(related)")
+        }
         lines.append("Content-Type: text/html; charset=utf-8")
         lines.append("Content-Transfer-Encoding: base64")
         lines.append("")
         lines.append(base64Lines(Data(htmlDocument(of: mail).utf8)))
+        if !images.isEmpty {
+            for image in images {
+                lines.append("--\(related)")
+                lines += inlineHeaders(image)
+                lines.append("")
+                lines.append(base64Lines(image.data ?? Data()))
+            }
+            lines.append("--\(related)--")
+        }
         lines.append("--\(alternative)--")
         for file in files {
             lines.append("--\(boundary)")
@@ -87,9 +105,21 @@ public enum MessageBuilder {
         ]
     }
 
+    /// Заголовки картинки в тексте: `Content-ID` — то, на что ссылается HTML.
+    static func inlineHeaders(_ image: MailBody.Attachment) -> [String] {
+        let name = image.name.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" }
+        return [
+            "Content-Type: \(image.mimeType); name=\"\(name)\"",
+            "Content-Transfer-Encoding: base64",
+            "Content-ID: <\(image.contentID ?? "")>",
+            "Content-Disposition: inline; filename=\"\(name)\"",
+        ]
+    }
+
     /// Текстовая копия: свой текст, пустая строка, подпись цитаты, цитата с «>».
+    /// Знак картинки (U+FFFC) из текста убирается — в тексте её не показать.
     public static func plainText(of mail: OutgoingMail) -> String {
-        var text = mail.text
+        var text = mail.text.replacingOccurrences(of: "\u{FFFC}", with: "")
         if let quote = mail.quote {
             text += "\n\n\(quote.attribution)\n\(ReplyBuilder.quotedLines(quote.text))"
         }

@@ -7,7 +7,7 @@ enum ToolbarButton: String, CaseIterable, Identifiable {
     // Действия над выбранным — на них же бросают письмо перетаскиванием.
     case archive, reply, replyAll, reschedule, decline
     // Остальное — только нажатием.
-    case meeting, openWindow, saveLetter, trash, priority, today, note
+    case forward, meeting, openWindow, saveLetter, trash, priority, today, note
 
     var id: String { rawValue }
 
@@ -17,6 +17,7 @@ enum ToolbarButton: String, CaseIterable, Identifiable {
     var title: String {
         if let action { return action.title }
         switch self {
+        case .forward: return String(localized: "Переслать")
         case .meeting: return String(localized: "Встреча по письму")
         case .openWindow: return String(localized: "В окне")
         case .saveLetter: return String(localized: "Сохранить письмо")
@@ -31,6 +32,7 @@ enum ToolbarButton: String, CaseIterable, Identifiable {
     var symbol: String {
         if let action { return action.symbol }
         switch self {
+        case .forward: return ForwardButton.symbol
         case .meeting: return "calendar.badge.plus"
         case .openWindow: return "arrow.up.left.and.arrow.down.right"
         case .saveLetter: return "square.and.arrow.down"
@@ -42,8 +44,8 @@ enum ToolbarButton: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Как было до настройки — пять действий над выбранным.
-    static let defaults: [ToolbarButton] = [.archive, .reply, .replyAll, .reschedule, .decline]
+    /// Как было до настройки — действия над выбранным и «Переслать».
+    static let defaults: [ToolbarButton] = [.archive, .reply, .replyAll, .forward, .reschedule, .decline]
 
     static let orderKey = "toolbarOrder"
     static let hiddenKey = "toolbarHidden"
@@ -51,7 +53,9 @@ enum ToolbarButton: String, CaseIterable, Identifiable {
     /// Порядок из настроек; кнопки, которых тогда ещё не было, — в конце.
     static func savedOrder() -> [ToolbarButton] {
         let saved = (UserDefaults.standard.stringArray(forKey: orderKey) ?? []).compactMap(ToolbarButton.init(rawValue:))
-        let base = saved.isEmpty ? defaults : saved
+        var base = saved.isEmpty ? defaults : saved
+        // «Переслать» появилась позже — у настроенной панели встаёт за «Ответить всем».
+        if !base.contains(.forward), let index = base.firstIndex(of: .replyAll) { base.insert(.forward, at: index + 1) }
         return base + allCases.filter { !base.contains($0) }
     }
 
@@ -145,7 +149,7 @@ struct ToolbarExtraButton: View {
     /// Почему кнопка сейчас ничего не сделает; `nil` — сделает.
     private var problem: String? {
         switch button {
-        case .meeting, .openWindow:
+        case .forward, .meeting, .openWindow:
             return model.selectedLetter == nil ? String(localized: "Сначала выберите письмо") : nil
         case .saveLetter:
             if model.selectedLetter == nil { return String(localized: "Сначала выберите письмо") }
@@ -159,6 +163,7 @@ struct ToolbarExtraButton: View {
 
     private var help: String {
         switch button {
+        case .forward: String(localized: "Переслать выбранное письмо · ⇧⌘F")
         case .meeting: String(localized: "Назначить встречу с участниками выбранного письма")
         case .openWindow: String(localized: "Открыть выбранное письмо в отдельном окне · ⌘O")
         case .saveLetter: String(localized: "Сохранить выбранное письмо файлом · ⇧⌘S")
@@ -172,6 +177,7 @@ struct ToolbarExtraButton: View {
     private func perform() {
         guard problem == nil else { return }
         switch button {
+        case .forward: if let item = model.selectedLetter { model.startForward(of: item) }
         case .meeting: if let item = model.selectedLetter { model.startMeeting(with: item) }
         case .openWindow: if let item = model.selectedLetter { LetterWindow.show(item, model: model) }
         case .saveLetter:
@@ -204,7 +210,7 @@ struct CreateButton: View {
         .font(.body.weight(.semibold))
         .foregroundStyle(.white)
         .padding(.horizontal, Space.xl)
-        .frame(height: 28)
+        .frame(height: GlassBar.height)
         .modifier(ProminentSurface(hovered: isHovered, returning: returning))
         .contentShape(Rectangle())
         .onHover { inside in
@@ -249,7 +255,7 @@ private struct ProminentSurface: ViewModifier {
     var returning = false
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+        let shape = Capsule()
         let tint = returning ? Palette.danger : Color.accentColor
         if #available(macOS 26, *) {
             content.glassEffect(.regular.tint(tint.opacity(hovered || returning ? 1 : 0.85)).interactive(), in: shape)

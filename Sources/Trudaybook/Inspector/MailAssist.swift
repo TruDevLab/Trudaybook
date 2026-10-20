@@ -44,8 +44,8 @@ struct SummaryPlaque: View {
         }
         .padding(.horizontal, Space.lg)
         .padding(.vertical, Space.md)
-        .background(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(Palette.cyan.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).strokeBorder(Palette.cyan.opacity(0.18)))
+        .background(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(Palette.cyan.opacity(Alpha.wash)))
+        .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).strokeBorder(Palette.cyan.opacity(Alpha.tint)))
         .onAppear {
             if model.options.summary, model.options.snapshotPath != nil {
                 expanded = true
@@ -113,6 +113,67 @@ struct SummaryPlaque: View {
         default:
             nil
         }
+    }
+}
+
+/// Пересказ выделенного в письме или описании встречи — ответ модели
+/// во всплывающем окне у выделения (`MailWebView`).
+@MainActor
+final class TextDigest: ObservableObject {
+    let length: Int
+    @Published var result: Result<String, AppModel.ReplyTemplateError>?
+
+    init(length: Int) {
+        self.length = length
+    }
+}
+
+struct TextDigestView: View {
+    @ObservedObject var state: TextDigest
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            HStack(spacing: Space.sm) {
+                Image(systemName: "sparkles").foregroundStyle(Palette.cyan)
+                Text("Кратко о выделенном").font(.callout.weight(.semibold))
+                Text("· ИИ").font(.callout).foregroundStyle(.secondary)
+            }
+            switch state.result {
+            case .success(let text):
+                Text(text)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text("Пересказ модели — сверяйтесь с текстом.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Скопировать") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                }
+            case .failure(let error):
+                InlineNotice(error.message, symbol: error.code == "cloud" ? "icloud.slash" : "exclamationmark.triangle.fill")
+                    .font(.callout)
+                if let advice = SummaryPlaque.advice(error.code) {
+                    Text(advice).font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            case nil:
+                HStack(spacing: Space.md) {
+                    ProgressView().controlSize(.small)
+                    Text("Модель читает выделенное (знаков: \(state.length))…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(Space.xl)
+        .frame(width: 360, alignment: .leading)
     }
 }
 
@@ -232,15 +293,18 @@ struct LabelFilterBar: View {
             withAnimation(HoverMotion.animation) { model.labelFilter = selected ? nil : label }
         } label: {
             HStack(spacing: Space.xs) {
-                if let label { Image(systemName: label.symbol).font(.app(.tiny, weight: .semibold)) }
+                if let label { Image(systemName: label.symbol).font(.app(.small, weight: .semibold)).foregroundStyle(label.tint) }
                 Text(title)
                 Text("\(count)").foregroundStyle(.secondary).monospacedDigit()
             }
             .font(.caption)
             .padding(.horizontal, Space.md)
             .padding(.vertical, Space.xxs)
-            .foregroundStyle(selected ? tint : .primary)
-            .background(Capsule().fill(selected ? tint.opacity(0.2) : Fill.faint))
+            // Выбранный — жирнее и на заметной подложке, текст обычного цвета:
+            // цветной текст на бледной подложке на тёмном фоне не читался.
+            .fontWeight(selected ? .semibold : .regular)
+            .foregroundStyle(Color.primary)
+            .background(Capsule().fill(selected ? tint.opacity(Alpha.badge) : Fill.faint))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

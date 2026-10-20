@@ -1,7 +1,7 @@
 import SwiftUI
 import TrudaybookCore
 
-/// Неделя в горизонтальном виде: дни колонками, часы сверху вниз. Что на
+/// Неделя: дни колонками, часы сверху вниз. Что на
 /// календаре — выбирается над ним: встречи и напоминания, письма или погода
 /// по часам. У дня в шапке — погода и счётчик неразобранных писем.
 struct WeekView: View {
@@ -58,7 +58,7 @@ struct WeekView: View {
                                               scale: TimelineScale(dayStart: day, hourWidth: hourHeight),
                                               width: columnWidth - 4)
                             case .weather:
-                                WeekWeatherColumn(day: day, hourHeight: hourHeight, width: columnWidth - 4)
+                                HourlyWeatherColumn(day: day, hourHeight: hourHeight, width: columnWidth - 4)
                             }
                         }
                         .frame(width: columnWidth - 4, height: height, alignment: .topLeading)
@@ -121,7 +121,9 @@ private struct WeekDayHeader: View {
         let today = calendar.isDate(day, inSameDayAs: model.now)
         let selected = calendar.isDate(day, inSameDayAs: model.day)
         let mail = model.unresolvedMail(on: day)
-        let allDay = model.weekItems.filter { $0.isAllDay && calendar.isDate($0.time, inSameDayAs: day) }
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: day) ?? day.addingTimeInterval(86_400)
+        // Многодневное — в шапке каждого своего дня, а не только первого.
+        let allDay = model.weekItems.filter { $0.isAllDayBand && $0.overlaps(from: day, to: dayEnd) }
 
         VStack(alignment: .leading, spacing: Space.xxs) {
             // Узкой колонке — по шагу: без температуры, счётчик писем
@@ -164,7 +166,7 @@ private struct WeekDayHeader: View {
                 .padding(.horizontal, Space.xs)
                 .padding(.vertical, Space.hairline)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: Radius.xs).fill(item.swiftUIColor.opacity(0.2)))
+                .background(RoundedRectangle(cornerRadius: Radius.xs).fill(item.swiftUIColor.opacity(Alpha.tint)))
                 .opacity(model.status(of: item).isDone ? 0.5 : 1)
                 .timelineItem(item, model: model)
             }
@@ -226,7 +228,7 @@ private struct WeekDayColumn: View {
     var body: some View {
         let calendar = model.calendar
         let dayEnd = calendar.date(byAdding: .day, value: 1, to: day) ?? day.addingTimeInterval(86_400)
-        let items = model.weekItems.filter { $0.time < dayEnd && ($0.end ?? $0.time.addingTimeInterval(1)) > day }
+        let items = model.weekItems.filter { $0.overlaps(from: day, to: dayEnd) }
         DayEventColumn(items: items, scale: TimelineScale(dayStart: day, hourWidth: hourHeight), width: width)
     }
 }
@@ -351,8 +353,8 @@ struct WeatherChip: View {
 }
 
 /// Погода по часам колонкой: значок и температура, синева — вероятность
-/// осадков.
-private struct WeekWeatherColumn: View {
+/// осадков. В неделе — режим «Погода», в дне — колонка справа.
+struct HourlyWeatherColumn: View {
     @EnvironmentObject private var model: AppModel
     let day: Date
     let hourHeight: Double
@@ -372,15 +374,15 @@ private struct WeekWeatherColumn: View {
                     Spacer(minLength: 0)
                     if hour.precipitation >= 30, width > 90 {
                         Text("\(hour.precipitation)%")
-                            .font(.app(.tiny).monospacedDigit())
-                            .foregroundStyle(Color.blue)
+                            .font(.app(.small).monospacedDigit())
+                            .foregroundStyle(Palette.info)
                     }
                 }
                 .font(.system(size: min(11, max(8, CGFloat(hourHeight) * 0.4)), weight: .medium))
                 .padding(.horizontal, Space.xs)
                 .frame(width: width, height: CGFloat(hourHeight) - 1, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: Radius.xs)
-                    .fill(Color.blue.opacity(Double(hour.precipitation) / 100 * 0.35)))
+                    .fill(Palette.info.opacity(Double(hour.precipitation) / 100 * 0.35)))
                 .offset(y: CGFloat(scale.x(for: hour.time)))
                 .help("\(Format.time(hour.time)) · \(WeekWeather.title(hour.code)), \(WeekWeather.degrees(hour.temperature))"
                       + (hour.precipitation >= 20 ? " · " + String(localized: "осадки \(hour.precipitation)%") : ""))

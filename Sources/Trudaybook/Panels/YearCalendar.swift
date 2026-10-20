@@ -112,9 +112,9 @@ private struct MiniMonth: View {
             let days = MonthGrid.days(of: month, calendar: calendar)
             LazyVGrid(columns: [GridItem(.fixed(18), spacing: Space.xxs)]
                       + Array(repeating: GridItem(.flexible(), spacing: Space.hairline), count: 7), spacing: Space.hairline) {
-                Text("Нед").font(.app(.micro)).foregroundStyle(.tertiary)
+                Text("Нед").font(.app(.tiny)).foregroundStyle(.tertiary)
                 ForEach(Self.weekdays, id: \.self) { name in
-                    Text(name).font(.app(.micro)).foregroundStyle(.tertiary)
+                    Text(name).font(.app(.tiny)).foregroundStyle(.tertiary)
                 }
                 ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                     if index % 7 == 0 {
@@ -146,8 +146,8 @@ private struct MiniWeekNumber: View {
                 close()
             } label: {
                 Text("\(number)")
-                    .font(.app(.micro, weight: current ? .semibold : .regular).monospacedDigit())
-                    .foregroundStyle(current ? Color.accentColor : Color.secondary.opacity(0.8))
+                    .font(.app(.tiny, weight: current ? .semibold : .regular).monospacedDigit())
+                    .foregroundStyle(current ? Color.accentColor : Color.secondary)
                     .frame(maxWidth: .infinity, minHeight: 18)
                     .contentShape(Rectangle())
             }

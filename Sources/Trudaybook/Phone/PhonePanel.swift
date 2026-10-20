@@ -495,6 +495,10 @@ private struct RecentRow: View {
         .onHover { hovering = $0 }
         .onTapGesture(count: 2) { if canCall { call() } }
         .onTapGesture(perform: pick)
+        // Кнопка звонка видна только под курсором — VoiceOver получает
+        // оба действия строки сам.
+        .actsAsRow(String(localized: "Выбрать"), action: pick)
+        .accessibilityAction(named: Text("Позвонить")) { if canCall { call() } }
         .contextMenu {
             Button("Позвонить", action: call).disabled(!canCall)
             Button(saved == nil ? String(localized: "Сохранить номер…") : String(localized: "Изменить имя…"), action: edit)
@@ -559,6 +563,10 @@ private struct ContactRow: View {
         .onHover { hovering = $0 }
         .onTapGesture(count: 2) { if canCall { call() } }
         .onTapGesture(perform: pick)
+        // Кнопка звонка видна только под курсором — VoiceOver получает
+        // оба действия строки сам.
+        .actsAsRow(String(localized: "Выбрать"), action: pick)
+        .accessibilityAction(named: Text("Позвонить")) { if canCall { call() } }
         .contextMenu {
             Button("Позвонить", action: call).disabled(!canCall)
             Button("Изменить имя…", action: edit)

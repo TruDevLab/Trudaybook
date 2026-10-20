@@ -94,23 +94,25 @@ struct AssistantChatView: View {
                     withAnimation(Motion.quick) { proxy.scrollTo(id) }
                 }
             }
-            HStack(spacing: 0) {
-                Button { textSize = Double(ChatTextSize.step(CGFloat(textSize), by: -1)) } label: {
-                    Image(systemName: "minus.magnifyingglass")
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .disabled(CGFloat(textSize) <= ChatTextSize.steps[0])
-                .labelHelp(String(localized: "Уменьшить текст в чате"))
-                Button { textSize = Double(ChatTextSize.step(CGFloat(textSize), by: 1)) } label: {
-                    Image(systemName: "plus.magnifyingglass")
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .disabled(CGFloat(textSize) >= ChatTextSize.steps[ChatTextSize.steps.count - 1])
-                .labelHelp(String(localized: "Увеличить текст в чате"))
+            // Размер текста — одним меню «Aa»: две лупы рядом с «+» и «×»
+            // принимали за поиск.
+            Menu {
+                Button("Крупнее") { textSize = Double(ChatTextSize.step(CGFloat(textSize), by: 1)) }
+                    .disabled(CGFloat(textSize) >= ChatTextSize.steps[ChatTextSize.steps.count - 1])
+                Button("Мельче") { textSize = Double(ChatTextSize.step(CGFloat(textSize), by: -1)) }
+                    .disabled(CGFloat(textSize) <= ChatTextSize.steps[0])
+                Divider()
+                Button("Обычный размер") { textSize = Double(ChatTextSize.standard) }
+                    .disabled(CGFloat(textSize) == ChatTextSize.standard)
+            } label: {
+                Image(systemName: "textformat.size")
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .labelHelp(String(localized: "Размер текста в чате"))
             Divider().frame(height: 16)
             Button { session.newDialog() } label: {
                 Image(systemName: "plus")

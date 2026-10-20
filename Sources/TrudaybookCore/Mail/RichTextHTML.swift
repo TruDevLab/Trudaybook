@@ -5,13 +5,37 @@ import AppKit
 /// Не `NSAttributedString.data(documentType: .html)`: тот выдаёт документ
 /// со стилями по классам (`p.p1 {…}`), которые почтовые программы режут,
 /// и письмо приходит без оформления. Здесь — только `<b>`, `<i>`, `<u>`,
-/// `<a>`, списки, абзацы, таблицы и цвет строчными стилями (`style="color:…"`):
-/// это понимают все, включая Outlook и Gmail.
+/// `<a>`, списки, абзацы, таблицы, цвет, шрифт и размер строчными стилями
+/// (`style="color:…"`): это понимают все, включая Outlook и Gmail.
 public enum RichTextHTML {
     /// Метка пункта маркированного списка в редакторе.
     public static let bullet = "• "
+    /// Размер обычного текста редактора: его в письмо не пишем — у получателя
+    /// текст будет его обычного размера.
+    public static let bodySize: CGFloat = 13
+
+    /// Шрифты на выбор — те, что есть почти у всех получателей (Windows,
+    /// macOS, телефоны). Значение — запасные шрифты для CSS: если нужного
+    /// нет, почтовая программа возьмёт похожий.
+    public static let fontStacks: [(family: String, css: String)] = [
+        ("Arial", "Arial, Helvetica, sans-serif"),
+        ("Helvetica", "Helvetica, Arial, sans-serif"),
+        ("Verdana", "Verdana, Geneva, sans-serif"),
+        ("Tahoma", "Tahoma, Verdana, sans-serif"),
+        ("Trebuchet MS", "'Trebuchet MS', Arial, sans-serif"),
+        ("Georgia", "Georgia, 'Times New Roman', serif"),
+        ("Times New Roman", "'Times New Roman', Times, serif"),
+        ("Courier New", "'Courier New', Courier, monospace"),
+    ]
 
     public static func html(from text: NSAttributedString) -> String {
+        render(text).html
+    }
+
+    /// HTML и картинки из текста (подпись с логотипом): картинка — `<img
+    /// src="cid:…">` того же размера, что в редакторе, её содержимое — в `images`.
+    public static func render(_ text: NSAttributedString) -> (html: String, images: [MailBody.Attachment]) {
+        var images: [MailBody.Attachment] = []
         let string = text.string as NSString
         var blocks: [String] = []
         var list: (tag: String, items: [String])?
@@ -55,7 +79,7 @@ public enum RichTextHTML {
                 flushList()
                 if table?.object !== block.table { flushTable(); table = (block.table, []) }
                 while table!.cells.count <= block.startingRow { table!.cells.append([:]) }
-                let inner = inline(text, in: line)
+                let inner = inline(text, in: line, images: &images)
                 let previous = table!.cells[block.startingRow][block.startingColumn]
                 table!.cells[block.startingRow][block.startingColumn] = previous.map { $0 + "<br>" + inner } ?? inner
                 continue
@@ -70,7 +94,7 @@ public enum RichTextHTML {
                 tag = "ol"
                 markerLength = (String(content[match]) as NSString).length
             }
-            let inner = inline(text, in: NSRange(location: line.location + markerLength, length: line.length - markerLength))
+            let inner = inline(text, in: NSRange(location: line.location + markerLength, length: line.length - markerLength), images: &images)
 
             if let tag {
                 if list?.tag != tag { flushList() }
@@ -83,14 +107,21 @@ public enum RichTextHTML {
         }
         flushList()
         flushTable()
-        return blocks.joined()
+        return (blocks.joined(), images)
     }
 
     /// Кусок строки с начертаниями и ссылками.
-    static func inline(_ text: NSAttributedString, in range: NSRange) -> String {
+    static func inline(_ text: NSAttributedString, in range: NSRange, images: inout [MailBody.Attachment]) -> String {
         guard range.length > 0 else { return "" }
         var out = ""
         text.enumerateAttributes(in: range) { attributes, runRange, _ in
+            if let attachment = attributes[.attachment] as? NSTextAttachment {
+                if let image = inlineImage(attachment, number: images.count + 1) {
+                    images.append(image.part)
+                    out += image.tag
+                }
+                return
+            }
             var piece = escape((text.string as NSString).substring(with: runRange))
             let traits = (attributes[.font] as? NSFont)?.fontDescriptor.symbolicTraits ?? []
             let link = (attributes[.link] as? URL)?.absoluteString ?? attributes[.link] as? String
@@ -110,10 +141,54 @@ public enum RichTextHTML {
             if let color = attributes[.backgroundColor] as? NSColor, let hex = hex(color) {
                 css.append("background-color:\(hex)")
             }
+            if let font = attributes[.font] as? NSFont {
+                if let family = fontFamily(font) { css.append("font-family:\(family)") }
+                if abs(font.pointSize - bodySize) > 0.5 { css.append("font-size:\(Int(font.pointSize.rounded()))px") }
+            }
             if !css.isEmpty { piece = "<span style=\"\(css.joined(separator: ";"))\">\(piece)</span>" }
             out += piece
         }
         return out
+    }
+
+    /// Картинка из редактора: PNG или JPEG как есть (их уже пережали при
+    /// вставке), иное — в PNG. Размер в письме — как на экране.
+    static func inlineImage(_ attachment: NSTextAttachment, number: Int) -> (part: MailBody.Attachment, tag: String)? {
+        var data = attachment.fileWrapper?.regularFileContents
+        var type = "image/png"
+        if let bytes = data, bytes.starts(with: [0xFF, 0xD8, 0xFF]) {
+            type = "image/jpeg"
+        } else if let bytes = data, bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            type = "image/png"
+        } else if let image = attachment.image ?? data.flatMap(NSImage.init(data:)),
+                  let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff) {
+            data = bitmap.representation(using: .png, properties: [:])
+        } else {
+            data = nil
+        }
+        guard let data else { return nil }
+        // Номер — от содержимого: тот же текст даёт то же письмо, и черновик
+        // не считается поправленным при каждой проверке.
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in data { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01b3 }
+        let id = "image\(number).\(String(hash, radix: 16))@trudaybook"
+        let ext = type == "image/jpeg" ? "jpg" : "png"
+        var size = attachment.bounds.size
+        if size.width <= 0 || size.height <= 0, let image = NSImage(data: data) { size = image.size }
+        let dimensions = size.width > 0 ? " width=\"\(Int(size.width.rounded()))\" height=\"\(Int(size.height.rounded()))\"" : ""
+        let part = MailBody.Attachment(name: "image\(number).\(ext)", size: data.count, mimeType: type, data: data, contentID: id)
+        return (part, "<img src=\"cid:\(id)\"\(dimensions) alt=\"\">")
+    }
+
+    /// Шрифт для CSS; `nil` — системный (обычный): его не пишем, у получателя
+    /// будет его обычный шрифт.
+    static func fontFamily(_ font: NSFont) -> String? {
+        guard let family = font.familyName, !family.hasPrefix("."),
+              family != NSFont.systemFont(ofSize: font.pointSize).familyName else { return nil }
+        if let known = fontStacks.first(where: { $0.family == family }) { return known.css }
+        // Чужое имя — в кавычках и без символов, которые сломали бы стиль.
+        let safe = family.filter { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" }
+        return safe.isEmpty ? nil : "'\(safe)'"
     }
 
     /// `#RRGGBB`; `nil` — у системных цветов (цвет текста, фон), их не пишем.

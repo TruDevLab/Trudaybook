@@ -29,7 +29,7 @@ public enum AutoJoinRules {
     /// с чужого адреса сами не открываются — открыть страницу из
     /// приглашения без нажатия значит поверить отправителю.
     public static func canAutoJoin(_ item: TimelineItem) -> Bool {
-        guard item.kind == .event, !item.isAllDay, let info = item.event,
+        guard item.kind == .event, !item.isAllDayBand, let info = item.event,
               !info.isCancelled, info.myResponse != .declined,
               let link = info.link, link.provider != .other else { return false }
         return true

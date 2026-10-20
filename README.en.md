@@ -38,22 +38,34 @@ Everything unhandled from all days waits at the bottom in **To handle**:
 Inbox Zero. A snoozed email leaves that list and comes back at the hour
 you chose.
 
-On the right: the whole email or meeting — replies with formatting,
+On the right: the whole email or meeting (the 📄 button next to the priority flag
+shows the email on a white sheet in any theme; it is also in the email window and the
+reply window, and the choice is remembered). Reply, Reply All and Forward (⇧⌘F) are in
+the right panel, the email window and the toolbar. Replies with formatting,
 attachments, invitations with Accept and Decline, attendees and the online
 meeting link.
 
 Swipe two fingers on the trackpad to go to the next or previous day (week in
-the week view). The timeline can run top to bottom too — the button next to
-the day/week switch —
-or sit below the email list: drag it by the ≡ handle left of the date,
-or press ⌥⌘B. Top to bottom in a wide window shows two days: today always
-on the left, the right one pages. Each day has an all-day strip; drop a meeting
+the week view), with the “‹ Today ›” buttons, or with ⌘[ and ⌘]. Hours run top to
+bottom. The timeline can also sit below the email list: drag it by the ≡ handle left
+of the date, or press ⌥⌘B. One day at a time: emails on the left, meetings and
+reminders in the middle (no wider than 420 points), hourly weather on the right.
+Above the columns is an all-day strip, which also holds
+meetings of a day or longer (a vacation, a business trip) on each of their days; drop a meeting
 or reminder onto it (or onto a week-day header) to make it all-day — while you
-drag, the strips are outlined. Drop “Create” onto a strip, or drag a
+drag, the strips are outlined; an all-day reminder stays out of To handle until its day
+is over. Drop “Create” onto a strip, or drag a
 press-and-hold placeholder into it, for a new all-day meeting. Working hours are lighter; which hours
-they are and how many hours you see at once (12 by default) — Settings →
+they are and how many hours you see at once (6 by default) — Settings →
 Calendars → Timeline. A checkmark on an email or a bundle means handled;
-a past meeting simply fades.
+a past meeting simply fades. A meeting card shows, when there is room, who set it
+up and how many people attend. Color a meeting or a whole series with “Color” in
+the right-click menu or with the calendar-name button in the right panel; the color
+is yours only, the calendar doesn’t change. An unanswered meeting is pale, outlined
+with a dashed line and marked “?”; a cancelled one is grey and struck through.
+While nothing is selected, the right panel shows a day summary: upcoming meetings,
+unhandled mail, reminders and the week ahead day by day. Clicking an empty spot in
+the calendar or the email list clears the selection and brings the summary back.
 
 ## Week
 
@@ -70,7 +82,7 @@ it shows:
 
 Next to it — **“5 days | 7 days”**. Each day's header shows the weather and
 the count of unhandled emails. Meetings you haven't answered, or answered
-“tentative”, are hatched and outlined with a dashed line.
+“tentative”, are pale, outlined with a dashed line and marked “?”.
 
 ![Hourly weather](docs/weather-en.png)
 
@@ -87,8 +99,10 @@ the count of unhandled emails. Meetings you haven't answered, or answered
 - Conversations: emails of one thread in a single expandable row (turn it on
   in Settings); archiving the first email archives the whole thread. Each row
   shows whether you are a recipient (“Me”, red if only you) or in Cc.
-- Replies and new emails with formatting, quotes and attachments; recipients
-  as chips with address book suggestions, Bcc on demand; a signature per mailbox.
+- Replies and new emails with formatting (bold, italic, font and size, text and
+  background color, lists, tables), quotes and attachments; recipients
+  as chips with address book suggestions, Bcc on demand; a signature per mailbox,
+  with formatting (font, size, color) and an image such as a logo, sent inside the email.
   Drafts save themselves to the mailbox’s Drafts — a few seconds after an edit and
   when the message is closed; Cancel asks whether to keep the draft. Continue a draft
   from the folder with a double-click or “Continue Draft”. A started reply shows
@@ -172,12 +186,14 @@ offers to install it and download a suitable model itself, Settings → AI):
 - “Daily Agenda” in the note window: key items for the day, meetings with a
   Minutes section and emails from attendees, reminders, important emails;
   week and month summaries from your daily notes;
-- “Prepare reply template” in the reply window: the model reads the email and
+- “Prepare reply template” in the ✨ menu of the reply window: the model reads the email and
   the earlier conversation and drafts a reply that answers every question;
   it makes no decisions for you — those are left as [placeholders];
 - ✨ in the message window (and “AI” in the right-click menu) edits the selection:
   fix mistakes, improve the writing, format and structure, make it shorter,
-  a formal or friendly tone; the new text replaces the selection, ⌘Z undoes it.
+  a formal or friendly tone; the new text replaces the selection, ⌘Z undoes it;
+- “Summarize Selection” in the right-click menu of an email or a meeting
+  description — a summary of the selected passage pops up next to it.
 
 **SIP phone** (Settings → Phone, off by default) — calls through your PBX right
 in Trudaybook. The Phone button (⌥⌘P) opens a dialer with a keypad, recent
@@ -219,7 +235,6 @@ notch app by the same author (optional, all off by default):
 | ⌘= / ⌘− | Zoom in / out |
 | ⌥⌘1 / ⌥⌘2 | Day / week |
 | ⇧⌘H | Hide / show handled emails on the timeline |
-| ⌥⌘L | Timeline top to bottom |
 | ⌥⌘B | Timeline at the bottom of the window |
 | ⌥⌘P | Phone |
 | ↑ ↓ | Neighbouring item |

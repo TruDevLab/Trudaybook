@@ -10,6 +10,11 @@ import TrudaybookCore
 @MainActor
 final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
     static let bodyFont = NSFont.systemFont(ofSize: 13)
+    /// Выделение в поле — видно на любом фоне окна, в светлой и тёмной теме.
+    static let selectionColor = NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return NSColor.controlAccentColor.withAlphaComponent(dark ? 0.6 : 0.4)
+    }
 
     weak var textView: NSTextView?
     /// Текст поправил человек (или вставка с отменой) — для сохранения
@@ -33,19 +38,26 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
     /// Подпись в конце письма: вставить или заменить прежнюю (сменили ящик
     /// «от»). Если прежнюю подпись в тексте уже правили руками — не трогать
     /// её, а новую не добавлять: человек пишет свою.
-    func setSignature(_ new: String, replacing old: String?) {
+    /// Подпись с оформлением и картинками; `old` — прежняя подпись простым
+    /// текстом (`string` вставленной), по нему её и находят в конце письма.
+    func setSignature(_ new: NSAttributedString, replacing old: String?) {
         guard let textView, let storage = textView.textStorage else { return }
-        func block(_ text: String) -> String { text.isEmpty ? "" : "\n\n" + text }
-        let current = storage.string as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: Self.bodyFont, .foregroundColor: NSColor.textColor]
+        func block(_ text: NSAttributedString) -> NSAttributedString {
+            guard text.length > 0 else { return NSAttributedString() }
+            let result = NSMutableAttributedString(string: "\n\n", attributes: attributes)
+            result.append(text)
+            return result
+        }
+        let current = storage.string as NSString
         if let old, !old.isEmpty {
-            let previous = block(old) as NSString
+            let previous = ("\n\n" + old) as NSString
             guard current.hasSuffix(previous as String) else { return }
             let range = NSRange(location: current.length - previous.length, length: previous.length)
-            edit(range) { storage.replaceCharacters(in: range, with: NSAttributedString(string: block(new), attributes: attributes)) }
-        } else if !new.isEmpty {
+            edit(range) { storage.replaceCharacters(in: range, with: block(new)) }
+        } else if new.length > 0 {
             let range = NSRange(location: current.length, length: 0)
-            edit(range) { storage.replaceCharacters(in: range, with: NSAttributedString(string: block(new), attributes: attributes)) }
+            edit(range) { storage.replaceCharacters(in: range, with: block(new)) }
         }
         // Писать — с начала, над подписью.
         textView.setSelectedRange(NSRange(location: 0, length: 0))
@@ -217,6 +229,91 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
         let range = NSRange(location: location, length: 0)
         edit(range) { storage.replaceCharacters(in: range, with: result) }
         view.setSelectedRange(NSRange(location: location + (result.string.hasPrefix("\n\n") ? 1 : 0), length: 0))
+    }
+
+    // MARK: - Картинка
+
+    /// Картинка из файла — в место курсора (подпись с логотипом). Пережимается:
+    /// не шире 600 точек, на экране и в письме — до 300; метаданные снимка
+    /// (а в фото бывают координаты съёмки) при этом не переносятся.
+    @discardableResult
+    func insertImage(from url: URL) -> Bool {
+        guard let view = textView, let storage = view.textStorage,
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 20_000_000,
+              let image = NSImage(contentsOf: url), let encoded = Self.encodeImage(image) else { return false }
+        let wrapper = FileWrapper(regularFileWithContents: encoded.data)
+        wrapper.preferredFilename = "image." + encoded.ext
+        let attachment = NSTextAttachment(fileWrapper: wrapper)
+        let scale = min(1, 300 / max(encoded.size.width, 1))
+        attachment.bounds = CGRect(x: 0, y: 0, width: (encoded.size.width * scale).rounded(),
+                                   height: (encoded.size.height * scale).rounded())
+        let piece = NSMutableAttributedString(attachment: attachment)
+        piece.addAttributes([.font: Self.bodyFont, .foregroundColor: NSColor.textColor], range: NSRange(location: 0, length: piece.length))
+        let range = view.selectedRange()
+        edit(range) { storage.replaceCharacters(in: range, with: piece) }
+        view.setSelectedRange(NSRange(location: range.location + piece.length, length: 0))
+        return true
+    }
+
+    /// Картинка заново: PNG (с прозрачностью) или JPEG, до 600 точек в ширину.
+    /// `size` — размер в точках экрана.
+    static func encodeImage(_ image: NSImage) -> (data: Data, ext: String, size: CGSize)? {
+        let pixels = image.representations.map { CGSize(width: $0.pixelsWide, height: $0.pixelsHigh) }
+            .max { $0.width < $1.width } ?? image.size
+        let source = pixels.width > 0 ? pixels : image.size
+        guard source.width > 0, source.height > 0 else { return nil }
+        let scale = min(1, 600 / source.width)
+        let width = Int((source.width * scale).rounded()), height = max(Int((source.height * scale).rounded()), 1)
+        guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
+                                            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                            bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        image.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+        let transparent = image.representations.contains { $0.hasAlpha }
+        let data = transparent
+            ? bitmap.representation(using: .png, properties: [:])
+            : bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.88])
+        guard let data else { return nil }
+        // На экране — вдвое меньше точек: снимок экрана Retina иначе вдвое крупнее.
+        let points = image.size.width > 0 ? image.size : CGSize(width: width, height: height)
+        let fit = min(1, CGFloat(width) / max(points.width, 1))
+        return (data, transparent ? "png" : "jpg", CGSize(width: points.width * fit, height: points.height * fit))
+    }
+
+    // MARK: - Шрифт и размер
+
+    /// Шрифт выделенного (или того, что будет набрано); `nil` — обычный,
+    /// системный. Жирный и курсив остаются.
+    func setFontFamily(_ family: String?) {
+        let manager = NSFontManager.shared
+        convertFonts { font in
+            guard let family else {
+                let traits = manager.traits(of: font).intersection([.boldFontMask, .italicFontMask])
+                return manager.convert(NSFont.systemFont(ofSize: font.pointSize), toHaveTrait: traits)
+            }
+            return manager.convert(font, toFamily: family)
+        }
+    }
+
+    /// Размер выделенного — у каждого куска свой шрифт, меняется только размер.
+    func setFontSize(_ size: CGFloat) {
+        convertFonts { NSFontManager.shared.convert($0, toSize: size) }
+    }
+
+    private func convertFonts(_ transform: (NSFont) -> NSFont) {
+        guard let view = textView, let storage = view.textStorage else { return }
+        let range = view.selectedRange()
+        guard range.length > 0 else {
+            view.typingAttributes[.font] = transform(view.typingAttributes[.font] as? NSFont ?? Self.bodyFont)
+            return
+        }
+        edit(range) {
+            storage.enumerateAttribute(.font, in: range) { value, sub, _ in
+                storage.addAttribute(.font, value: transform(value as? NSFont ?? Self.bodyFont), range: sub)
+            }
+        }
     }
 
     // MARK: - Начертания
@@ -437,6 +534,8 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
 /// Поле ввода с оформлением.
 struct RichTextEditorView: NSViewRepresentable {
     let controller: RichTextController
+    /// Белый лист: поле в светлом виде в любой теме — тёмный текст на белом.
+    var onWhite = false
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
@@ -450,13 +549,20 @@ struct RichTextEditorView: NSViewRepresentable {
         text.textContainerInset = NSSize(width: 6, height: 8)
         text.typingAttributes = [.font: RichTextController.bodyFont, .foregroundColor: NSColor.textColor]
         text.linkTextAttributes = [.foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue]
+        // Системное выделение — бледно-голубое: на фоне «Небо» и поле, и
+        // выделение голубые, и выделенного не видно. Цвет акцента плотнее.
+        text.selectedTextAttributes = [.backgroundColor: RichTextController.selectionColor]
         text.delegate = controller
         controller.textView = text
         DispatchQueue.main.async { controller.focus() }
         return scroll
     }
 
-    func updateNSView(_ view: NSScrollView, context: Context) {}
+    func updateNSView(_ view: NSScrollView, context: Context) {
+        // Цвет текста в поле — системный, он сам темнеет на светлом виде.
+        let appearance = onWhite ? NSAppearance(named: .aqua) : nil
+        if view.appearance != appearance { view.appearance = appearance }
+    }
 }
 
 /// Кнопки оформления — общие у ответа и у заметки. У жирного, курсива
@@ -465,6 +571,8 @@ struct RichFormatControls: View {
     let editor: RichTextController
     /// Заголовок и дела с галочкой — в заметке; в письме их нет.
     var noteTools = false
+    /// Картинка из файла — в подписи (логотип).
+    var images = false
 
     var body: some View {
         RichFormatButton(symbol: "bold", help: String(localized: "Жирный (⌘B)"), key: "b") { editor.toggleBold() }
@@ -480,7 +588,33 @@ struct RichFormatControls: View {
             RichFormatButton(symbol: "checklist", help: String(localized: "Список дел с галочками")) { editor.toggleList(.check) }
         }
         Divider().frame(height: 16).padding(.horizontal, Space.xs)
-        // Цвет текста, выделение маркером, таблица.
+        // Шрифт и размер: шрифты — те, что есть почти у всех получателей.
+        Menu {
+            Button("Обычный") { editor.setFontFamily(nil) }
+            Divider()
+            ForEach(RichTextHTML.fontStacks, id: \.family) { font in
+                Button(font.family) { editor.setFontFamily(font.family) }
+            }
+        } label: {
+            Image(systemName: "textformat").frame(width: 26, height: 22)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .labelHelp(String(localized: "Шрифт"))
+        Menu {
+            ForEach(TextPalette.fontSizes, id: \.self) { size in
+                Button(size == RichTextHTML.bodySize ? String(localized: "\(Int(size)) — обычный") : "\(Int(size))") {
+                    editor.setFontSize(size)
+                }
+            }
+        } label: {
+            Image(systemName: "textformat.size.larger").frame(width: 26, height: 22)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .labelHelp(String(localized: "Размер шрифта"))
+        Divider().frame(height: 16).padding(.horizontal, Space.xs)
+        // Цвет текста, цвет фона (маркер), таблица.
         Menu {
             ForEach(TextPalette.text, id: \.name) { choice in
                 Button { editor.setTextColor(choice.color) } label: {
@@ -502,13 +636,13 @@ struct RichFormatControls: View {
                 }
             }
             Divider()
-            Button("Без выделения") { editor.setHighlight(nil) }
+            Button("Без цвета фона") { editor.setHighlight(nil) }
         } label: {
             Image(systemName: "highlighter").frame(width: 26, height: 22)
         }
         .menuIndicator(.hidden)
         .fixedSize()
-        .labelHelp(String(localized: "Выделить цветом"))
+        .labelHelp(String(localized: "Цвет фона текста (маркер)"))
         Menu {
             ForEach(TextPalette.tableSizes, id: \.self) { size in
                 Button("\(size.columns) × \(size.rows)") { editor.insertTable(rows: size.rows, columns: size.columns) }
@@ -519,6 +653,16 @@ struct RichFormatControls: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .labelHelp(String(localized: "Вставить таблицу (столбцы × строки)"))
+        if images {
+            RichFormatButton(symbol: "photo", help: String(localized: "Вставить картинку (логотип) — до 300 точек в ширину")) {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = [.image]
+                panel.allowsMultipleSelection = false
+                if panel.runModal() == .OK, let url = panel.url, !editor.insertImage(from: url) {
+                    NSSound.beep()
+                }
+            }
+        }
     }
 }
 

@@ -107,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             DebugLog.write("данные: на дне \(model.dayItems.count), не разобрано \(model.unresolved.count)")
             if model.options.labelMail { model.labelUnresolved(manual: true) }
-            if model.options.dragProbe != nil, model.options.snapshotPath == nil { model.applyDebugSelection() }
+            if model.options.dragProbe != nil || model.options.clickProbe != nil, model.options.snapshotPath == nil { model.applyDebugSelection() }
             if model.options.assistant { model.assistantOpen = true }
             if model.options.phone { model.phoneOpen = true }
             if model.options.phoneCall { model.phone.simulateActive() }
@@ -271,6 +271,15 @@ enum MainMenu {
         }
         // Письмо в окне и файлом: ⌘S в окне письма сохраняет его, в главном — выбранное.
         let letterItems: [NSMenuItem] = [
+            // Из окна письма — его, из главного — выбранное.
+            ClosureItem(String(localized: "Переслать"), key: "f", modifiers: [.command, .shift]) {
+                if let document = LetterWindow.key {
+                    model.startForward(fromWindow: document.item, body: document.body)
+                    LetterWindow.showMainWindow()
+                } else if let item = model.selectedLetter {
+                    model.startForward(of: item)
+                }
+            },
             ClosureItem(String(localized: "Открыть письмо в окне"), key: "o") {
                 if let item = model.selectedItem, item.kind == .mail { LetterWindow.show(item, model: model) }
             },
@@ -312,9 +321,6 @@ enum MainMenu {
             },
             ClosureItem(String(localized: "Телефон"), key: "p", modifiers: [.command, .option]) {
                 withAnimation(Motion.move) { model.phoneOpen.toggle() }
-            },
-            ClosureItem(String(localized: "Вертикальный таймлайн"), key: "l", modifiers: [.command, .option]) {
-                withAnimation(HoverMotion.animation) { model.timelineVertical.toggle() }
             },
             ClosureItem(String(localized: "Таймлайн внизу окна"), key: "b", modifiers: [.command, .option]) {
                 withAnimation(HoverMotion.animation) { model.timelineAtBottom.toggle() }

@@ -53,7 +53,7 @@ public struct Invitation: Hashable, Sendable {
         guard !isAllDay else { return [] }
         return events.filter { item in
             // Отменённая встреча время не занимает.
-            guard item.kind == .event, !item.isAllDay, item.event?.isCancelled != true else { return false }
+            guard item.kind == .event, !item.isAllDayBand, item.event?.isCancelled != true else { return false }
             let itemEnd = item.end ?? item.time.addingTimeInterval(1800)
             let overlaps = item.time < end && itemEnd > start
             let isSame = item.title == summary && abs(item.time.timeIntervalSince(start)) < 60

@@ -338,6 +338,20 @@ public struct TimelineItem: Identifiable, Hashable, Sendable {
         return nil
     }
 
+    /// Стоит в полосе «на весь день», а не на шкале: событие на весь день
+    /// или встреча на сутки и дольше (отпуск, командировка), как в Календаре
+    /// macOS. На шкале такая встреча закрыла бы собой всю колонку дня.
+    public var isAllDayBand: Bool {
+        isAllDay || (kind == .event && (end ?? time).timeIntervalSince(time) >= 86_400)
+    }
+
+    /// Идёт ли в промежутке `[from, to)`. Многодневное попадает в каждый
+    /// свой день, а не только в первый; конец не включается — событие на
+    /// весь день кончается в полночь следующего.
+    public func overlaps(from: Date, to: Date) -> Bool {
+        time < to && (end ?? time.addingTimeInterval(1)) > from
+    }
+
     /// Короткая подпись: отправитель письма, календарь встречи, список напоминания.
     public var subtitle: String {
         switch detail {

@@ -39,8 +39,6 @@ struct LaunchOptions {
     var sortByPriority = false
     /// Фон «сияние» в главном окне: `--aurora`.
     var aurora = false
-    /// Вертикальный таймлайн: `--vertical`.
-    var vertical = false
     /// `--shift N` (с `--demo`) — листнуть день N раз (минус — назад), как ⌘] и ⌘[.
     var shift = 0
     /// Фон для снимка: `--background gradient|color|system` или имя градиента («Закат»).
@@ -136,6 +134,9 @@ struct LaunchOptions {
     var dragProbe: String?
     /// `--scroll-probe x,y,dy` — прокрутка колёсиком в точке окна (сверху слева).
     var scrollProbe: String?
+    /// `--click-probe x,y` — щелчок в точке окна (сверху слева); в журнале —
+    /// что после него выбрано.
+    var clickProbe: String?
     /// Кнопка поиска для снимка: `--search-scope from|to|cc`.
     var searchScope: MailSearchQuery.Scope?
 
@@ -153,7 +154,9 @@ struct LaunchOptions {
             case "--open-threads": options.openThreads = true
             case "--year": options.year = true
             case "--aurora": options.aurora = true
-            case "--vertical": options.vertical = true
+            // Горизонтального таймлайна больше нет; флаг принимаем, чтобы
+            // старые команды снимков не ломались.
+            case "--vertical": break
             case "--shift": options.shift = iterator.next().flatMap { Int($0) } ?? 0
             case "--week": options.week = true
             case "--drop-preview": options.dropPreview = iterator.next()
@@ -181,6 +184,7 @@ struct LaunchOptions {
             case "--summary": options.summary = true
             case "--template": options.template = true
             case "--drag-probe": options.dragProbe = iterator.next()
+            case "--click-probe": options.clickProbe = iterator.next()
             case "--scroll-probe": options.scrollProbe = iterator.next()
             case "--search-scope": options.searchScope = iterator.next().flatMap(MailSearchQuery.Scope.init(rawValue:))
             case "--label-mail": options.labelMail = true
@@ -269,13 +273,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var readHere: Set<String> = []
     /// Письма, отправленные в «Корзину»: скрыты сразу, не дожидаясь сервера.
     private var trashed: Set<String> = []
-    /// Ширина часа на шкале — это и есть масштаб. Сама подбирается под
-    /// окно (`fitTimeline`), пока масштаб не меняли руками.
+    /// Масштаб шкалы: час дня — половина этого числа по высоте (неделя —
+    /// своя доля). Сам подбирается под высоту таймлайна (`fitTimeline`),
+    /// пока масштаб не меняли руками.
     @Published var hourWidth: Double = 120
     /// Масштаб меняли руками (⌘=/⌘−, щипок) — подбор под окно не вмешивается,
     /// пока не сменят «Показывать часов».
     private var zoomedByHand = false
-    /// Ширина видимой части шкалы — от таймлайна, для подбора масштаба.
+    /// Высота видимой части шкалы — от таймлайна, для подбора масштаба.
     private var timelineViewport: Double = 0
     /// Рабочий день — светлый участок шкалы; остальное чуть темнее.
     @Published var workStart = AppModel.storedInt("workDayStart", default: 8) {
@@ -284,12 +289,13 @@ final class AppModel: ObservableObject {
     @Published var workEnd = AppModel.storedInt("workDayEnd", default: 19) {
         didSet { if !options.demo { UserDefaults.standard.set(workEnd, forKey: "workDayEnd") } }
     }
-    /// Сколько часов видно на шкале дня без прокрутки.
-    @Published var visibleHours = AppModel.storedInt("timelineVisibleHours", default: 12) {
+    /// Сколько часов видно на шкале дня без прокрутки. По умолчанию 6:
+    /// панель таймлайна невысокая, а при 12 часах встреча в час — одна строка.
+    @Published var visibleHours = AppModel.storedInt("timelineVisibleHours", default: 6) {
         didSet {
             if !options.demo { UserDefaults.standard.set(visibleHours, forKey: "timelineVisibleHours") }
             zoomedByHand = false
-            fitTimeline(width: timelineViewport)
+            fitTimeline(height: timelineViewport)
         }
     }
     /// Число из настроек. `integer(forKey:)`, а не `as? Int`: из аргументов
@@ -365,7 +371,6 @@ final class AppModel: ObservableObject {
     @Published var sortByPriority = UserDefaults.standard.bool(forKey: "sortByPriority") {
         didSet { if !options.demo { UserDefaults.standard.set(sortByPriority, forKey: "sortByPriority") } }
     }
-    /// Таймлайн сверху вниз (колонкой слева) вместо слева направо.
     /// Свайп строки списка влево и вправо (см. `SwipeActions.swift`).
     @Published var swipeLeft = SwipeAction(rawValue: UserDefaults.standard.string(forKey: SwipeAction.leftKey) ?? "") ?? .archive {
         didSet { UserDefaults.standard.set(swipeLeft.rawValue, forKey: SwipeAction.leftKey) }
@@ -410,7 +415,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Горизонтальный таймлайн — день или неделя.
+    /// Таймлайн — день (с соседним, если хватает ширины) или неделя.
     enum TimelineSpan: String { case day, week }
     @Published var timelineSpan = TimelineSpan(rawValue: UserDefaults.standard.string(forKey: "timelineSpan") ?? "") ?? .day {
         didSet {
@@ -533,36 +538,18 @@ final class AppModel: ObservableObject {
         item.kind == .mail && StatusRules.status(of: item, local: states[item.id], now: now).isDone
     }
 
-    /// Неделя — одна в обоих видах: в ней дни и так колонками, часы сверху
-    /// вниз. Поворот (`timelineVertical`) — только у дня.
+    /// Неделя — дни колонками, часы сверху вниз, как у дня.
     var showsWeek: Bool { timelineSpan == .week }
 
-    /// Дни вертикального таймлайна: выбранный и следующий. Второй виден,
-    /// если хватает ширины, но грузятся оба — ширина меняется без перезагрузки.
-    var verticalDays: [Date] {
-        let next = { (date: Date) in self.calendar.date(byAdding: .day, value: 1, to: date).map { [$0] } ?? [] }
-        guard pinsToday else { return [day] + next(day) }
-        // Два дня: слева всегда сегодня, справа — листаемый день
-        // (пока выбран сам сегодняшний — завтра).
-        let today = calendar.startOfDay(for: now)
-        return isToday ? [today] + next(today) : [today, day]
+    /// Выбранный день и семь следующих — для недели в сводке дня.
+    func summaryDays(from day: Date) -> [Date] {
+        (0...7).compactMap { calendar.date(byAdding: .day, value: $0, to: day) }
     }
-
-    /// Вертикальному виду хватает ширины на два дня — пишет сам вид.
-    @Published var verticalTwoDays = false {
-        didSet {
-            // Дни вида поменялись — встречи второго дня грузятся заново.
-            if verticalTwoDays != oldValue, timelineVertical, !showsWeek { Task { await reload() } }
-        }
-    }
-
-    /// Сегодня закреплено слева, листается только второй день.
-    var pinsToday: Bool { timelineVertical && !showsWeek && verticalTwoDays }
 
     /// Встречи и напоминания дня из загруженных нескольких дней.
     func events(on date: Date) -> [TimelineItem] {
         guard let end = calendar.date(byAdding: .day, value: 1, to: date) else { return [] }
-        return weekItems.filter { $0.time < end && ($0.end ?? $0.time.addingTimeInterval(1)) > date }
+        return weekItems.filter { $0.overlaps(from: date, to: end) }
     }
 
     /// Дни недели выбранного дня: с понедельника, 7 или 5.
@@ -577,14 +564,12 @@ final class AppModel: ObservableObject {
         unresolved.filter { $0.kind == .mail && calendar.isDate(effectiveTime(of: $0), inSameDayAs: day) }
     }
 
-    @Published var timelineVertical = UserDefaults.standard.bool(forKey: "timelineVertical") {
-        didSet {
-            if !options.demo { UserDefaults.standard.set(timelineVertical, forKey: "timelineVertical") }
-            // У вертикального дня свои дни (выбранный и следующий): встречи
-            // грузятся заново. Неделе поворот не нужен.
-            if timelineVertical != oldValue, !showsWeek { Task { await reload() } }
-        }
+    /// Письма — на белом листе в любой теме: кнопка у письма, выбор
+    /// запоминается для следующих писем.
+    @Published var letterOnWhite = UserDefaults.standard.bool(forKey: "letterOnWhite") {
+        didSet { if !options.demo { UserDefaults.standard.set(letterOnWhite, forKey: "letterOnWhite") } }
     }
+
     // MARK: Фон окна (см. `Backgrounds.swift`)
 
     /// Какой фон. Прежняя настройка «Сияние» (`themeAurora`) переходит сама.
@@ -873,7 +858,9 @@ final class AppModel: ObservableObject {
             systemCalendar = DemoCalendar(clock: clock)
             scheduling = DemoScheduling()
         } else {
-            systemCalendar = EventKitCalendar()
+            let system = EventKitCalendar()
+            system.log = { DebugLog.write($0) }
+            systemCalendar = system
         }
         calendarSource = CombinedCalendar([systemCalendar])
 
@@ -886,6 +873,7 @@ final class AppModel: ObservableObject {
         labels = store.allLabels()
         noteDays = store.daysWithNotes()
         autoJoinOverrides = store.allAutoJoin()
+        eventColorOverrides = store.allEventColors().compactMapValues { RGB(hex: $0) }
         ownMeetingLinks = (store.meta(Self.ownLinksKey) ?? "")
             .split(separator: "\n").compactMap { MeetingLinkHistory.parse(String($0)) }
         if options.demo {
@@ -900,7 +888,6 @@ final class AppModel: ObservableObject {
                     background = parsed
                 }
             }
-            timelineVertical = options.vertical
             timelineSpan = options.week ? .week : .day
             workWeekOnly = options.workWeek
             if let mode = options.weekMode.flatMap(WeekMode.init(rawValue:)) { weekMode = mode }
@@ -1105,12 +1092,11 @@ final class AppModel: ObservableObject {
         // Почта — от порога «Не разобрано» (или от выбранного дня, если он
         // раньше): отложенное письмо могло приехать на этот день из прошлого.
         // В неделе — от её понедельника: письма показываются на всех днях.
-        // Несколько дней: неделя или два дня вертикального вида.
-        let span: [Date]? = showsWeek ? weekDays : timelineVertical ? verticalDays : nil
-        // Не по порядку: у вертикального вида сегодня слева, а второй день
-        // бывает и вчерашним.
-        let spanStart = span?.min()
-        let spanEnd = span?.max().flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
+        // Несколько дней: неделя — её дни; день — он и неделя вперёд
+        // (сводка дня справа показывает её по дням).
+        let span: [Date] = showsWeek ? weekDays : summaryDays(from: day)
+        let spanStart = span.min()
+        let spanEnd = span.max().flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
         let mailFrom = min(spanStart ?? day, mailCutoff)
         let mailTo = max(spanEnd ?? dayEnd, now.addingTimeInterval(60))
         do {
@@ -1123,14 +1109,14 @@ final class AppModel: ObservableObject {
         if let first = spanStart, let spanEnd {
             // Все дни одним запросом; выбранный — из них же.
             weekItems = await calendarSource.items(from: first, to: spanEnd)
-            events = weekItems.filter { $0.time < dayEnd && ($0.end ?? $0.time.addingTimeInterval(1)) > day }
+            events = weekItems.filter { $0.overlaps(from: day, to: dayEnd) }
         } else {
             weekItems = []
             events = await calendarSource.items(from: day, to: dayEnd)
         }
         overdue = await calendarSource.overdueReminders(before: now)
-        weekItems = markCancelled(weekItems)
-        events = markCancelled(events)
+        weekItems = decorate(weekItems)
+        events = decorate(events)
         recompute()
     }
 
@@ -1932,6 +1918,28 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Пересказ выделенного в письме или описании встречи. В журнал — только
+    /// сколько знаков, сам текст — нет.
+    func summarizeSelection(_ text: String) async -> Result<String, ReplyTemplateError> {
+        if let problem = ai.problem {
+            return .failure(.init(code: "disabled", message: problem))
+        }
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            return .failure(.init(code: "empty", message: String(localized: "Выделите текст, который пересказать.")))
+        }
+        let prompt = ModelPrompts.selectionSummary(text, language: AppLanguage.code)
+        switch await ai.complete(prompt, purpose: "пересказ выделенного, знаков \(text.count)") {
+        case .success(let answer):
+            guard let summary = ModelPrompts.summaryText(answer) else {
+                return .failure(.init(code: "empty", message: String(localized: "Модель вернула пустой ответ.")))
+            }
+            return .success(summary)
+        case .failure(let failure):
+            return .failure(.init(code: failure.code, message: failure.message))
+        }
+    }
+
     /// Шаблон ответа: модель читает последнее письмо и прошлую переписку
     /// и готовит черновик, где отвечено на каждый вопрос. Решений за
     /// человека он не принимает — на их месте пометки в скобках.
@@ -2181,24 +2189,62 @@ final class AppModel: ObservableObject {
             checkingCancellations = false
             if found {
                 DebugLog.write("отмены встреч: писем об отмене \(cancellations.count)")
-                weekItems = markCancelled(weekItems)
-                events = markCancelled(events)
+                weekItems = decorate(weekItems, fresh: false)
+                events = decorate(events, fresh: false)
                 recompute()
             }
         }
     }
 
-    /// Встречи, к которым есть письмо об отмене, — зачёркнутыми.
-    private func markCancelled(_ items: [TimelineItem]) -> [TimelineItem] {
-        guard !cancellations.isEmpty else { return items }
+    /// Встречи — со своим цветом (`EventColors`) и зачёркнутые, если к ним
+    /// есть письмо об отмене. `fresh` — только что из календаря: их цвет —
+    /// цвет календаря, его запоминаем, чтобы вернуть, когда свой цвет снимут.
+    private func decorate(_ items: [TimelineItem], fresh: Bool = true) -> [TimelineItem] {
+        guard !cancellations.isEmpty || !eventColorOverrides.isEmpty || !fresh else { return items }
         return items.map { item in
-            guard item.kind == .event, item.event?.isCancelled != true, case .event(var info) = item.detail,
-                  cancellations.values.contains(where: { MeetingCancellation.matches(item, $0) }) else { return item }
+            guard item.kind == .event, case .event(var info) = item.detail else { return item }
             var marked = item
-            info.isCancelled = true
-            marked.detail = .event(info)
+            // Без записи — цвет на встрече ещё календарный: свой ставится
+            // только здесь, и тогда же запоминается прежний.
+            if fresh || calendarColors[item.id] == nil { calendarColors[item.id] = item.color }
+            let base = calendarColors[item.id] ?? item.color
+            marked.color = EventColors.color(of: item, in: eventColorOverrides) ?? base
+            if !info.isCancelled, cancellations.values.contains(where: { MeetingCancellation.matches(item, $0) }) {
+                info.isCancelled = true
+                marked.detail = .event(info)
+            }
             return marked
         }
+    }
+
+    // MARK: - Свой цвет встречи
+
+    /// Свои цвета встреч и серий: ключ `EventColors` → цвет.
+    @Published private(set) var eventColorOverrides: [String: RGB] = [:]
+    /// Цвет календаря у встреч, которым поставили свой, — вернуть его без
+    /// новой загрузки календаря.
+    private var calendarColors: [String: RGB?] = [:]
+
+    /// Чей цвет на встрече: свой вхождения, своей серии или календаря (`nil`).
+    func eventColorScope(of item: TimelineItem) -> EventColors.Scope? {
+        EventColors.scope(of: item, in: eventColorOverrides)
+    }
+
+    /// Поставить встрече (или всей серии) свой цвет; `nil` — цвет календаря.
+    func setEventColor(_ color: RGB?, for item: TimelineItem, scope: EventColors.Scope) {
+        do {
+            for change in EventColors.changes(setting: color, for: item, scope: scope) {
+                try store.setEventColor(change.color?.hex, for: change.key)
+                eventColorOverrides[change.key] = change.color
+            }
+        } catch {
+            errorMessage = String(localized: "Цвет встречи не сохранился: \(error.localizedDescription)")
+            return
+        }
+        DebugLog.write("цвет встречи: \(color == nil ? "как у календаря" : "свой")\(scope == .series ? ", серия" : "")")
+        weekItems = decorate(weekItems, fresh: false)
+        events = decorate(events, fresh: false)
+        recompute()
     }
 
     /// Встреча в календаре, которую отменяет письмо; `nil` — её там уже нет.
@@ -2340,7 +2386,7 @@ final class AppModel: ObservableObject {
     /// Встречи дня для окошка в строке меню: из показанных календарей,
     /// отменённые письмом — зачёркнутыми, по времени начала.
     func menuBarEvents(on date: Date) async -> [TimelineItem] {
-        markCancelled(await events(onDayOf: date))
+        decorate(await events(onDayOf: date))
             .sorted { ($0.isAllDay ? 0 : 1, $0.time) < ($1.isAllDay ? 0 : 1, $1.time) }
     }
 
@@ -2364,7 +2410,7 @@ final class AppModel: ObservableObject {
     /// `AutoJoinRules.grace` назад и начинающиеся в ближайшую минуту.
     /// Отменённые письмом — помечены, их правило пропустит.
     func autoJoinCandidates(now: Date) async -> [TimelineItem] {
-        markCancelled(await calendarSource.items(from: now.addingTimeInterval(-AutoJoinRules.grace),
+        decorate(await calendarSource.items(from: now.addingTimeInterval(-AutoJoinRules.grace),
                                                  to: now.addingTimeInterval(90)))
             .filter { $0.kind == .event }
     }
@@ -2760,7 +2806,7 @@ final class AppModel: ObservableObject {
 
     /// Встречи и напоминания за период — для контекста ассистента.
     func calendarItems(from: Date, to: Date) async -> [TimelineItem] {
-        markCancelled(await calendarSource.items(from: from, to: to))
+        decorate(await calendarSource.items(from: from, to: to))
     }
 
     /// Человек по тому, как его назвала модель: адрес («Имя <a@b>» или
@@ -3360,6 +3406,64 @@ final class AppModel: ObservableObject {
         return signature(for: accountID).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // Подпись с оформлением и картинками — файлом RTFD в папке приложения
+    // (картинкам не место в UserDefaults); простой текст — рядом, как раньше:
+    // им подписан ответ из уведомления, где оформления нет.
+    private var demoRichSignatures: [String: NSAttributedString] = [:]
+    private var richSignatureCache: [String: NSAttributedString?] = [:]
+
+    private static func signatureFile(_ accountID: String?) -> URL? {
+        let name = signatureKey(accountID).map { $0.isLetter || $0.isNumber || "._-@".contains($0) ? $0 : "_" }
+        return try? SQLiteDatabase.applicationSupportURL(String(name) + ".rtfd")
+    }
+
+    func richSignature(for accountID: String?) -> NSAttributedString? {
+        let key = Self.signatureKey(accountID)
+        if options.demo { return demoRichSignatures[key] }
+        if let cached = richSignatureCache[key] { return cached }
+        let loaded = Self.signatureFile(accountID).flatMap { try? Data(contentsOf: $0) }
+            .flatMap { NoteRichText.decode($0, type: .rtfd) }
+        richSignatureCache[key] = loaded
+        return loaded
+    }
+
+    func setSignature(rich: NSAttributedString, for accountID: String?) {
+        let key = Self.signatureKey(accountID)
+        let plain = rich.string.replacingOccurrences(of: "\u{FFFC}", with: "")
+        setSignature(plain, for: accountID)
+        let empty = rich.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if options.demo {
+            demoRichSignatures[key] = empty ? nil : rich
+            return
+        }
+        richSignatureCache[key] = empty ? .some(nil) : rich
+        guard let file = Self.signatureFile(accountID) else { return }
+        if empty {
+            try? FileManager.default.removeItem(at: file)
+        } else if let data = NoteRichText.rtf(rich, type: .rtfd) {
+            do {
+                try data.write(to: file, options: .atomic)
+            } catch {
+                errorMessage = String(localized: "Подпись не сохранилась: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Подпись для черновика с оформлением; без оформления — простым текстом.
+    /// Пустые строки по краям срезаются, как у простой.
+    func richSignatureForDraft(accountID: String?, isReply: Bool) -> NSAttributedString {
+        guard !isReply || signatureInReplies else { return NSAttributedString() }
+        guard let rich = richSignature(for: accountID) else {
+            return NoteRichText.plain(signatureForDraft(accountID: accountID, isReply: isReply))
+        }
+        let string = rich.string as NSString
+        let blank = CharacterSet.whitespacesAndNewlines
+        var start = 0, end = string.length
+        while start < end, let scalar = Unicode.Scalar(string.character(at: start)), blank.contains(scalar) { start += 1 }
+        while end > start, let scalar = Unicode.Scalar(string.character(at: end - 1)), blank.contains(scalar) { end -= 1 }
+        return rich.attributedSubstring(from: NSRange(location: start, length: end - start))
+    }
+
     // MARK: - Уведомления
 
     /// Новые письма с прошлой загрузки: непрочитанные, не свои и свежие —
@@ -3398,7 +3502,7 @@ final class AppModel: ObservableObject {
     /// иначе по таймлайну дня в порядке времени.
     func moveSelection(by step: Int) {
         let list = visibleListItems
-        let timeline = dayItems.filter { !$0.isAllDay }.sorted { effectiveTime(of: $0) < effectiveTime(of: $1) }
+        let timeline = dayItems.filter { !$0.isAllDayBand }.sorted { effectiveTime(of: $0) < effectiveTime(of: $1) }
         let sequence: [TimelineItem]
         if let id = selectedID, !list.contains(where: { $0.id == id }), timeline.contains(where: { $0.id == id }) {
             sequence = timeline
@@ -3613,7 +3717,21 @@ final class AppModel: ObservableObject {
             forward?.accountID = senderAccount(for: item)
             draft = forward
             draftReplyTo = nil
+            // Открыт ответ — окно письма заводится заново, уже пересылкой.
+            draftSerial += 1
+            DebugLog.write("пересылка: черновик, вложений \(forward?.attachments.count ?? 0)")
         }
+    }
+
+    /// «Переслать» из отдельного окна письма: письмо может быть из файла,
+    /// тело уже загружено окном.
+    func startForward(fromWindow item: TimelineItem, body: MailBody?) {
+        if !EmailFile.isFileItem(item.id), self.item(item.id) != nil { selectedID = item.id }
+        var forward = ReplyBuilder.forward(item, body: body)
+        forward?.accountID = senderAccount(for: item)
+        draft = forward
+        draftReplyTo = nil
+        draftSerial += 1
     }
 
     /// «Напомнить через час» из превью: письмо откладывается, как переносом.
@@ -3674,18 +3792,6 @@ final class AppModel: ObservableObject {
 
     /// ⌘[ ⌘] и стрелки у даты: в неделе — на неделю.
     func shiftDay(_ offset: Int) {
-        if pinsToday {
-            // Листается только правый день; на сегодня он не встаёт — сегодня
-            // и так слева, — а перескакивает через него.
-            let today = calendar.startOfDay(for: now)
-            let second = isToday ? calendar.date(byAdding: .day, value: 1, to: today) ?? today : day
-            var target = calendar.date(byAdding: .day, value: offset, to: second) ?? second
-            if calendar.isDate(target, inSameDayAs: today) {
-                target = calendar.date(byAdding: .day, value: offset, to: target) ?? target
-            }
-            show(day: target)
-            return
-        }
         let step = showsWeek ? offset * 7 : offset
         if let target = calendar.date(byAdding: .day, value: step, to: day) { show(day: target) }
     }
@@ -3726,12 +3832,13 @@ final class AppModel: ObservableObject {
         hourWidth = TimelineScale.clampHourWidth(value)
     }
 
-    /// Шкала дня — под ширину окна: видно `visibleHours` часов.
-    func fitTimeline(width: Double) {
-        guard width > 0 else { return }
-        timelineViewport = width
+    /// Шкала дня — под высоту таймлайна: видно `visibleHours` часов.
+    /// Час по высоте — половина `hourWidth` (`VerticalTimelineView.hourHeight`).
+    func fitTimeline(height: Double) {
+        guard height > 0 else { return }
+        timelineViewport = height
         guard !zoomedByHand else { return }
-        let fitted = TimelineScale.clampHourWidth(width / Double(max(visibleHours, 1)))
+        let fitted = TimelineScale.clampHourWidth(height * 2 / Double(max(visibleHours, 1)))
         if abs(fitted - hourWidth) > 0.5 { hourWidth = fitted }
     }
 
@@ -3761,8 +3868,35 @@ final class AppModel: ObservableObject {
 
     // MARK: - Отладка
 
+    /// Снять выбор — справа снова сводка дня. Начатое письмо не трогаем:
+    /// смена выбора закрыла бы его.
+    func showDayOverview() {
+        guard draft == nil, selectedID != nil || !multiSelection.isEmpty else { return }
+        selectedID = nil
+        multiSelection = []
+    }
+
     /// Подготовить окно к снимку: выбрать элемент, открыть ответ.
     func applyDebugSelection() {
+        if options.demo, let probe = options.clickProbe {
+            let parts = probe.split(separator: ",").compactMap { Double($0) }
+            if parts.count == 2 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+                          let height = window.contentView?.bounds.height else { return }
+                    let point = NSPoint(x: parts[0], y: height - parts[1])
+                    DebugLog.write("проба щелчка: до щелчка выбрано \(self.selectedItem.map { "\($0.kind)" } ?? "ничего"), строк в списке \(self.listItems.count)")
+                    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                        guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { return }
+                        NSApp.postEvent(event, atStart: false)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        DebugLog.write("проба щелчка в \(Int(parts[0])),\(Int(parts[1])): выбрано \(self.selectedItem.map { "\($0.kind)" } ?? "ничего")")
+                    }
+                }
+            }
+        }
         if options.demo, let probe = options.dragProbe {
             let parts = probe.split(separator: ",").compactMap { Double($0) }
             if parts.count == 2 {

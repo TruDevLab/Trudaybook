@@ -53,6 +53,10 @@ public final class ItemStateStore {
                 key TEXT PRIMARY KEY,
                 enabled INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS event_color (
+                key TEXT PRIMARY KEY,
+                color TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -204,6 +208,30 @@ public final class ItemStateStore {
             INSERT INTO event_autojoin (key, enabled) VALUES (?, ?)
             ON CONFLICT(key) DO UPDATE SET enabled = excluded.enabled
             """, [.text(key), .integer(enabled ? 1 : 0)])
+    }
+
+    // MARK: - Свой цвет встречи
+
+    /// Ключи `EventColors` → цвет «#RRGGBB».
+    public func allEventColors() -> [String: String] {
+        var result: [String: String] = [:]
+        db.query("SELECT key, color FROM event_color") { row in
+            guard let key = row.text(0), let color = row.text(1) else { return }
+            result[key] = color
+        }
+        return result
+    }
+
+    /// `nil` — забыть: встреча снова в цвете календаря.
+    public func setEventColor(_ color: String?, for key: String) throws {
+        guard let color else {
+            try db.run("DELETE FROM event_color WHERE key = ?", [.text(key)])
+            return
+        }
+        try db.run("""
+            INSERT INTO event_color (key, color) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET color = excluded.color
+            """, [.text(key), .text(color)])
     }
 
     public func allPriorities() -> [String: Priority] {

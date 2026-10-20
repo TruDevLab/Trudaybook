@@ -226,6 +226,11 @@ struct LetterWindowView: View {
                             help: String(localized: "Ответить — черновик откроется в главном окне")) { reply(all: false) }
             HoverIconButton(title: String(localized: "Ответить всем"), symbol: ItemAction.replyAll.symbol,
                             help: String(localized: "Ответить всем — черновик откроется в главном окне")) { reply(all: true) }
+            HoverIconButton(title: String(localized: "Переслать"), symbol: ForwardButton.symbol,
+                            help: String(localized: "Переслать — черновик откроется в главном окне")) {
+                model.startForward(fromWindow: item, body: document.body)
+                LetterWindow.showMainWindow()
+            }
             HoverIconButton(title: String(localized: "Встреча"), symbol: "calendar.badge.plus",
                             help: String(localized: "Назначить встречу с участниками письма — откроется в главном окне")) {
                 model.startMeeting(with: item)
@@ -245,6 +250,7 @@ struct LetterWindowView: View {
                     LetterWindow.showMainWindow()
                 }
             }
+            PaperToggle(letter: document.body, paper: $paper)
             if known != nil {
                 PriorityMenu(item: item)
             }

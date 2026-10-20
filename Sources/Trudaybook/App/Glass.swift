@@ -31,49 +31,48 @@ struct GlassPanelBackground: View {
     }
 }
 
-/// Кнопка-стекло: откликается на курсор; при перетаскивании на неё письма —
-/// подсвечивается цветом акцента.
+/// Кнопка внутри стеклянной полосы (`glassBar`): своего стекла нет —
+/// стекло на стекло не кладём, — только подсветка под курсором и, когда
+/// на неё тащат письмо, цвет акцента.
 struct GlassButtonSurface: ViewModifier {
     var hovered: Bool
     var targeted = false
-    var dashed = false
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
-        if #available(macOS 26, *) {
-            content
-                .glassEffect(targeted ? .regular.tint(Fill.accentStrong).interactive() : .regular.interactive(),
-                             in: shape)
-        } else {
-            content.background(HoverChrome(hovered: hovered, dashed: dashed, targeted: targeted))
-        }
+        content
+            .background(Capsule().fill(targeted ? Fill.accent : hovered ? Fill.hover : .clear))
+            .overlay {
+                if targeted { Capsule().strokeBorder(Color.accentColor, lineWidth: 2) }
+            }
     }
 }
 
-/// Несколько стеклянных элементов рядом — в одном контейнере: так система
-/// рисует их одним проходом и плавно сливает при сближении.
-struct GlassGroup<Content: View>: View {
-    var spacing: CGFloat = 6
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        if #available(macOS 26, *) {
-            GlassEffectContainer(spacing: spacing) { content }
-        } else {
-            content
-        }
-    }
+/// Высота стеклянных капсул панели действий — у всех одна.
+enum GlassBar {
+    static let height: CGFloat = 32
 }
 
 extension View {
     /// Надпись на стеклянной капсуле — как строка состояния почты в панели действий.
     @ViewBuilder
     func glassCapsule() -> some View {
-        let padded = padding(.horizontal, 12).frame(height: 28)
+        let padded = padding(.horizontal, Space.xl).frame(height: GlassBar.height)
         if #available(macOS 26, *) {
             padded.glassEffect(.regular, in: Capsule())
         } else {
-            padded
+            padded.background(Capsule().fill(Fill.subtle)).overlay(Capsule().strokeBorder(Fill.stroke))
+        }
+    }
+
+    /// Ряд связанных кнопок на одной стеклянной капсуле — как группа
+    /// в панели инструментов macOS 26. Кнопки внутри — `GlassButtonSurface`.
+    @ViewBuilder
+    func glassBar(height: CGFloat = GlassBar.height) -> some View {
+        let padded = padding(.horizontal, Space.xxs).frame(height: height)
+        if #available(macOS 26, *) {
+            padded.glassEffect(.regular, in: Capsule())
+        } else {
+            padded.background(Capsule().fill(Fill.subtle)).overlay(Capsule().strokeBorder(Fill.stroke))
         }
     }
 }

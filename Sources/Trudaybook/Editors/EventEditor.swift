@@ -658,16 +658,45 @@ struct PeopleField: View {
     @Binding var people: [Person]
     @Binding var text: String
     var placeholder = String(localized: "Добавить: имя или адрес")
+    /// Больше стольких — свернуть в строку «Ольга, Андрей и ещё 5»: в ответе
+    /// всем семь плашек копии занимали треть панели над текстом письма.
+    var collapseAfter: Int?
+    @ViewState private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            if !people.isEmpty {
-                PersonChips(people: $people)
+        if let limit = collapseAfter, people.count > limit, !expanded {
+            Button { withAnimation(Motion.move) { expanded = true } } label: {
+                HStack(spacing: Space.xs) {
+                    Text(Self.summary(people, shown: 2))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Image(systemName: "chevron.down").font(.app(.small, weight: .semibold)).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, Space.sm)
+                .padding(.vertical, Space.xxs)
+                .background(RoundedRectangle(cornerRadius: Radius.sm).fill(Fill.subtle))
+                .contentShape(Rectangle())
             }
-            AttendeeSearch(placeholder: placeholder, text: $text, exclude: people) { person in
-                Self.add(person, to: &people)
+            .buttonStyle(.plain)
+            .help(people.map(\.display).joined(separator: ", "))
+            .accessibilityHint(Text("Показать всех и добавить ещё"))
+        } else {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                if !people.isEmpty {
+                    PersonChips(people: $people)
+                }
+                AttendeeSearch(placeholder: placeholder, text: $text, exclude: people) { person in
+                    Self.add(person, to: &people)
+                }
             }
         }
+    }
+
+    /// «Ольга Смирнова, Андрей Козлов и ещё 5».
+    static func summary(_ people: [Person], shown: Int) -> String {
+        let names = people.prefix(shown).map(\.display).joined(separator: ", ")
+        let rest = people.count - min(shown, people.count)
+        return rest > 0 ? String(localized: "\(names) и ещё \(rest)") : names
     }
 
     static func add(_ person: Person, to people: inout [Person]) {

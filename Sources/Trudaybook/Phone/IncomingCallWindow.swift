@@ -103,6 +103,10 @@ private struct IncomingCallView: View {
             phone.model?.phoneOpen = true
             LetterWindow.showMainWindow()
         }
+        .accessibilityAction(named: Text("Показать звонок в окне Trudaybook")) {
+            phone.model?.phoneOpen = true
+            LetterWindow.showMainWindow()
+        }
     }
 }
 

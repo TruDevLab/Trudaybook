@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TrudaybookCore
 
@@ -160,7 +161,10 @@ struct RecipientTag: View {
         case .to: .accentColor
         case .cc: .secondary
         }
+        // «Только мне» отличается не одним цветом: у неё свой значок —
+        // для тех, кто плохо различает красный и синий.
         Tag(text: role == .cc ? String(localized: "Копия") : String(localized: "Мне"),
+            symbol: role == .onlyMe ? "person.fill" : nil,
             tint: tint, style: role == .cc ? .neutral : .tinted, size: .compact, emphasized: role == .onlyMe)
             .help(help)
     }
@@ -363,6 +367,8 @@ struct MailListPanel: View {
                 EmptyState(symbol: emptySymbol, text: emptyText,
                            tint: model.listMode == .unresolved && model.searchText.isEmpty ? Palette.success : .secondary,
                            loading: model.isLoadingList || (model.listMode == .unresolved && model.isAwaitingFirstMail && model.searchText.isEmpty))
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.showDayOverview() }
             } else {
                 ScrollViewReader { proxy in
                     // Системный список, а не стопка строк: только в нём
@@ -388,6 +394,11 @@ struct MailListPanel: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    // Щелчок мимо строк — снять выбор, справа снова сводка дня:
+                    // иначе, открыв письмо, к ней было не вернуться. `onTapGesture`
+                    // у `List` не срабатывал: пустое место — это таблица AppKit под
+                    // списком, щелчок она забирает себе.
+                    .background(EmptyListClick { model.showDayOverview() })
                     .environment(\.defaultMinListRowHeight, 1)
                     .contentMargins(.horizontal, 0, for: .scrollContent)
                     // Стрелками ушли к письму за краем — список следует за выбором.
@@ -506,7 +517,9 @@ struct MonthCalendarView: View {
                 Button { showYear.toggle() } label: {
                     HStack(spacing: Space.xs) {
                         Text(Format.month(model.monthAnchor)).font(.headline)
-                        Image(systemName: "square.grid.3x3")
+                        // Стрелка вниз — «раскрывается»: сетка 3×3 читалась
+                        // как отдельная непонятная кнопка.
+                        Image(systemName: "chevron.down")
                             .font(.app(.small, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
@@ -514,14 +527,20 @@ struct MonthCalendarView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Показать весь год")
+                .accessibilityHint(Text("Показать весь год"))
                 .popover(isPresented: $showYear, arrowEdge: .bottom) {
                     YearCalendarView { showYear = false }
                 }
 
                 Spacer()
+                // Включено — подложкой, а не одним цветом значка: синий «#»
+                // на «Сиянии» пропадал.
                 Button { model.showWeekNumbers.toggle() } label: {
                     Image(systemName: "number")
-                        .foregroundStyle(model.showWeekNumbers ? Color.accentColor : .secondary)
+                        .foregroundStyle(model.showWeekNumbers ? Color.primary : .secondary)
+                        .frame(width: 24, height: 22)
+                        .background(RoundedRectangle(cornerRadius: Radius.sm)
+                            .fill(model.showWeekNumbers ? Fill.accentSoft : .clear))
                 }
                 .labelHelp(model.showWeekNumbers ? String(localized: "Скрыть номера недель") : String(localized: "Показать номера недель"))
                 Button { model.shiftMonth(1) } label: { Image(systemName: "chevron.right") }
@@ -696,9 +715,13 @@ struct WeekNumberCell: View {
             let number = Self.iso.component(.weekOfYear, from: first)
             let current = week.contains { model.calendar.isDate($0, inSameDayAs: model.day) }
             Button { model.show(day: first) } label: {
+                // Текущая неделя — подложкой: один синий цвет цифры на
+                // тёмном фоне не читался.
                 Text("\(number)")
                     .font(.caption2.monospacedDigit().weight(current ? .semibold : .regular))
-                    .foregroundStyle(current ? Color.accentColor : .secondary)
+                    .foregroundStyle(current ? Color.primary : .secondary)
+                    .padding(.horizontal, Space.xs)
+                    .background(Capsule().fill(current ? Fill.accentSoft : .clear))
                     .frame(maxWidth: .infinity, minHeight: 26)
             }
             .buttonStyle(.plain)
@@ -787,5 +810,63 @@ private struct SectionHeader: View {
         .buttonStyle(.plain)
         .focusEffectDisabled()
         .help(collapsed ? String(localized: "Развернуть") : String(localized: "Свернуть"))
+    }
+}
+
+/// Щелчок по пустому месту системного списка — мимо строк и заголовков.
+/// Свой монитор нажатий: таблица AppKit под `List` забирает щелчок, и жесты
+/// SwiftUI до него не доходят. Событие не съедается — таблица получает его
+/// как обычно.
+private struct EmptyListClick: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> MonitorView {
+        let view = MonitorView()
+        view.action = action
+        return view
+    }
+
+    func updateNSView(_ view: MonitorView, context: Context) {
+        view.action = action
+    }
+
+    final class MonitorView: NSView {
+        var action: (() -> Void)?
+        private var monitor: Any?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard event.window === window, event.modifierFlags.intersection([.shift, .command]).isEmpty,
+                  bounds.contains(convert(event.locationInWindow, from: nil)),
+                  let hit = window?.contentView?.hitTest(event.locationInWindow) else { return }
+            // Таблица под точкой: сам попал в неё или в её прокрутку ниже строк.
+            var view: NSView? = hit
+            var table: NSTableView?
+            while let current = view, table == nil {
+                if let found = current as? NSTableView { table = found }
+                else if let scroll = current as? NSScrollView { table = scroll.documentView as? NSTableView }
+                view = current.superview
+            }
+            guard let table else { return }
+            let row = table.row(at: table.convert(event.locationInWindow, from: nil))
+            guard row < 0 else { return }
+            DispatchQueue.main.async { [action] in action?() }
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
     }
 }

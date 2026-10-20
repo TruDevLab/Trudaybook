@@ -198,7 +198,7 @@ struct NoteWindowView: View {
         .controlSize(.small)
         .padding(.horizontal, Space.xl)
         .padding(.vertical, Space.md)
-        .background(Palette.warning.opacity(0.1))
+        .background(Palette.warning.opacity(Alpha.wash))
     }
 
     // MARK: - Период

@@ -102,6 +102,11 @@ struct ItemContextMenu: View {
         action(.archive, String(localized: "Разобрано"))
         reopen
         priority
+        Menu {
+            EventColorMenu(item: item)
+        } label: {
+            Label("Цвет", systemImage: "paintpalette")
+        }
         Divider()
         if info.isCancelled {
             Button(role: .destructive) { model.removeCancelledEvent(item) } label: {

@@ -55,25 +55,27 @@ enum NoteRichText {
     /// RTF для базы. Системный цвет текста не пишется: RTF запомнил бы его
     /// белым (тёмная тема), и в светлой теме текст пропал бы. Прочие
     /// системные цвета RTF хранит по имени и возвращает живыми.
-    static func rtf(_ text: NSAttributedString) -> Data? {
+    static func rtf(_ text: NSAttributedString, type: NSAttributedString.DocumentType = .rtf) -> Data? {
         let copy = NSMutableAttributedString(attributedString: text)
         let whole = NSRange(location: 0, length: copy.length)
         copy.enumerateAttribute(.foregroundColor, in: whole) { value, range, _ in
             if let color = value as? NSColor, isTextColor(color) { copy.removeAttribute(.foregroundColor, range: range) }
         }
-        return try? copy.data(from: whole, documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+        return try? copy.data(from: whole, documentAttributes: [.documentType: type])
     }
 
-    /// Текст из RTF. Шрифт — системный того же размера и начертания: RTF
-    /// хранит системный шрифт как Helvetica Neue.
-    static func decode(_ data: Data) -> NSAttributedString? {
+    /// Текст из RTF (RTFD — с картинками). Системный шрифт RTF хранит как
+    /// Helvetica Neue — его возвращаем системным того же размера и начертания;
+    /// выбранные шрифты (Georgia, Arial…) остаются.
+    static func decode(_ data: Data, type: NSAttributedString.DocumentType = .rtf) -> NSAttributedString? {
         guard let text = try? NSMutableAttributedString(
-            data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil)
+            data: data, options: [.documentType: type], documentAttributes: nil)
         else { return nil }
         let whole = NSRange(location: 0, length: text.length)
         let manager = NSFontManager.shared
         text.enumerateAttribute(.font, in: whole) { value, range, _ in
             let font = value as? NSFont ?? bodyFont
+            if let family = font.familyName, family != "Helvetica Neue", !family.hasPrefix(".") { return }
             let traits = manager.traits(of: font)
             var system = traits.contains(.boldFontMask)
                 ? NSFont.boldSystemFont(ofSize: font.pointSize) : NSFont.systemFont(ofSize: font.pointSize)

@@ -162,6 +162,45 @@ struct RichTextColorTests {
         #expect(html.components(separatedBy: "\"color:#").count == 2)
     }
 
+    @Test func fontAndSizeBecomeInlineStyles() {
+        let body = NSFont.systemFont(ofSize: 13)
+        let georgia = NSFontManager.shared.convert(body, toFamily: "Georgia")
+        let text = NSMutableAttributedString(string: "Обычный ", attributes: [.font: body])
+        text.append(NSAttributedString(string: "Крупный", attributes: [.font: NSFont.systemFont(ofSize: 20)]))
+        text.append(NSAttributedString(string: " Засечки", attributes: [.font: georgia]))
+        let html = RichTextHTML.html(from: text)
+        // Обычный текст — без стилей: у получателя его шрифт и размер.
+        #expect(html.hasPrefix("<div>Обычный <span style=\"font-size:20px\">Крупный</span>"))
+        #expect(html.contains("font-family:Georgia, 'Times New Roman', serif"))
+        #expect(!html.contains("Обычный</span>"))
+    }
+
+    @Test func inlineImageTravelsAsRelatedPart() throws {
+        // Картинка подписи: в HTML — cid, в письме — часть multipart/related;
+        // разбор того же письма ставит её обратно в HTML.
+        let png = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 4, pixelsHigh: 2, bitsPerSample: 8,
+                                                samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                                bytesPerRow: 0, bitsPerPixel: 0)?.representation(using: .png, properties: [:]))
+        let attachment = NSTextAttachment(fileWrapper: FileWrapper(regularFileWithContents: png))
+        attachment.bounds = CGRect(x: 0, y: 0, width: 40, height: 20)
+        let text = NSMutableAttributedString(string: "С уважением\n", attributes: [.font: NSFont.systemFont(ofSize: 13)])
+        text.append(NSAttributedString(attachment: attachment))
+        let rendered = RichTextHTML.render(text)
+        #expect(rendered.images.count == 1)
+        #expect(rendered.html.contains("<img src=\"cid:"))
+        #expect(rendered.html.contains("width=\"40\" height=\"20\""))
+        var mail = OutgoingMail(to: [Person(name: nil, address: "a@example.com")], subject: "Подпись",
+                                text: text.string, html: rendered.html)
+        mail.inlineImages = rendered.images
+        let raw = MessageBuilder.build(mail, from: Person(name: "Я", address: "me@example.com"), messageID: "x@example.com")
+        let source = String(decoding: raw, as: UTF8.self)
+        #expect(source.contains("multipart/related"))
+        #expect(!MessageBuilder.plainText(of: mail).contains("\u{FFFC}"))
+        let parsed = ParsedMessage.body(of: raw)
+        #expect(parsed.html?.contains("data:image/png;base64,") == true)
+        #expect(parsed.attachments.isEmpty)
+    }
+
     @Test func tableBecomesHTMLTable() {
         let table = NSTextTable()
         table.numberOfColumns = 2

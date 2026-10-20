@@ -14,12 +14,15 @@ public struct MailBody: Hashable, Sendable {
         public var mimeType: String
         /// Содержимое — чтобы вложение можно было открыть и сохранить.
         public var data: Data?
+        /// Картинка в самом тексте письма (`<img src="cid:…">`), а не файлом.
+        public var contentID: String?
 
-        public init(name: String, size: Int, mimeType: String, data: Data? = nil) {
+        public init(name: String, size: Int, mimeType: String, data: Data? = nil, contentID: String? = nil) {
             self.name = name
             self.size = size
             self.mimeType = mimeType
             self.data = data
+            self.contentID = contentID
         }
     }
 
@@ -74,6 +77,9 @@ public struct OutgoingMail: Hashable, Sendable {
     public var accountID: String?
     /// Прикреплённые файлы (с содержимым).
     public var attachments: [MailBody.Attachment]
+    /// Картинки в тексте (подпись с логотипом): уходят частями
+    /// `multipart/related`, HTML ссылается на них `cid:`.
+    public var inlineImages: [MailBody.Attachment] = []
     /// Сохранённая версия в «Черновиках» (что вернул `saveDraft`): следующее
     /// сохранение её заменит, отправка — уберёт. `nil` — ещё не сохраняли.
     public var draftHandle: String?

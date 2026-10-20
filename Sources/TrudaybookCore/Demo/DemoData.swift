@@ -166,11 +166,14 @@ public actor DemoMailProvider: MailProvider {
         // Часть писем — HTML с картинкой из сети: на них видно, что внешние
         // загрузки по умолчанию заблокированы. Вторая картинка — из самого
         // письма (так `MIME` вставляет `cid:`): её открывают щелчком.
+        // Ссылка — как вставленная из Jira в тёмной теме: с тёмным фоном в
+        // разметке (`MailBodyView.linkStyle` его снимает).
         let html = """
             <html><body style="font-family: -apple-system, Helvetica; font-size: 14px; color: #222;">
             <p><img src="https://images.example.test/banner.png" width="480" height="80" alt="Баннер рассылки"></p>
             \(paragraphs.map { "<p>\($0.replacingOccurrences(of: "\n", with: "<br>"))</p>" }.joined())
             <p><img src="data:image/png;base64,\(DemoCalendar.inlinePicture)" width="192" height="64" alt="Схема"></p>
+            <p>Задача: <span style="background-color: rgb(29, 33, 37); color: rgb(87, 157, 255);"><a href="https://jira.example.test/browse/DEMO-42">https://jira.example.test/browse/DEMO-42</a></span></p>
             <p style="color:#888;font-size:12px">Это письмо отправлено автоматически. <a href="https://example.test/unsubscribe">Отписаться</a></p>
             </body></html>
             """
@@ -444,8 +447,8 @@ public final class DemoCalendar: CalendarProvider {
     private let calendar: Calendar
     private var moved: [String: Date] = [:]
     private var completed: Set<String> = []
-    /// Напоминания, брошенные в шапку дня, — на весь день.
-    private var allDay: Set<String> = []
+    /// Напоминания, брошенные в шапку дня, — на весь тот день.
+    private var allDay: [String: Date] = [:]
     /// Правки в памяти: встреча дня (`имя-день`) и серия (`имя`).
     private var overrides: [String: EventDraft] = [:]
     private var seriesOverrides: [String: EventDraft] = [:]
@@ -473,7 +476,8 @@ public final class DemoCalendar: CalendarProvider {
         let end = to.addingTimeInterval(7 * 86_400)
         return Demo.days(from: start, to: end, calendar: calendar)
             .flatMap(generate(day:))
-            .filter { $0.time >= from && $0.time < to && isVisible($0) }
+            // Многодневное — и в днях после первого, как в EventKit.
+            .filter { $0.overlaps(from: from, to: to) && isVisible($0) }
     }
 
     public func overdueReminders(before date: Date) async -> [TimelineItem] {
@@ -507,14 +511,14 @@ public final class DemoCalendar: CalendarProvider {
     public func move(_ item: TimelineItem, to start: Date) async throws {
         guard let key = Self.baseKey(of: item.id) else { throw CalendarError.notFound }
         moved[key] = start
-        allDay.remove(key)
+        allDay[key] = nil
         onChange?()
     }
 
     public func setAllDay(_ item: TimelineItem, on day: Date) async throws {
         guard let key = Self.baseKey(of: item.id) else { throw CalendarError.notFound }
         moved[key] = nil
-        allDay.insert(key)
+        allDay[key] = calendar.startOfDay(for: day)
         onChange?()
     }
 
@@ -725,8 +729,9 @@ public final class DemoCalendar: CalendarProvider {
                       doneIfPast: Bool = true) {
             let baseKey = "\(name)-\(key)"
             if deleted.contains(baseKey) { return }
-            let whole = allDay.contains(baseKey) || (hour == nil && moved[baseKey] == nil)
-            let due = whole ? day : moved[baseKey] ?? Demo.at(day, hour ?? 0, 0, calendar: calendar)
+            // Брошенное в шапку другого дня переезжает туда — как в EventKit.
+            let whole = allDay[baseKey] != nil || (hour == nil && moved[baseKey] == nil)
+            let due = allDay[baseKey] ?? (whole ? day : moved[baseKey] ?? Demo.at(day, hour ?? 0, 0, calendar: calendar))
             let isDone = completed.contains(baseKey) || (doneIfPast && day < today)
             result.append(TimelineItem(
                 id: "reminder:demo-\(baseKey)",
@@ -780,6 +785,19 @@ public final class DemoCalendar: CalendarProvider {
                 isAllDay: true,
                 color: Self.personal,
                 detail: .event(EventInfo(calendarTitle: String(localized: "Дни рождения"), canReschedule: false, canEdit: false, canDecline: false))
+            ))
+        }
+        if let start = calendar.date(byAdding: .day, value: 2, to: today), day == start {
+            // Отпуск на 8 дней — в полосе «на весь день» каждого своего дня.
+            result.append(TimelineItem(
+                id: "event:demo-vacation-\(key)@\(Int(day.timeIntervalSince1970))",
+                title: String(localized: "Отпуск"),
+                time: day,
+                end: calendar.date(byAdding: .day, value: 8, to: day),
+                isAllDay: true,
+                color: Self.personal,
+                detail: .event(EventInfo(calendarTitle: String(localized: "Личное"), canReschedule: false, canEdit: false,
+                                         canDecline: false, uid: "demo-vacation"))
             ))
         }
         if day == today {

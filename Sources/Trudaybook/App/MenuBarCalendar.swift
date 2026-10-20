@@ -384,10 +384,10 @@ private struct MenuBarEventRow: View {
     let open: () -> Void
     @ViewState private var hovered = false
 
-    private var ended: Bool { (item.end ?? item.time) < now && !item.isAllDay }
+    private var ended: Bool { (item.end ?? item.time) < now && !item.isAllDayBand }
     /// Идёт или начнётся в ближайшие 10 минут — кнопку выделить.
     private var soon: Bool {
-        guard !item.isAllDay else { return false }
+        guard !item.isAllDayBand else { return false }
         return item.time.timeIntervalSince(now) < 600 && (item.end ?? item.time) > now
     }
     private var cancelled: Bool { item.event?.isCancelled == true }
@@ -399,7 +399,7 @@ private struct MenuBarEventRow: View {
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: Space.xxs) {
                 HStack(spacing: Space.sm) {
-                    Text(item.isAllDay ? String(localized: "весь день") : Format.range(item.time, item.end))
+                    Text(item.isAllDayBand ? String(localized: "весь день") : Format.range(item.time, item.end))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(soon ? Color.accentColor : .secondary)
                     if focused {

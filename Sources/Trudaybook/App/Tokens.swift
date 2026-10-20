@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // Токены оформления — одни числа на всё приложение.
@@ -41,15 +42,15 @@ enum Radius {
 /// сами светлеют в тёмной теме.
 enum Fill {
     /// Подложка поля ввода, неактивной области.
-    static let faint = Color.primary.opacity(0.04)
+    static var faint: Color { Color.primary.opacity(SystemLook.contrast ? 0.08 : 0.04) }
     /// Плашка, кнопка в покое, строка-подсказка.
-    static let subtle = Color.primary.opacity(0.07)
+    static var subtle: Color { Color.primary.opacity(SystemLook.contrast ? 0.12 : 0.07) }
     /// То же под курсором.
-    static let hover = Color.primary.opacity(0.12)
+    static var hover: Color { Color.primary.opacity(SystemLook.contrast ? 0.2 : 0.12) }
     /// Обводка кнопки и карточки.
-    static let stroke = Color.primary.opacity(0.15)
+    static var stroke: Color { Color.primary.opacity(SystemLook.contrast ? 0.4 : 0.15) }
     /// Заметная нейтральная заливка: занятое время, ручка, полоса.
-    static let strong = Color.primary.opacity(0.25)
+    static var strong: Color { Color.primary.opacity(SystemLook.contrast ? 0.4 : 0.25) }
 
     /// Акцент: выбранная строка, слабая подсветка.
     static let accentFaint = Color.accentColor.opacity(0.08)
@@ -59,6 +60,17 @@ enum Fill {
     static let accent = Color.accentColor.opacity(0.22)
     /// Ручка под курсором, рамка выбранного, стекло под брошенным письмом.
     static let accentStrong = Color.accentColor.opacity(0.6)
+}
+
+/// Системные настройки «Универсального доступа», которые меняют вид.
+/// Читаются при каждой перерисовке: включили — окно перерисуется при
+/// следующем изменении, перезапуск не нужен. Стекло (`glassEffect`)
+/// подстраивается само; это — для своих заливок и движения.
+enum SystemLook {
+    /// «Увеличить контраст»: нейтральные заливки и рамки заметнее.
+    static var contrast: Bool { NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast }
+    /// «Уменьшить движение»: без пружин и выездов — сразу на место.
+    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 }
 
 /// Прозрачности, у которых есть смысл.
@@ -71,6 +83,14 @@ enum Alpha {
     static let disabled: Double = 0.45
     /// Разобранное: письмо в архиве, прошедшая встреча.
     static let done: Double = 0.5
+    /// Карточка встречи или напоминания, которые ждут действия.
+    static let cardStrong: Double = 0.28
+    /// Карточка без решения: приглашение без ответа, отменённая встреча.
+    static let cardFaint: Double = 0.08
+    /// Цветная рамка поверх своей же заливки.
+    static let edge: Double = 0.7
+    /// Подложка блока-сообщения: предупреждение, «отменено», пересказ ИИ.
+    static let wash: Double = 0.1
 }
 
 /// Шкала мелких шрифтов — там, где системных стилей не хватает (плотный
@@ -138,9 +158,10 @@ extension Palette {
 }
 
 /// Движение. Наведение — `HoverMotion.animation` (пружина без отскока).
+/// С «Уменьшить движение» — короткое растворение вместо выезда.
 enum Motion {
     /// Короткое: появление и исчезновение мелочи.
-    static let quick = Animation.easeOut(duration: 0.15)
+    static var quick: Animation { SystemLook.reduceMotion ? .linear(duration: 0.1) : .easeOut(duration: 0.15) }
     /// Перестановка блоков: выезд панели, раскрытие раздела.
-    static let move = Animation.spring(duration: 0.35, bounce: 0)
+    static var move: Animation { SystemLook.reduceMotion ? .linear(duration: 0.1) : .spring(duration: 0.35, bounce: 0) }
 }

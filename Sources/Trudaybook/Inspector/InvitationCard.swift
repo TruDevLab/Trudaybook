@@ -155,7 +155,7 @@ private struct InvitationDayStrip: View {
                         .frame(width: 1, height: 52)
                         .offset(x: x(Double(hour)))
                     Text(String(format: "%02d", hour % 24))
-                        .font(.app(.tiny).monospacedDigit())
+                        .font(.app(.small).monospacedDigit())
                         .foregroundStyle(.secondary)
                         // Последний час — подписью влево, чтобы не вылезал за край.
                         .offset(x: x(Double(hour)) + (Double(hour) == to ? -14 : 2), y: 54)
@@ -167,12 +167,12 @@ private struct InvitationDayStrip: View {
                     if end > start {
                         let clash = conflictIDs.contains(event.id)
                         Text(event.title)
-                            .font(.app(.tiny, weight: .medium))
+                            .font(.app(.small, weight: .medium))
                             .lineLimit(1)
                             .padding(.horizontal, Space.xs)
                             .frame(width: end - start - 1, height: 20, alignment: .leading)
                             .background(RoundedRectangle(cornerRadius: Radius.xs)
-                                .fill(clash ? Palette.warning.opacity(0.35) : Fill.hover))
+                                .fill(clash ? Palette.warning.opacity(Alpha.cardStrong) : Fill.hover))
                             .offset(x: start, y: 2)
                             .help("\(event.title) · \(Format.range(event.time, event.end))")
                     }
@@ -181,11 +181,11 @@ private struct InvitationDayStrip: View {
                 let start = x(hourOf(invitation.start))
                 let end = x(hourOf(invitation.end))
                 Text(invitation.summary)
-                    .font(.app(.tiny, weight: .semibold))
+                    .font(.app(.small, weight: .semibold))
                     .lineLimit(1)
                     .padding(.horizontal, Space.xs)
                     .frame(width: max(end - start - 1, 6), height: 20, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: Radius.xs).fill(Color.accentColor.opacity(0.35)))
+                    .background(RoundedRectangle(cornerRadius: Radius.xs).fill(Color.accentColor.opacity(Alpha.cardStrong)))
                     .overlay(RoundedRectangle(cornerRadius: Radius.xs).strokeBorder(Color.accentColor, lineWidth: 1))
                     .offset(x: start, y: 28)
             }

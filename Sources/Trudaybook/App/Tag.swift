@@ -32,6 +32,8 @@ struct Tag: View {
     var size: Size = .regular
     /// Жирнее обычного — когда плашка должна бросаться в глаза.
     var emphasized = false
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         HStack(spacing: Space.xxs) {
@@ -47,7 +49,17 @@ struct Tag: View {
         .padding(.vertical, size == .large ? Space.sm : Space.xxs)
         .foregroundStyle(foreground)
         .background(Capsule().fill(background))
+        // «Увеличить контраст» — у цветной плашки рамка её цвета.
+        .overlay {
+            if contrast == .increased, style != .neutral {
+                Capsule().strokeBorder(tint, lineWidth: 1)
+            }
+        }
     }
+
+    /// Тёмное окно («Сияние», ночное «Небо» тоже тёмные): цветной текст
+    /// на бледной подложке своего же цвета там почти пропадал.
+    private var onDark: Bool { scheme == .dark }
 
     private var font: Font {
         switch size {
@@ -59,7 +71,7 @@ struct Tag: View {
 
     private var symbolFont: Font {
         switch size {
-        case .compact: .app(.micro, weight: .bold)
+        case .compact: .app(.tiny, weight: .bold)
         case .regular: .caption2.weight(.bold)
         case .large: .callout
         }
@@ -67,7 +79,9 @@ struct Tag: View {
 
     private var foreground: Color {
         switch style {
-        case .tinted: tint
+        // Светлее в тёмном окне, темнее в светлом — так цвет читается
+        // на своей подложке и не теряет смысла.
+        case .tinted: onDark ? tint.mix(with: .white, by: 0.45) : tint.mix(with: .black, by: 0.15)
         case .neutral: .secondary
         case .badge: .primary
         }
@@ -75,8 +89,8 @@ struct Tag: View {
 
     private var background: Color {
         switch style {
-        case .tinted: tint.opacity(Alpha.tint)
-        case .neutral: Fill.subtle
+        case .tinted: tint.opacity(onDark || contrast == .increased ? Alpha.badge : Alpha.tint)
+        case .neutral: contrast == .increased ? Fill.hover : Fill.subtle
         case .badge: tint.opacity(Alpha.badge)
         }
     }

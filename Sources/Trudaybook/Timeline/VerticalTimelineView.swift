@@ -1,11 +1,11 @@
 import SwiftUI
 import TrudaybookCore
 
-/// Таймлайн дня сверху вниз — на месте горизонтального, в той же панели:
-/// слева часы, затем у каждого дня колонка писем и колонка встреч
-/// с напоминаниями. Хватает ширины — рядом и следующий день.
-/// Та же раскладка, что у горизонтального (`TimelineScale`,
-/// `TimelineLayout`), только ось времени — вертикальная.
+/// Таймлайн дня сверху вниз: слева часы, затем колонка писем, колонка встреч
+/// с напоминаниями и погода по часам. Горизонтального вида больше нет
+/// (решение пользователя 19.10.2026: узкие карточки в нём переносили названия
+/// посреди слова), второго дня рядом — тоже (там же: день — один, а встречи
+/// не растягиваются во всю ширину — место отдано письмам и погоде).
 struct VerticalTimelineView: View {
     @EnvironmentObject private var model: AppModel
     @ViewState private var pinchBase: Double?
@@ -17,54 +17,47 @@ struct VerticalTimelineView: View {
     static let inset: CGFloat = 8
     /// Сколько места по шкале занимает напоминание: у него нет длительности.
     static let reminderSpan: CGFloat = 24
-    /// Уже — письма и встречи дня не читаются: второй день не показываем.
-    static let minDayWidth: CGFloat = 380
-    /// Между днями — шире, чем между колонками одного дня, и с чертой.
-    static let dayGap: CGFloat = 14
+    /// Встречи шире этого — плитки во всю ширину, читать их не легче.
+    static let maxEventWidth: CGFloat = 420
+    /// Погода по часам: значок, градусы и вероятность осадков.
+    static let weatherWidth: CGFloat = 112
+    /// Уже — погоду не показываем: письмам и встречам место нужнее.
+    static let weatherFrom: CGFloat = 640
 
-    /// Час по вертикали — вдвое короче часа по горизонтали: панель невысокая,
-    /// и при обычной высоте таймлайна видно часа четыре-пять.
-    private func scale(for day: Date) -> TimelineScale {
-        TimelineScale(dayStart: day, hourWidth: max(model.hourWidth * 0.5, 36))
+    /// Высота часа — половина масштаба: панель невысокая, а масштаб общий
+    /// с неделей. Подбирается под высоту панели (`AppModel.fitTimeline`).
+    static func hourHeight(_ hourWidth: Double) -> Double {
+        max(hourWidth * 0.5, 36)
     }
 
-    /// Ширина колонок одного дня.
-    private struct DayColumns {
-        let day: Date
-        let x: CGFloat
+    private var scale: TimelineScale {
+        TimelineScale(dayStart: model.day, hourWidth: Self.hourHeight(model.hourWidth))
+    }
+
+    /// Колонки дня: письма, встречи, погода (если хватает ширины).
+    struct DayColumns {
         let mailWidth: CGFloat
         let eventWidth: CGFloat
-        var eventX: CGFloat { x + mailWidth + VerticalTimelineView.columnGap }
-        var end: CGFloat { eventX + eventWidth }
+        let weatherWidth: CGFloat
+        var mailX: CGFloat { VerticalTimelineView.hoursWidth + VerticalTimelineView.columnGap }
+        var eventX: CGFloat { mailX + mailWidth + VerticalTimelineView.columnGap }
+        var eventEnd: CGFloat { eventX + eventWidth }
+        var weatherX: CGFloat { eventEnd + VerticalTimelineView.columnGap }
+        var end: CGFloat { weatherWidth > 0 ? weatherX + weatherWidth : eventEnd }
     }
 
-    private func columns(width: CGFloat) -> [DayColumns] {
-        let free = width - Self.hoursWidth - Self.inset * 2
-        let fitsTwo = free - Self.dayGap >= Self.minDayWidth * 2
-        let days = Array(model.verticalDays.prefix(fitsTwo ? 2 : 1))
-        let dayWidth = (free - Self.dayGap * CGFloat(days.count - 1)) / CGFloat(days.count)
-        // У дня: промежуток после часов (или черты), письма, промежуток, встречи.
-        let inner = dayWidth - Self.columnGap * 2
-        let mailWidth = max(inner * 0.45, 80)
-        let eventWidth = max(inner - mailWidth, 90)
-        return days.enumerated().map { index, day in
-            DayColumns(day: day,
-                       x: Self.hoursWidth + Self.columnGap + CGFloat(index) * (dayWidth + Self.dayGap),
-                       mailWidth: mailWidth, eventWidth: eventWidth)
-        }
-    }
-
-    /// Письма и встречи дня: у выбранного — как у горизонтального таймлайна,
-    /// у следующего — из загруженных вперёд.
-    private func items(on day: Date) -> [TimelineItem] {
-        model.calendar.isDate(day, inSameDayAs: model.day)
-            ? model.dayItems
-            : model.mailItems(on: day) + model.events(on: day)
+    static func columns(width: CGFloat) -> DayColumns {
+        let free = width - hoursWidth - inset * 2
+        let weather = free >= weatherFrom ? weatherWidth : 0
+        // Промежутки: после часов, между письмами и встречами, перед погодой.
+        let inner = free - columnGap * (weather > 0 ? 3 : 2) - weather
+        let events = min(max(inner * 0.5, 90), maxEventWidth)
+        return DayColumns(mailWidth: max(inner - events, 80), eventWidth: events, weatherWidth: weather)
     }
 
     var body: some View {
         GeometryReader { geometry in
-            let columns = columns(width: geometry.size.width)
+            let columns = Self.columns(width: geometry.size.width)
             VStack(spacing: 0) {
                 header(columns)
                 allDayRow(columns)
@@ -75,107 +68,92 @@ struct VerticalTimelineView: View {
         }
         .background(Panel())
         .modifier(DaySwipe())
-        // Хватает ли ширины на два дня — от этого зависит, закреплено ли сегодня.
-        .onGeometryChange(for: Bool.self) { proxy in
-            proxy.size.width - Self.hoursWidth - Self.inset * 2 - Self.dayGap >= Self.minDayWidth * 2
-        } action: { model.verticalTwoDays = $0 }
     }
 
-    /// Заголовки — ровно над своими колонками; у двух дней — и дата.
+    /// Заголовки — ровно над своими колонками.
     /// Создают кнопкой «Создать» в панели: её тащат на нужную колонку.
-    private func header(_ columns: [DayColumns]) -> some View {
-        ZStack(alignment: .topLeading) {
+    private func header(_ columns: DayColumns) -> some View {
+        let mail = model.dayItems.filter { $0.kind == .mail }
+        let open = mail.filter { !model.status(of: $0).isDone }.count
+        return ZStack(alignment: .topLeading) {
             Color.clear.frame(height: 24)
-            ForEach(columns, id: \.day) { column in
-                let mail = items(on: column.day).filter { $0.kind == .mail }
-                let open = mail.filter { !model.status(of: $0).isDone }.count
-                let selected = model.calendar.isDate(column.day, inSameDayAs: model.day)
-                let total = mail.count + (selected ? model.hiddenDayMail : 0)
-                let title = columns.count > 1
-                    ? String(localized: "\(Format.shortDayTitle(column.day)) · почта \(open) из \(total)")
-                    : String(localized: "Почта · \(open) из \(total)")
-                ColumnHeader(title: title, symbol: "envelope")
-                    .frame(width: column.mailWidth)
-                    .help("Почта: открытых из всех писем за день")
-                    .offset(x: Self.inset + column.x)
-                ColumnHeader(title: String(localized: "Встречи и напоминания"), symbol: "calendar")
-                    .frame(width: column.eventWidth)
-                    .offset(x: Self.inset + column.eventX)
+            ColumnHeader(title: String(localized: "Почта · \(open) из \(mail.count + model.hiddenDayMail)"), symbol: "envelope")
+                .frame(width: columns.mailWidth)
+                .help("Почта: открытых из всех писем за день")
+                .offset(x: Self.inset + columns.mailX)
+            ColumnHeader(title: String(localized: "Встречи и напоминания"), symbol: "calendar")
+                .frame(width: columns.eventWidth)
+                .offset(x: Self.inset + columns.eventX)
+            if columns.weatherWidth > 0 {
+                ColumnHeader(title: String(localized: "Погода"), symbol: "cloud.sun")
+                    .frame(width: columns.weatherWidth)
+                    .offset(x: Self.inset + columns.weatherX)
             }
         }
         .padding(.vertical, Space.xs)
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Полоса событий на весь день — у каждого дня своя, над его колонками.
+    /// Полоса событий на весь день — над письмами и встречами.
     /// В неё же бросают встречу или напоминание, чтобы сделать на весь день;
     /// пока тащат, она подсвечена пунктиром.
-    private func allDayRow(_ columns: [DayColumns]) -> some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear.frame(height: Self.allDayHeight)
-            ForEach(columns, id: \.day) { column in
-                let whole = items(on: column.day).filter(\.isAllDay).sorted { $0.title < $1.title }
-                HStack(spacing: Space.sm) {
-                    ForEach(whole) { item in
-                        AllDayChip(item: item)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(width: column.end - column.x, height: Self.allDayHeight, alignment: .leading)
-                .clipped()
-                .contentShape(Rectangle())
-                .modifier(AllDayDropTarget(day: column.day, occupied: !whole.isEmpty))
-                .offset(x: Self.inset + column.x)
+    private func allDayRow(_ columns: DayColumns) -> some View {
+        let whole = model.dayItems.filter(\.isAllDayBand).sorted { $0.title < $1.title }
+        return HStack(spacing: Space.sm) {
+            ForEach(whole) { item in
+                AllDayChip(item: item)
             }
+            Spacer(minLength: 0)
         }
+        .frame(width: columns.eventEnd - columns.mailX, height: Self.allDayHeight, alignment: .leading)
+        .clipped()
+        .contentShape(Rectangle())
+        .modifier(AllDayDropTarget(day: model.day, occupied: !whole.isEmpty))
+        .padding(.leading, Self.inset + columns.mailX)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, Space.xs)
     }
 
     static let allDayHeight: CGFloat = 26
 
-    private func content(_ columns: [DayColumns]) -> some View {
-        let first = scale(for: model.day)
-        let height = CGFloat(first.totalWidth)
-        let width = columns.last?.end ?? Self.hoursWidth
-        let today = columns.first { model.calendar.isDate($0.day, inSameDayAs: model.now) }
-        let shownToday = today != nil
+    private func content(_ columns: DayColumns) -> some View {
+        let scale = scale
+        let height = CGFloat(scale.totalWidth)
+        let items = model.dayItems
         return ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 ZStack(alignment: .topLeading) {
-                    VerticalHourGrid(scale: first, width: width)
-                    ForEach(columns, id: \.day) { column in
-                        let scale = scale(for: column.day)
-                        let items = items(on: column.day)
-                        if column.x > Self.hoursWidth + Self.columnGap {
-                            // Черта между днями.
-                            Rectangle()
-                                .fill(Fill.strong)
-                                .frame(width: Space.hairline, height: height)
-                                .offset(x: column.x - Self.columnGap - Self.dayGap / 2)
-                        }
-                        DayMailColumn(items: items, scale: scale, width: column.mailWidth)
-                            .frame(width: column.mailWidth, height: height, alignment: .topLeading)
-                            .offset(x: column.x)
-                        DayEventColumn(items: items, scale: scale, width: column.eventWidth)
-                            .frame(width: column.eventWidth, height: height, alignment: .topLeading)
-                            .offset(x: column.eventX)
+                    VerticalHourGrid(scale: scale, width: columns.end)
+                    DayMailColumn(items: items, scale: scale, width: columns.mailWidth)
+                        .frame(width: columns.mailWidth, height: height, alignment: .topLeading)
+                        .offset(x: columns.mailX)
+                    DayEventColumn(items: items, scale: scale, width: columns.eventWidth)
+                        .frame(width: columns.eventWidth, height: height, alignment: .topLeading)
+                        .offset(x: columns.eventX)
+                    if columns.weatherWidth > 0 {
+                        HourlyWeatherColumn(day: model.day, hourHeight: scale.hourWidth, width: columns.weatherWidth)
+                            .frame(width: columns.weatherWidth, height: height, alignment: .topLeading)
+                            .offset(x: columns.weatherX)
                     }
-                    if let today {
-                        // Линия — только через колонки сегодняшнего дня: на завтрашнем
-                        // она читалась бы как «сейчас» и там.
-                        VerticalNowLine(y: scale(for: today.day).x(for: model.now), time: model.now,
-                                        from: today.x - Self.columnGap, to: today.end)
+                    if model.isToday {
+                        VerticalNowLine(y: scale.x(for: model.now), time: model.now,
+                                        from: columns.mailX - Self.columnGap, to: columns.end)
                     }
                     // Якоря для прокрутки к нужному часу.
                     VStack(spacing: 0) {
                         ForEach(0..<24, id: \.self) { hour in
-                            Color.clear.frame(width: 1, height: CGFloat(first.hourWidth)).id("vhour-\(hour)")
+                            Color.clear.frame(width: 1, height: CGFloat(scale.hourWidth)).id("vhour-\(hour)")
                         }
                     }
                 }
-                .frame(width: width, height: height, alignment: .topLeading)
+                .frame(width: columns.end, height: height, alignment: .topLeading)
                 .padding(.vertical, Space.xl)
                 .padding(.horizontal, Self.inset)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // Масштаб — под высоту: видно столько часов, сколько в настройках.
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                model.fitTimeline(height: Double(height - Space.xl * 2))
             }
             .simultaneousGesture(
                 MagnifyGesture()
@@ -188,7 +166,7 @@ struct VerticalTimelineView: View {
             )
             .task(id: ScrollTarget(day: model.day, request: model.nowScrollRequest)) {
                 try? await Task.sleep(for: .milliseconds(80))
-                let hour = shownToday ? max(model.calendar.component(.hour, from: model.now) - 1, 0) : model.workHours.lowerBound
+                let hour = model.isToday ? max(model.calendar.component(.hour, from: model.now) - 1, 0) : model.workHours.lowerBound
                 proxy.scrollTo("vhour-\(hour)", anchor: .top)
             }
         }
@@ -298,7 +276,10 @@ struct DayMailColumn: View {
             clusterWidth: Double(VerticalTimelineView.rowHeight)
         )
         ZStack(alignment: .topLeading) {
+            // Щелчок мимо писем — снять выбор, справа снова сводка дня.
             Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { model.showDayOverview() }
             ForEach(groups, id: \.self) { group in
                 switch group {
                 case .single(let id, let y):
@@ -311,7 +292,7 @@ struct DayMailColumn: View {
             }
         }
         .contentShape(Rectangle())
-        .modifier(TimeDropTarget(scale: scale, vertical: true, lane: .mail))
+        .modifier(TimeDropTarget(scale: scale, lane: .mail))
     }
 }
 
@@ -323,7 +304,7 @@ struct DayEventColumn: View {
     let width: CGFloat
 
     var body: some View {
-        let shown = items.filter { $0.kind != .mail && !$0.isAllDay }
+        let shown = items.filter { $0.kind != .mail && !$0.isAllDayBand }
         let byID = Dictionary(shown.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let placements = TimelineLayout.placeIntervals(
             shown.map { item in
@@ -339,16 +320,16 @@ struct DayEventColumn: View {
             // Пустое место: зажать и подержать — новая встреча.
             Color.clear
                 .contentShape(Rectangle())
-                .modifier(HoldToCreate(scale: scale, vertical: true))
+                .modifier(HoldToCreate(scale: scale))
             ForEach(placements, id: \.id) { placement in
                 if let item = byID[placement.id] {
                     let columnWidth = width / CGFloat(placement.rows)
                     let height = CGFloat(placement.width)
                     Group {
                         if item.kind == .reminder {
-                            ReminderBlock(item: item, compact: columnWidth < 110)
+                            ReminderBlock(item: item, compact: columnWidth < 140)
                         } else {
-                            EventBlock(item: item, compact: height < 40 || columnWidth < 90)
+                            EventBlock(item: item, compact: height < 40 || columnWidth < 90, width: columnWidth - 2)
                         }
                     }
                     .frame(width: columnWidth - 2, height: max(height - 2, 18))
@@ -357,7 +338,7 @@ struct DayEventColumn: View {
             }
         }
         .contentShape(Rectangle())
-        .modifier(TimeDropTarget(scale: scale, vertical: true))
+        .modifier(TimeDropTarget(scale: scale))
     }
 }
 
@@ -401,7 +382,7 @@ private struct VerticalMailRow: View {
 }
 
 /// Пачка писем строкой «✉ 5 писем»; нажатие раскрывает список.
-private struct VerticalMailCluster: View {
+struct VerticalMailCluster: View {
     @EnvironmentObject private var model: AppModel
     let items: [TimelineItem]
     let width: CGFloat
@@ -417,7 +398,7 @@ private struct VerticalMailCluster: View {
             } else {
                 Image(systemName: "envelope.stack")
             }
-            Text("\(items.count) писем").font(.app(.label, weight: .bold))
+            Text(Self.title(items.count)).font(.app(.label, weight: .bold))
             if open > 0, open < items.count {
                 Text("✓\(items.count - open)").font(.app(.small).monospacedDigit()).foregroundStyle(.secondary)
             }
@@ -434,7 +415,7 @@ private struct VerticalMailCluster: View {
         .contentShape(Rectangle())
         .onTapGesture { isOpen = true }
         .actsAsButton { isOpen = true }
-        .help("\(items.count) писем с \(Format.time(items.first?.time ?? Date())) — нажмите, чтобы раскрыть")
+        .help(String(localized: "\(Self.title(items.count)) с \(Format.time(items.first?.time ?? Date())) — нажмите, чтобы раскрыть"))
         .popover(isPresented: $isOpen, arrowEdge: .trailing) {
             VStack(alignment: .leading, spacing: Space.xxs) {
                 ForEach(items) { item in
@@ -444,5 +425,12 @@ private struct VerticalMailCluster: View {
             .padding(Space.md)
             .frame(width: 360)
         }
+    }
+}
+
+extension VerticalMailCluster {
+    /// «1 письмо», «4 письма», «7 писем».
+    static func title(_ count: Int) -> String {
+        "\(count) " + RecurrenceRule.plural(count, String(localized: "письмо"), String(localized: "письма"), String(localized: "писем"))
     }
 }

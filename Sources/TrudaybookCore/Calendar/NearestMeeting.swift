@@ -9,11 +9,11 @@ public enum NearestMeeting {
     /// Идущая (или начинающаяся в ближайшие 10 минут) встреча, а если такой
     /// нет — следующая. Из нескольких идущих — начавшаяся позже всех: длинный
     /// блок «Работа 9–18» не должен заслонять созвон в 11:00.
-    /// Отменённые, отклонённые и встречи на весь день не считаются;
+    /// Отменённые, отклонённые, встречи на весь день и на сутки и дольше не считаются;
     /// `needsLink` — только онлайн-встречи со ссылкой.
     public static func pick(_ items: [TimelineItem], now: Date, needsLink: Bool) -> TimelineItem? {
         let candidates = items.filter { item in
-            guard item.kind == .event, !item.isAllDay, let info = item.event,
+            guard item.kind == .event, !item.isAllDayBand, let info = item.event,
                   !info.isCancelled, info.myResponse != .declined else { return false }
             if needsLink, info.link == nil { return false }
             return (item.end ?? item.time) > now

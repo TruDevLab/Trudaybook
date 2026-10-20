@@ -229,10 +229,8 @@ struct MainView: View {
             Group {
                 if model.showsWeek {
                     WeekView()
-                } else if model.timelineVertical {
-                    VerticalTimelineView()
                 } else {
-                    TimelineView()
+                    VerticalTimelineView()
                 }
             }
             .frame(height: metrics.panelHeight)
@@ -442,12 +440,11 @@ struct ActionBar: View {
 
     var body: some View {
         HStack(spacing: Space.lg) {
-            // Только значки: подпись — при наведении. Кнопки — стеклянные
-            // капсулы на фоне окна, как панель инструментов macOS 26.
-            GlassGroup {
-                buttons(compact: true)
-            }
-            .layoutPriority(1)
+            // Только значки: подпись — при наведении. Кнопки — одной стеклянной
+            // капсулой, как группа в панели инструментов macOS 26.
+            buttons(compact: true)
+                .glassBar()
+                .layoutPriority(1)
             Spacer(minLength: 0)
             if let problem = model.accessProblem, !model.options.demo {
                 InlineNotice(problem)
@@ -476,7 +473,7 @@ struct ActionBar: View {
 
     private func buttons(compact: Bool) -> some View {
         // Набор и порядок — из настроек («Оформление → Кнопки панели»).
-        HStack(spacing: Space.sm) {
+        HStack(spacing: 0) {
             ForEach(model.toolbarButtons) { button in
                 if let action = button.action {
                     ActionDropButton(action: action, compact: compact)
@@ -554,7 +551,7 @@ private struct MailStatus: View {
             }
         }
         .buttonStyle(.borderless)
-        .help("Проверить почту сейчас")
+        .labelHelp(String(localized: "Проверить почту сейчас"))
         .disabled(status?.isSyncing == true)
     }
 
@@ -595,9 +592,10 @@ struct ActionDropButton: View {
                 model.perform(action, on: id)
             }
         } label: {
-            // Пунктир — знак, что сюда можно бросить письмо.
+            // Что сюда можно бросить письмо — в подсказке; над целью
+            // кнопка подсвечивается акцентом.
             HoverLabel(title: action.title, symbol: action.symbol, expanded: expanded)
-                .modifier(GlassButtonSurface(hovered: isHovered, targeted: isTargeted, dashed: true))
+                .modifier(GlassButtonSurface(hovered: isHovered, targeted: isTargeted))
                 .scaleEffect(isTargeted ? 1.05 : 1)
                 .contentShape(Rectangle())
         }
@@ -619,98 +617,125 @@ struct ActionDropButton: View {
     }
 }
 
-/// Дата, листание дней, события на весь день и масштаб.
+/// Дата, листание дней, вид и масштаб.
 struct DayHeader: View {
     @EnvironmentObject private var model: AppModel
-
-    private var allDay: [TimelineItem] {
-        model.dayItems.filter { $0.isAllDay }.sorted { $0.title < $1.title }
-    }
 
     var body: some View {
         let week = model.showsWeek
         HStack(spacing: Space.md) {
-            Button { model.shiftDay(-1) } label: { Image(systemName: "chevron.left") }
-                .labelHelp(week ? String(localized: "Предыдущая неделя (⌘[)") : String(localized: "Предыдущий день (⌘[)"))
             HStack(spacing: Space.md) {
                 Text(week ? Format.weekTitle(model.weekDays) : Format.dayTitle(model.day))
                     .font(.title3.weight(.semibold))
                     .fixedSize()
                 if !week { WeatherChip(day: model.day) }
             }
-            // Своя ширина снаружи рамки: `frame(minWidth:)` сам по себе даёт
-            // шапке сжать заголовок до 210, и погода наезжала на «›» и «Сегодня».
-            .frame(minWidth: 210, alignment: .leading)
             .fixedSize(horizontal: true, vertical: false)
-            Button { model.shiftDay(1) } label: { Image(systemName: "chevron.right") }
-                .labelHelp(week ? String(localized: "Следующая неделя (⌘])") : String(localized: "Следующий день (⌘])"))
-            // Не гаснет и на сегодня: тогда возвращает шкалу к «сейчас».
-            // `Color.primary`: у `.borderless` подпись серая и похожа на выключенную.
-            Button { model.showToday() } label: {
-                Text("Сегодня").foregroundStyle(Color.primary)
-            }
-            .help("К сегодняшнему дню и текущему времени (⌘T)")
 
-            // В неделе события на весь день — в шапках дней. Сюда же бросают
-            // встречу или напоминание, чтобы сделать его на весь день.
-            // У вертикального вида полоса — своя у каждого дня, над колонками.
-            let strip = !week && !model.timelineVertical
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.sm) {
-                    if strip {
-                        ForEach(allDay) { item in
-                            AllDayChip(item: item)
-                        }
-                    }
+            // События на весь день — в полосе над колонками дня (в неделе —
+            // в шапках дней), а не здесь.
+            Spacer(minLength: Space.md)
+
+            // Листание — одной группой, как в Календаре: «‹ Сегодня ›».
+            // «Сегодня» не гаснет и на сегодня: тогда возвращает шкалу к «сейчас».
+            HStack(spacing: 0) {
+                BarIconButton(symbol: "chevron.left",
+                              help: week ? String(localized: "Предыдущая неделя (⌘[)") : String(localized: "Предыдущий день (⌘[)")) {
+                    model.shiftDay(-1)
+                }
+                BarTextButton(title: String(localized: "Сегодня"),
+                              help: String(localized: "К сегодняшнему дню и текущему времени (⌘T)")) {
+                    model.showToday()
+                }
+                BarIconButton(symbol: "chevron.right",
+                              help: week ? String(localized: "Следующая неделя (⌘])") : String(localized: "Следующий день (⌘])")) {
+                    model.shiftDay(1)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 26)
-            .contentShape(Rectangle())
-            .modifier(AllDayDropTarget(day: model.day, enabled: strip, occupied: !allDay.isEmpty))
+            .glassBar(height: Self.barHeight)
 
-            // Значками, как кнопки рядом: «1» — день, «7» — неделя.
+            // Словами, а не значками «1» и «7»: их принимали за даты.
             Picker("", selection: $model.timelineSpan) {
-                Image(systemName: "1.calendar")
-                    .accessibilityLabel(Text("День"))
-                    .tag(AppModel.TimelineSpan.day)
-                Image(systemName: "7.calendar")
-                    .accessibilityLabel(Text("Неделя"))
-                    .tag(AppModel.TimelineSpan.week)
+                Text("День").tag(AppModel.TimelineSpan.day)
+                Text("Неделя").tag(AppModel.TimelineSpan.week)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
             .help(week ? String(localized: "Неделя — переключить на день (⌥⌘1)") : String(localized: "День — переключить на неделю (⌥⌘2)"))
 
-            // Разобранные письма — прятать с таймлайна или показывать с галочкой.
-            Button {
-                withAnimation(HoverMotion.animation) { model.hideResolvedMail.toggle() }
-            } label: {
-                Image(systemName: model.hideResolvedMail ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                    .foregroundStyle(model.hideResolvedMail ? Color.accentColor : .primary)
+            HStack(spacing: 0) {
+                // Разобранные письма — прятать с таймлайна или показывать с галочкой.
+                BarIconButton(symbol: model.hideResolvedMail ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle",
+                              tint: model.hideResolvedMail ? Color.accentColor : nil,
+                              help: model.hideResolvedMail
+                                ? String(localized: "Разобранные письма скрыты — показать (⇧⌘H)")
+                                : String(localized: "Скрыть разобранные письма с таймлайна (⇧⌘H)")) {
+                    withAnimation(HoverMotion.animation) { model.hideResolvedMail.toggle() }
+                }
+                BarIconButton(symbol: "calendar.badge.checkmark", help: String(localized: "Какие календари показывать")) {
+                    SettingsWindow.show(model: model, tab: .calendars)
+                }
+                BarIconButton(symbol: "minus.magnifyingglass", help: String(localized: "Мельче (⌘−)")) {
+                    model.zoom(by: 0.8)
+                }
+                BarIconButton(symbol: "plus.magnifyingglass", help: String(localized: "Крупнее (⌘=)")) {
+                    model.zoom(by: 1.25)
+                }
             }
-            .labelHelp(model.hideResolvedMail
-                  ? String(localized: "Разобранные письма скрыты — показать (⇧⌘H)")
-                  : String(localized: "Скрыть разобранные письма с таймлайна (⇧⌘H)"))
-            Button {
-                withAnimation(HoverMotion.animation) { model.timelineVertical.toggle() }
-            } label: {
-                // Повёрнутый прямоугольник — каким станет таймлайн: стрелки ↕/↔
-                // читались как сортировка, а она рядом, у списка писем.
-                Image(systemName: model.timelineVertical ? "rectangle.landscape.rotate" : "rectangle.portrait.rotate")
-            }
-            // У недели дни и так колонками — повернуть можно только день.
-            .disabled(week)
-            .labelHelp(week ? String(localized: "Поворачивается только день: в неделе дни и так колонками")
-                       : model.timelineVertical ? String(localized: "Таймлайн слева направо (⌥⌘L)") : String(localized: "Таймлайн сверху вниз (⌥⌘L)"))
-            Button { SettingsWindow.show(model: model, tab: .calendars) } label: { Image(systemName: "calendar.badge.checkmark") }
-                .labelHelp(String(localized: "Какие календари показывать"))
-            Button { model.zoom(by: 0.8) } label: { Image(systemName: "minus.magnifyingglass") }
-                .labelHelp(String(localized: "Мельче (⌘−)"))
-            Button { model.zoom(by: 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
-                .labelHelp(String(localized: "Крупнее (⌘=)"))
+            .glassBar(height: Self.barHeight)
         }
-        .buttonStyle(.borderless)
+    }
+
+    /// Строка дня ниже панели действий — и капсулы ниже.
+    static let barHeight: CGFloat = 28
+}
+
+/// Кнопка-значок в стеклянной группе (`glassBar`): место для нажатия —
+/// во всю высоту группы, под курсором — подсветка.
+struct BarIconButton: View {
+    let symbol: String
+    var tint: Color?
+    let help: String
+    let action: () -> Void
+    @ViewState private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.body.weight(.medium))
+                .foregroundStyle(tint ?? Color.primary)
+                .frame(width: 30, height: 24)
+                .modifier(GlassButtonSurface(hovered: hovered))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .onHover { hovered = $0 }
+        .labelHelp(help)
+    }
+}
+
+/// Кнопка-слово в стеклянной группе — «Сегодня».
+struct BarTextButton: View {
+    let title: String
+    let help: String
+    let action: () -> Void
+    @ViewState private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.medium))
+                .padding(.horizontal, Space.md)
+                .frame(height: 24)
+                .modifier(GlassButtonSurface(hovered: hovered))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .onHover { hovered = $0 }
+        .help(help)
     }
 }
 
@@ -737,6 +762,7 @@ struct AllDayChip: View {
             .overlay(Capsule().strokeBorder(model.selectedID == item.id ? Color.accentColor : .clear, lineWidth: 2))
             .opacity(done ? 0.5 : 1)
             .contentShape(Capsule())
+            .help("\(item.title)\n\(Format.when(item))")
             .onTapGesture { model.selectedID = item.id }
             .actsAsButton { model.selectedID = item.id }
             .draggable(item.id)
@@ -768,7 +794,7 @@ extension EnvironmentValues {
 
 struct Panel: View {
     /// Одно скругление на все панели окна.
-    static let radius: CGFloat = 12
+    static let radius = Radius.lg
     @Environment(\.auroraTheme) private var aurora
 
     var body: some View {
@@ -866,6 +892,23 @@ enum Format {
     static func range(_ start: Date, _ end: Date?) -> String {
         guard let end else { return time(start) }
         return "\(time(start))–\(time(end))"
+    }
+
+    /// Когда идёт встреча. Многодневная — с первым и последним днём:
+    /// у отпуска на неделю «весь день» одного дня вводил бы в заблуждение.
+    static func when(_ item: TimelineItem) -> String {
+        let calendar = Calendar.current
+        // Конец не включается: событие на весь день кончается в полночь следующего.
+        let last = (item.end ?? item.time).addingTimeInterval(-1)
+        let manyDays = last > item.time && !calendar.isDate(last, inSameDayAs: item.time)
+        if item.isAllDay {
+            let days = manyDays ? weekTitle([item.time, last]) : dayTitle(item.time)
+            return String(localized: "\(days), весь день")
+        }
+        if manyDays, let end = item.end {
+            return "\(short.string(from: item.time)) – \(short.string(from: end))"
+        }
+        return "\(dayTitle(item.time)), \(range(item.time, item.end))"
     }
 }
 

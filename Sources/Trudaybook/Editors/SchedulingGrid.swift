@@ -119,7 +119,7 @@ struct SchedulingGrid: View {
                         RoundedRectangle(cornerRadius: Radius.xs)
                             .fill(color(interval.kind, summary: row.isSummary))
                             .overlay(RoundedRectangle(cornerRadius: Radius.xs)
-                                .strokeBorder(interval.kind == .tentative ? Palette.info.opacity(0.6) : .clear,
+                                .strokeBorder(interval.kind == .tentative ? Palette.info.opacity(Alpha.edge) : .clear,
                                               style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
                             .frame(width: max(2, right - left - 1), height: Self.rowHeight - 6)
                             .offset(x: left, y: 3)
@@ -138,9 +138,9 @@ struct SchedulingGrid: View {
         if summary { return Fill.strong }
         switch kind {
         case .busy: return Palette.info.opacity(0.55)
-        case .tentative: return Palette.info.opacity(0.18)
-        case .away: return Color.purple.opacity(0.5)
-        case .elsewhere: return Color.gray.opacity(0.25)
+        case .tentative: return Palette.info.opacity(Alpha.tint)
+        case .away: return Palette.violet.opacity(Alpha.done)
+        case .elsewhere: return Fill.strong
         }
     }
 
@@ -161,7 +161,7 @@ struct SchedulingGrid: View {
         let right = x(start.addingTimeInterval(duration), width: width)
         let color: Color = conflict ? Palette.danger : hasUnknown ? Palette.warning : Palette.success
         return RoundedRectangle(cornerRadius: Radius.xs)
-            .fill(color.opacity(0.12))
+            .fill(color.opacity(Alpha.tint))
             .overlay(RoundedRectangle(cornerRadius: Radius.xs).strokeBorder(color, lineWidth: 2))
             .frame(width: max(4, right - left), height: CGFloat(rows.count) * Self.rowHeight)
             .offset(x: left, y: Self.headerHeight)

@@ -12,8 +12,6 @@ import UniformTypeIdentifiers
 struct HoldToCreate: ViewModifier {
     @EnvironmentObject private var model: AppModel
     let scale: TimelineScale
-    /// Ось времени сверху вниз (вертикальный вид, неделя) или слева направо.
-    let vertical: Bool
 
     @ViewState private var pressed = false
     @ViewState private var armed: Date?
@@ -30,7 +28,7 @@ struct HoldToCreate: ViewModifier {
         content
             .overlay(alignment: .topLeading) {
                 if let armed, allDay == nil {
-                    NewEventGhost(start: armed, scale: scale, vertical: vertical)
+                    NewEventGhost(start: armed, scale: scale)
                 }
             }
             .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { origin = $0 }
@@ -67,12 +65,16 @@ struct HoldToCreate: ViewModifier {
                             holdTask?.cancel()
                         }
                     }
-                    .onEnded { _ in
+                    .onEnded { value in
                         holdTask?.cancel()
                         if let allDay {
                             model.startNewEvent(allDayOn: allDay)
                         } else if let armed {
                             model.startNewEvent(at: armed)
+                        } else if hypot(value.translation.width, value.translation.height) <= 6 {
+                            // Щелчок по пустому месту — снять выбор: справа снова
+                            // сводка дня (жест забирает щелчки, отдельный tap сюда не дошёл бы).
+                            model.showDayOverview()
                         }
                         armed = nil
                         allDay = nil
@@ -84,7 +86,7 @@ struct HoldToCreate: ViewModifier {
     }
 
     private func time(at point: CGPoint) -> Date {
-        AppModel.snapToQuarter(scale.date(at: Double(vertical ? point.y : point.x)))
+        AppModel.snapToQuarter(scale.date(at: Double(point.y)))
     }
 }
 
@@ -94,27 +96,21 @@ struct NewEventGhost: View {
     @EnvironmentObject private var model: AppModel
     let start: Date
     let scale: TimelineScale
-    let vertical: Bool
 
     var body: some View {
         let end = start.addingTimeInterval(Double(model.newEventMinutes) * 60)
-        TimeGhost(start: start, minutes: Double(model.newEventMinutes), scale: scale, vertical: vertical,
-                  symbol: "plus", first: Format.time(start), second: String(localized: "до \(Format.time(end))"),
-                  range: Format.range(start, end))
+        TimeGhost(start: start, minutes: Double(model.newEventMinutes), scale: scale,
+                  symbol: "plus", range: Format.range(start, end))
     }
 }
 
 /// Куда встанет то, что тащат по шкале: блок нужной длины с временем.
-/// Поперёк горизонтальной шкалы блок узкий — начало и конец строками.
 struct TimeGhost: View {
     let start: Date
     let minutes: Double
     let scale: TimelineScale
-    let vertical: Bool
     let symbol: String
-    let first: String
-    let second: String?
-    /// Подпись в одну строку — для вертикальной шкалы.
+    /// Подпись: время или что случится.
     let range: String
     var tint: Color = .accentColor
 
@@ -123,27 +119,16 @@ struct TimeGhost: View {
             let size = geometry.size
             let offset = CGFloat(scale.x(for: start))
             let length = CGFloat(scale.hourWidth * minutes / 60)
-            Group {
-                if vertical {
-                    Label(range, systemImage: symbol)
-                } else {
-                    VStack(alignment: .leading, spacing: Space.hairline) {
-                        Label(first, systemImage: symbol)
-                        if let second { Text(second).opacity(0.75) }
-                    }
-                }
-            }
+            Label(range, systemImage: symbol)
                 .font(.app(.small, weight: .semibold).monospacedDigit())
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .padding(.horizontal, Space.xs)
                 .padding(.vertical, Space.xxs)
-                .frame(width: vertical ? size.width - 2 : max(length, 64),
-                       height: vertical ? max(length, 16) : size.height - 8,
-                       alignment: .topLeading)
-                .background(RoundedRectangle(cornerRadius: Radius.sm).fill(tint.opacity(0.28)))
+                .frame(width: size.width - 2, height: max(length, 16), alignment: .topLeading)
+                .background(RoundedRectangle(cornerRadius: Radius.sm).fill(tint.opacity(Alpha.cardStrong)))
                 .overlay(RoundedRectangle(cornerRadius: Radius.sm).strokeBorder(tint, lineWidth: 1.5))
-                .offset(x: vertical ? 0 : offset, y: vertical ? offset : 4)
+                .offset(y: offset)
         }
         .allowsHitTesting(false)
     }
@@ -171,7 +156,6 @@ enum DropLane {
 struct TimeDropTarget: ViewModifier {
     @EnvironmentObject private var model: AppModel
     let scale: TimelineScale
-    let vertical: Bool
     var lane: DropLane = .events
     @ViewState private var isTargeted = false
     @ViewState private var ghost: DropGhost?
@@ -183,7 +167,7 @@ struct TimeDropTarget: ViewModifier {
             .onDrop(of: [.url, .plainText], delegate: TimelineDropDelegate(
                 model: model,
                 lane: lane,
-                date: { point in scale.date(at: Double(vertical ? point.y : point.x)) },
+                date: { point in scale.date(at: Double(point.y)) },
                 setTargeted: { isTargeted = $0 },
                 setGhost: { ghost = $0 }))
     }
@@ -192,11 +176,11 @@ struct TimeDropTarget: ViewModifier {
     private var ghostView: some View {
         switch ghost ?? model.debugDropGhost(on: scale.dayStart, lane: lane) {
         case .newEvent(let start):
-            NewEventGhost(start: start, scale: scale, vertical: vertical)
+            NewEventGhost(start: start, scale: scale)
         case .newMail:
             NewMailHighlight()
         case .move(let item, let start):
-            MoveGhost(item: item, start: start, scale: scale, vertical: vertical)
+            MoveGhost(item: item, start: start, scale: scale)
         case nil:
             EmptyView()
         }
@@ -228,14 +212,12 @@ private struct MoveGhost: View {
     let item: TimelineItem
     let start: Date
     let scale: TimelineScale
-    let vertical: Bool
 
     var body: some View {
         // Нельзя перенести (чужая встреча, серия у Exchange…) — так и сказать
         // прямо на шкале, а не показывать время, на которое она не встанет.
         if case .disabled = model.availability(of: .reschedule, for: item) {
-            TimeGhost(start: start, minutes: 60, scale: scale, vertical: vertical, symbol: "lock",
-                      first: String(localized: "Перенести нельзя"), second: nil,
+            TimeGhost(start: start, minutes: 60, scale: scale, symbol: "lock",
                       range: String(localized: "Перенести нельзя"), tint: .secondary)
         } else {
             ghost
@@ -248,19 +230,17 @@ private struct MoveGhost: View {
         case .event:
             let minutes = max((item.end ?? item.time.addingTimeInterval(1800)).timeIntervalSince(item.time) / 60, 15)
             let end = start.addingTimeInterval(minutes * 60)
-            TimeGhost(start: start, minutes: minutes, scale: scale, vertical: vertical,
-                      symbol: "arrow.left.and.right", first: Format.time(start),
-                      second: String(localized: "до \(Format.time(end))"), range: Format.range(start, end))
+            TimeGhost(start: start, minutes: minutes, scale: scale,
+                      symbol: "arrow.up.and.down", range: Format.range(start, end))
         case .reminder:
-            TimeGhost(start: start, minutes: 30, scale: scale, vertical: vertical, symbol: "bell",
-                      first: Format.time(start), second: nil, range: Format.time(start), tint: Palette.warning)
+            TimeGhost(start: start, minutes: 30, scale: scale, symbol: "bell",
+                      range: Format.time(start), tint: Palette.warning)
         case .mail:
             // Письмо «переносится» — откладывается до этого времени; в прошлое нельзя.
             let past = start <= model.now
-            TimeGhost(start: start, minutes: 30, scale: scale, vertical: vertical,
+            TimeGhost(start: start, minutes: 30, scale: scale,
                       symbol: past ? "nosign" : "clock",
-                      first: past ? String(localized: "Уже прошло") : String(localized: "До \(Format.time(start))"),
-                      second: nil, range: past ? String(localized: "Уже прошло") : String(localized: "Отложить до \(Format.time(start))"),
+                      range: past ? String(localized: "Уже прошло") : String(localized: "Отложить до \(Format.time(start))"),
                       tint: past ? .secondary : Palette.warning)
         }
     }

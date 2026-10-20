@@ -1112,15 +1112,13 @@ struct NotificationSettingsView: View {
     }
 }
 
-/// Подпись ящика: свёрнута в строку «Подпись: …», раскрывается для правки.
+/// Подпись ящика: свёрнута в строку «Подпись: …», раскрывается для правки —
+/// с оформлением (шрифт, размер, цвет) и картинкой (логотип).
 private struct SignatureEditor: View {
     @EnvironmentObject private var model: AppModel
     let accountID: String
     @ViewState private var open = false
-
-    private var text: Binding<String> {
-        Binding(get: { model.signature(for: accountID) }, set: { model.setSignature($0, for: accountID) })
-    }
+    @StateObject private var editor = RichTextController()
 
     var body: some View {
         let current = model.signature(for: accountID).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1140,15 +1138,29 @@ private struct SignatureEditor: View {
             .buttonStyle(.plain)
             .font(.callout)
             if open {
-                TextEditor(text: text)
-                    .font(.body)
-                    .frame(height: 90)
+                HStack(spacing: Space.xxs) {
+                    RichFormatControls(editor: editor, images: true)
+                    Spacer(minLength: 0)
+                }
+                .buttonStyle(.borderless)
+                RichTextEditorView(controller: editor)
+                    .frame(height: 140)
                     .overlay(RoundedRectangle(cornerRadius: Radius.xs).strokeBorder(Fill.stroke))
-                Text("Вставляется в конец нового письма (и ответа, если включено ниже). Меняется ящик «от» — меняется и подпись.")
+                    .onAppear(perform: loadEditor)
+                Text("Вставляется в конец нового письма (и ответа, если включено ниже). Меняется ящик «от» — меняется и подпись. Картинка уходит в письме вместе с текстом.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// Поле появляется чуть позже вида — подпись загружается после него.
+    private func loadEditor() {
+        DispatchQueue.main.async {
+            let stored = model.richSignature(for: accountID) ?? NoteRichText.plain(model.signature(for: accountID))
+            editor.load(stored)
+            editor.onChange = { model.setSignature(rich: editor.attributed, for: accountID) }
         }
     }
 }
@@ -1269,7 +1281,7 @@ private struct TimelineSettingsCard: View {
                 }
                 .fixedSize()
             }
-            SettingsHint(String(localized: "Рабочие часы на шкале светлее, остальные — чуть темнее. Сколько часов видно — подбирается под ширину окна; ⌘= и ⌘− меняют масштаб до следующей смены этой настройки."))
+            SettingsHint(String(localized: "Рабочие часы на шкале светлее, остальные — чуть темнее. Сколько часов видно — подбирается под высоту таймлайна; ⌘= и ⌘− меняют масштаб до следующей смены этой настройки."))
         }
     }
 

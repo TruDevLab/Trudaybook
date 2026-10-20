@@ -152,13 +152,18 @@ public enum StatusRules {
     /// - Письмо — пока открыто, начиная с порога `mailCutoff`: при первом
     ///   запуске иначе хлынули бы тысячи старых писем.
     /// - Напоминание — пока просрочено и не выполнено, без порога: старая
-    ///   невыполненная задача остаётся задачей.
+    ///   невыполненная задача остаётся задачей. На весь день — просрочено,
+    ///   когда кончился его день: до тех пор оно в полосе дня, а не в списке.
     /// - Встреча — никогда: прошедшая становится выполненной сама.
-    public static func isUnresolved(_ item: TimelineItem, local: LocalState?, now: Date, mailCutoff: Date) -> Bool {
+    public static func isUnresolved(_ item: TimelineItem, local: LocalState?, now: Date, mailCutoff: Date,
+                                    calendar: Calendar = .current) -> Bool {
         guard status(of: item, local: local, now: now) == .open else { return false }
         switch item.kind {
         case .mail: return item.time >= mailCutoff
-        case .reminder: return true
+        case .reminder:
+            guard item.isAllDay else { return true }
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: item.time)) ?? item.time
+            return dayEnd <= now
         case .event: return false
         }
     }

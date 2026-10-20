@@ -9,7 +9,7 @@ public enum TrunookRules {
     public static func meetingsDue(_ events: [TimelineItem], now: Date, lead: TimeInterval,
                                    announced: Set<String>) -> [TimelineItem] {
         events.filter { item in
-            guard item.kind == .event, !item.isAllDay, !announced.contains(item.id) else { return false }
+            guard item.kind == .event, !item.isAllDayBand, !announced.contains(item.id) else { return false }
             let seconds = item.time.timeIntervalSince(now)
             return seconds > 0 && seconds <= lead
         }
@@ -56,7 +56,7 @@ public enum TrunookRules {
     public static func conflicts(start: Date, end: Date, with events: [TimelineItem],
                                  ignoring title: String? = nil) -> [TimelineItem] {
         events.filter { item in
-            guard item.kind == .event, !item.isAllDay else { return false }
+            guard item.kind == .event, !item.isAllDayBand else { return false }
             let itemEnd = item.end ?? item.time.addingTimeInterval(1800)
             // Это та же встреча, уже лежащая в календаре, — не конфликт.
             if let title, item.title == title, abs(item.time.timeIntervalSince(start)) < 60 { return false }

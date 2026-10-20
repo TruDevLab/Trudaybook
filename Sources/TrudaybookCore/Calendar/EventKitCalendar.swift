@@ -115,6 +115,8 @@ public final class EventKitCalendar: CalendarProvider {
     private let store = EKEventStore()
     public var onChange: (() -> Void)?
     public var hiddenCalendarIDs: Set<String> = []
+    /// Журнал приложения — только что сделано, без названий и текста.
+    public var log: ((String) -> Void)?
     private var observer: NSObjectProtocol?
 
     public func calendars() -> [CalendarSourceInfo] {
@@ -213,8 +215,11 @@ public final class EventKitCalendar: CalendarProvider {
                 .compactMap(Self.item(from:))
         }
         if EKEventStore.authorizationStatus(for: .reminder) == .fullAccess, let lists = visible(.reminder) {
+            // С запасом в день: срок без времени EventKit хранит «плавающей»
+            // датой и сравнивает её с границами по-своему — напоминание на весь
+            // день иначе выпадало из своего дня. Точная граница — ниже, своя.
             let open = await fetch(store.predicateForIncompleteReminders(
-                withDueDateStarting: from, ending: to, calendars: lists))
+                withDueDateStarting: from.addingTimeInterval(-86_400), ending: to.addingTimeInterval(86_400), calendars: lists))
             // Выполненные ищем по дате выполнения с запасом, а срок проверяем
             // сами: выполнить могли и накануне срока.
             let done = await fetch(store.predicateForCompletedReminders(
@@ -297,6 +302,11 @@ public final class EventKitCalendar: CalendarProvider {
             reminder.removeAlarm(alarm)
         }
         try store.save(reminder, commit: true)
+        // Что список сохранил на деле — в журнал (без названия): по нему видно,
+        // хранит ли он дату без времени.
+        store.refreshSourcesIfNecessary()
+        let saved = (store.calendarItem(withIdentifier: reminder.calendarItemIdentifier) as? EKReminder)?.dueDateComponents
+        log?("напоминание на весь день: срок \(saved?.hour == nil ? "без времени" : "со временем \(saved?.hour ?? 0):\(saved?.minute ?? 0)")")
     }
 
     public func setCompleted(_ item: TimelineItem, _ done: Bool) async throws {
@@ -586,7 +596,7 @@ public final class EventKitCalendar: CalendarProvider {
     static func item(from reminder: EKReminder) -> TimelineItem? {
         guard let components = reminder.dueDateComponents,
               let due = Calendar.current.date(from: components) else { return nil }
-        let hasTime = components.hour != nil
+        let hasTime = hasTime(components)
         return TimelineItem(
             id: "reminder:\(reminder.calendarItemIdentifier)",
             title: reminder.title?.isEmpty == false ? reminder.title : String(localized: "Напоминание"),
@@ -600,6 +610,14 @@ public final class EventKitCalendar: CalendarProvider {
                 hasTime: hasTime
             ))
         )
+    }
+
+    /// Есть ли у срока время. Часть списков (задачи Exchange, CalDAV) дату
+    /// без времени не хранит и отдаёт полночь: напоминание, брошенное «на весь
+    /// день», вставало на 00:00 и пропадало со шкалы. Полночь ровно — дата.
+    nonisolated static func hasTime(_ components: DateComponents) -> Bool {
+        guard let hour = components.hour else { return false }
+        return hour != 0 || (components.minute ?? 0) != 0 || (components.second ?? 0) != 0
     }
 
     static func person(_ participant: EKParticipant) -> Person {
