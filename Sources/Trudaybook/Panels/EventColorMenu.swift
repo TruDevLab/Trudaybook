@@ -13,7 +13,12 @@ struct EventColorMenu: View {
             Section("Эта встреча") { choices(.occurrence) }
             Section("Вся серия") { choices(.series) }
         } else {
-            choices(.series)
+            Section("Эта встреча") { choices(.series) }
+        }
+        if let info = item.event, let id = info.calendarID {
+            Section("Весь календарь «\(info.calendarTitle)»") {
+                CalendarColorChoices(calendarID: id)
+            }
         }
     }
 
@@ -32,6 +37,30 @@ struct EventColorMenu: View {
         }
         Divider()
         Button("Цвет календаря") { model.setEventColor(nil, for: item, scope: scope) }
+            .disabled(!own)
+    }
+}
+
+/// Цвет всего календаря — только у себя: в самом календаре он прежний.
+struct CalendarColorChoices: View {
+    @EnvironmentObject private var model: AppModel
+    let calendarID: String
+
+    var body: some View {
+        let current = model.calendarSources.first { $0.id == calendarID }?.color
+        let own = model.hasOwnColor(calendar: calendarID)
+        ForEach(EventPalette.all, id: \.name) { entry in
+            Toggle(isOn: Binding(get: { own && current == entry.color },
+                                 set: { if $0 { model.setCalendarColor(entry.color, for: calendarID) } })) {
+                Label {
+                    Text(entry.name)
+                } icon: {
+                    Image(nsImage: EventPalette.swatch(entry.color))
+                }
+            }
+        }
+        Divider()
+        Button("Цвет из календаря") { model.setCalendarColor(nil, for: calendarID) }
             .disabled(!own)
     }
 }

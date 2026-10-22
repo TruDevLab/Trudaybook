@@ -396,6 +396,7 @@ struct CalendarSettingsView: View {
             }
             SettingsCard(title: String(localized: "Календари на таймлайне"), icon: "calendar") {
                 checkboxes(kind: .events)
+                SettingsHint(String(localized: "Кружок с цветом — сменить цвет календаря. Только в Trudaybook: в самом календаре и у других людей цвет прежний."))
             }
             SettingsCard(title: String(localized: "Напоминания на таймлайне"), icon: "checklist") {
                 checkboxes(kind: .reminders)
@@ -468,9 +469,22 @@ struct CalendarSettingsView: View {
                         set: { model.setCalendar(source.id, visible: $0) }
                     )) {
                         HStack(spacing: Space.sm) {
-                            Circle()
-                                .fill(source.color.map { Color(red: $0.red, green: $0.green, blue: $0.blue) } ?? .accentColor)
-                                .frame(width: 9, height: 9)
+                            // Кружок встреч — меню цвета всего календаря.
+                            if kind == .events {
+                                Menu {
+                                    CalendarColorChoices(calendarID: source.id)
+                                } label: {
+                                    Image(nsImage: EventPalette.swatch(source.color ?? RGB(0.0, 0.48, 1.0), size: 11))
+                                }
+                                .menuStyle(.borderlessButton)
+                                .menuIndicator(.visible)
+                                .fixedSize()
+                                .labelHelp(String(localized: "Цвет календаря — только в Trudaybook"))
+                            } else {
+                                Circle()
+                                    .fill(source.color.map { Color(red: $0.red, green: $0.green, blue: $0.blue) } ?? .accentColor)
+                                    .frame(width: 9, height: 9)
+                            }
                             Text(source.title)
                         }
                     }

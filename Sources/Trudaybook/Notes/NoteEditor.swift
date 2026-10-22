@@ -134,6 +134,9 @@ struct NoteEditorView: NSViewRepresentable {
         text.isRichText = true
         text.importsGraphics = false
         text.allowsUndo = true
+        // ⌘F — строка поиска над заметкой (`FindMenuTarget`).
+        text.usesFindBar = true
+        text.isIncrementalSearchingEnabled = true
         text.drawsBackground = false
         text.font = RichTextController.bodyFont
         text.textContainerInset = inset

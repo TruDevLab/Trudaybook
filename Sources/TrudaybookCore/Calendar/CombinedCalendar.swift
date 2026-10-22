@@ -96,6 +96,10 @@ public final class CombinedCalendar: CalendarProvider {
         try await source(ofItem: item.id).decline(item)
     }
 
+    public func respond(_ item: TimelineItem, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws {
+        try await source(ofItem: item.id).respond(item, response: response, comment: comment, proposed: proposed)
+    }
+
     public func createReminder(_ draft: ReminderDraft) async throws {
         let target = draft.listID.flatMap { id in sources.first { $0.owns(calendarID: id) } } ?? sources.first
         guard let target else { throw CalendarError.notAllowed(String(localized: "Нет списка напоминаний")) }

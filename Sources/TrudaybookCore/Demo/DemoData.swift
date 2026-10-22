@@ -453,6 +453,8 @@ public final class DemoCalendar: CalendarProvider {
     private var overrides: [String: EventDraft] = [:]
     private var seriesOverrides: [String: EventDraft] = [:]
     private var deleted: Set<String> = []
+    /// Мой ответ на встречу, данный в этом запуске.
+    private var responses: [String: Attendee.Response] = [:]
     /// Серия удалена начиная с этого дня.
     private var deletedSeries: [String: Date] = [:]
     private var created: [(id: Int, draft: EventDraft)] = []
@@ -593,6 +595,17 @@ public final class DemoCalendar: CalendarProvider {
         onChange?()
     }
 
+    /// Как Exchange: отказ убирает встречу, предложение времени — «под вопросом».
+    public func respond(_ item: TimelineItem, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws {
+        guard let key = Self.baseKey(of: item.id) else { throw CalendarError.notFound }
+        switch response {
+        case .decline where proposed == nil: deleted.insert(key)
+        case .accept: responses[key] = .accepted
+        case .tentative, .decline: responses[key] = .tentative
+        }
+        onChange?()
+    }
+
     public func createReminder(_ draft: ReminderDraft) async throws {
         createdReminders.append((createdReminders.count + 1, draft))
         onChange?()
@@ -664,7 +677,7 @@ public final class DemoCalendar: CalendarProvider {
             }
             let mine = organizer == nil || organizer == Demo.me || attendees.isEmpty
             let guests = attendees.map { Attendee(person: $0, response: .accepted) }
-                + (attendees.isEmpty ? [] : [Attendee(person: Demo.me, response: myResponse, isMe: true)])
+                + (attendees.isEmpty ? [] : [Attendee(person: Demo.me, response: responses[baseKey] ?? myResponse, isMe: true)])
             result.append(TimelineItem(
                 id: "event:demo-\(baseKey)@\(Int(start.timeIntervalSince1970))",
                 title: title,

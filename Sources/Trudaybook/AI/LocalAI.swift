@@ -202,13 +202,16 @@ final class LocalAI: ObservableObject {
 
     // MARK: - Просьбы
 
-    /// Разовая просьба: промт → ответ.
-    func complete(_ prompt: String, purpose: String) async -> Result<String, Failure> {
-        await chat([Ollama.Message(.user, prompt)], purpose: purpose)
+    /// Разовая просьба: промт → ответ. `precise` — пересказ и разбор без
+    /// домыслов: почти нулевая «температура».
+    func complete(_ prompt: String, purpose: String, precise: Bool = false) async -> Result<String, Failure> {
+        await chat([Ollama.Message(.user, prompt)], purpose: purpose, temperature: precise ? Self.preciseTemperature : nil)
     }
 
+    static let preciseTemperature = 0.1
+
     /// Разговор: история целиком. `onText` — ответ по мере написания.
-    func chat(_ messages: [Ollama.Message], model: String? = nil, purpose: String,
+    func chat(_ messages: [Ollama.Message], model: String? = nil, purpose: String, temperature: Double? = nil,
               onText: (@MainActor @Sendable (String) -> Void)? = nil) async -> Result<String, Failure> {
         guard enabled else { return .failure(Failure(code: "disabled", message: problem ?? "")) }
         // Очередь: следующая просьба ждёт, пока модель ответит на предыдущую.
@@ -216,7 +219,7 @@ final class LocalAI: ObservableObject {
         let gate = Task<Void, Never> { _ = await previous?.value }
         let work = Task<Result<String, Failure>, Never> {
             await gate.value
-            return await run(messages, model: model, purpose: purpose, onText: onText)
+            return await run(messages, model: model, purpose: purpose, temperature: temperature, onText: onText)
         }
         queue = Task { _ = await work.value }
         // Отмену («Остановить» в чате) — дальше, в саму просьбу: без этого
@@ -241,7 +244,7 @@ final class LocalAI: ObservableObject {
 
     private var capabilityCache: [String: Set<String>] = [:]
 
-    private func run(_ messages: [Ollama.Message], model requested: String?, purpose: String,
+    private func run(_ messages: [Ollama.Message], model requested: String?, purpose: String, temperature: Double?,
                      onText: (@MainActor @Sendable (String) -> Void)?) async -> Result<String, Failure> {
         guard await ensureRunning() else {
             return .failure(Failure(code: "offline", message: problem ?? String(localized: "Ollama не запущена.")))
@@ -256,7 +259,7 @@ final class LocalAI: ObservableObject {
         let started = Date()
         DebugLog.write("ИИ: \(purpose) — \(model)")
         do {
-            let text = try await client.chat(model: model, messages: messages, onText: onText)
+            let text = try await client.chat(model: model, messages: messages, temperature: temperature, onText: onText)
             DebugLog.write("ИИ: \(purpose) готово за \(Int(Date().timeIntervalSince(started))) с")
             return .success(text)
         } catch where error is CancellationError || Task.isCancelled || (error as? URLError)?.code == .cancelled {

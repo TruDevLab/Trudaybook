@@ -32,8 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = AppModel(options: LaunchOptions.parse(CommandLine.arguments))
         self.model = model
         NSApp.mainMenu = MainMenu.build(model: model)
+        // AppKit дописывает свои пункты при первом показе меню — проверять после.
+        DispatchQueue.main.async { ShortcutsWindow.logDuplicates() }
 
-        let window = NSWindow(
+        let window = MainWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1480, height: 920),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
@@ -51,7 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarSeparatorStyle = .none
         // Таймлайну — 900, правой панели — 380 (см. `MainView`).
         window.minSize = NSSize(width: 1300, height: 780)
-        window.contentView = NSHostingView(rootView: MainView().environmentObject(model))
+        // Нажатие в неактивном окне — сразу и нажатие: письмо или встречу из
+        // фонового окна иначе удавалось выбрать или утащить только со второго раза.
+        window.contentView = NSHostingView(rootView: MainView().environmentObject(model).allowsWindowActivationEvents(true))
         window.center()
         window.setFrameAutosaveName("TrudaybookMain")
         if let size = model.options.windowSize { window.setContentSize(size) }
@@ -63,6 +67,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Значок в строке меню — у настоящего приложения; в тестовом режиме
         // только для снимка (`--menubar`), чтобы копии не плодили значков.
         if !model.options.demo || model.options.menubar { menuBar = MenuBarCalendar(model: model) }
+        // ⌘Z в главном окне — архив, корзина, перенос (`AppModel.undo`).
+        UndoMenuTarget.shared.history = { [weak self, weak model] window in
+            window === self?.window ? model?.undo : nil
+        }
+        // ⌘F в главном окне вне текста — в поиск по почте.
+        FindMenuTarget.shared.focusSearch = { [weak self, weak model] window in
+            guard window === self?.window, let model else { return false }
+            model.focusSearch()
+            return true
+        }
         // Сочетание для всей системы — только у настоящего приложения: копия
         // для снимков перехватила бы его у установленного.
         if !model.options.demo {
@@ -107,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             DebugLog.write("данные: на дне \(model.dayItems.count), не разобрано \(model.unresolved.count)")
             if model.options.labelMail { model.labelUnresolved(manual: true) }
-            if model.options.dragProbe != nil || model.options.clickProbe != nil, model.options.snapshotPath == nil { model.applyDebugSelection() }
+            if model.options.dragProbe != nil || model.options.clickProbe != nil || model.options.keyProbe != nil, model.options.snapshotPath == nil { model.applyDebugSelection() }
             if model.options.assistant { model.assistantOpen = true }
             if model.options.phone { model.phoneOpen = true }
             if model.options.phoneCall { model.phone.simulateActive() }
@@ -150,6 +164,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     TourWindow.show(main: model, step: step)
                     try? await Task.sleep(for: .seconds(3))
                 }
+                if model.options.shortcuts {
+                    ShortcutsWindow.show()
+                    try? await Task.sleep(for: .seconds(1))
+                }
                 if model.options.menubar {
                     menuBar?.show()
                     try? await Task.sleep(for: .seconds(1.5))
@@ -157,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Редактор встречи — отдельное окно поверх главного.
                 WindowSnapshot.write(IncomingCallWindow.current ?? menuBar?.popoverWindow ?? EventEditorWindow.current ?? TourWindow.current
                                      ?? LetterWindow.current ?? ComposeWindow.current ?? NoteWindow.current ?? SettingsWindow.current
+                                     ?? ShortcutsWindow.current
                                      ?? window, to: path)
                 NSApp.terminate(nil)
             }
@@ -200,7 +219,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.open(urls: urls)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Главное окно ⌘W прячет (`MainWindow`), и последнее закрытое окно
+    /// письма не должно выключать почту и напоминания.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// Щелчок по значку в Dock — вернуть спрятанное главное окно.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { window?.makeKeyAndOrderFront(nil) }
+        return true
+    }
+
+    /// Архив и корзина ждут секунды отмены; выходят раньше — сначала
+    /// отправить их на сервер, иначе письма вернулись бы во Входящие.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model, model.hasPendingServer else { return .terminateNow }
+        // Сервер не отвечает — не держать выход дольше нескольких секунд.
+        var replied = false
+        let finish = {
+            guard !replied else { return }
+            replied = true
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        Task {
+            await model.flushServer()
+            finish()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { finish() }
+        return .terminateLater
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         model?.phone.shutdown()
@@ -240,8 +286,8 @@ enum MainMenu {
         ]))
 
         main.addItem(submenu(String(localized: "Правка"), [
-            item(String(localized: "menu.undo", defaultValue: "Отменить"), Selector(("undo:")), key: "z"),
-            item(String(localized: "Повторить"), Selector(("redo:")), key: "z", modifiers: [.command, .shift]),
+            UndoMenuTarget.item(redo: false),
+            UndoMenuTarget.item(redo: true),
             .separator(),
             item(String(localized: "Вырезать"), #selector(NSText.cut(_:)), key: "x"),
             item(String(localized: "Копировать"), #selector(NSText.copy(_:)), key: "c"),
@@ -250,11 +296,20 @@ enum MainMenu {
             // куда вставляют: шрифт, цвет и размер письма не рассыпаются.
             item(String(localized: "Вставить без оформления"), #selector(NSTextView.pasteAsPlainText(_:)), key: "v", modifiers: [.command, .shift]),
             item(String(localized: "Выделить всё"), #selector(NSText.selectAll(_:)), key: "a"),
+            .separator(),
+            submenu(String(localized: "Найти"), FindMenuTarget.items()),
         ]))
 
         // Заглавная буква в клавише — это ⇧: «Ответить всем» — ⇧⌘R.
         let actions: [NSMenuItem] = ItemAction.allCases.map { action in
-            ClosureItem(action.title, key: String(action.key)) {
+            ClosureItem(action.title, key: String(action.key), enabled: {
+                // Открыт ответ — письмо под ним не трогать: архив закрыл бы ответ.
+                guard !typing, model.draft == nil else { return false }
+                if !model.multiSelection.isEmpty {
+                    return action == .archive && model.selectionItems.contains { model.availability(of: .archive, for: $0).isEnabled }
+                }
+                return model.selectedItem.map { model.availability(of: action, for: $0).isEnabled } ?? false
+            }) {
                 // Выделено несколько — пачкой только архив; остальное — про одно письмо.
                 if !model.multiSelection.isEmpty {
                     if action == .archive { model.archiveSelection() }
@@ -265,14 +320,17 @@ enum MainMenu {
         }
         // Приоритет — ⌘1…⌘3, ⌘0 снимает (и просто 1…3, 0 — см. `KeyNavigation`).
         let priorityItems: [NSMenuItem] = [Priority.high, .medium, .low, .none].map { priority in
-            ClosureItem(priority.title, key: priority.key) {
+            ClosureItem(priority.title, key: priority.key,
+                        enabled: { !typing && model.draft == nil && model.selectedItem != nil },
+                        on: { model.selectedItem.map { model.priority(of: $0) == priority } ?? false }) {
                 if let id = model.selectedID { model.setPriority(priority, for: id) }
             }
         }
         // Письмо в окне и файлом: ⌘S в окне письма сохраняет его, в главном — выбранное.
         let letterItems: [NSMenuItem] = [
             // Из окна письма — его, из главного — выбранное.
-            ClosureItem(String(localized: "Переслать"), key: "f", modifiers: [.command, .shift]) {
+            ClosureItem(String(localized: "Переслать"), key: "f", modifiers: [.command, .shift],
+                        enabled: { LetterWindow.key != nil || model.selectedLetter != nil }) {
                 if let document = LetterWindow.key {
                     model.startForward(fromWindow: document.item, body: document.body)
                     LetterWindow.showMainWindow()
@@ -280,11 +338,15 @@ enum MainMenu {
                     model.startForward(of: item)
                 }
             },
-            ClosureItem(String(localized: "Открыть письмо в окне"), key: "o") {
+            ClosureItem(String(localized: "Напечатать письмо…"), key: "p",
+                        enabled: { LetterWindow.key != nil || model.selectedItem?.kind == .mail }) { LetterPrint.run() },
+            ClosureItem(String(localized: "Открыть письмо в окне"), key: "o",
+                        enabled: { model.selectedItem?.kind == .mail }) {
                 if let item = model.selectedItem, item.kind == .mail { LetterWindow.show(item, model: model) }
             },
             // ⌘S занят «Отложить» — сохранение, как «Сохранить как…», с ⇧.
-            ClosureItem(String(localized: "Сохранить письмо…"), key: "s", modifiers: [.command, .shift]) {
+            ClosureItem(String(localized: "Сохранить письмо…"), key: "s", modifiers: [.command, .shift],
+                        enabled: { LetterWindow.key?.body != nil || (model.selectedItem?.kind == .mail && model.body != nil) }) {
                 if let document = LetterWindow.key, let body = document.body {
                     LetterFileButton.save(document.item, body, raw: document.raw)
                 } else if let item = model.selectedItem, item.kind == .mail, let body = model.body {
@@ -293,12 +355,12 @@ enum MainMenu {
             },
             // Клавиша — ⌫ в списке (`KeyNavigation`): в меню ⌘⌫ отнимал бы
             // у полей ввода «стереть до начала строки».
-            ClosureItem(String(localized: "В корзину  ⌫"), key: "") {
+            ClosureItem(String(localized: "В корзину  ⌫"), key: "", enabled: { !model.trashTargets.isEmpty }) {
                 model.trash(model.trashTargets)
             },
         ]
         main.addItem(submenu(String(localized: "Действия"), actions + [.separator()] + letterItems + [.separator(), submenu(String(localized: "Приоритет"), priorityItems),
-            ClosureItem(String(localized: "Сортировать по приоритету"), key: "") { model.sortByPriority.toggle() }]))
+            ClosureItem(String(localized: "Сортировать по приоритету"), key: "", on: { model.sortByPriority }) { model.sortByPriority.toggle() }]))
 
         main.addItem(submenu(String(localized: "День"), [
             ClosureItem(String(localized: "Сегодня"), key: "t") { model.showToday() },
@@ -312,32 +374,49 @@ enum MainMenu {
             ClosureItem(String(localized: "Крупнее"), key: "=") { model.zoom(by: 1.25) },
             ClosureItem(String(localized: "Мельче"), key: "-") { model.zoom(by: 0.8) },
             .separator(),
-            ClosureItem(String(localized: "Номера недель"), key: "") { model.showWeekNumbers.toggle() },
-            ClosureItem(String(localized: "Скрывать разобранные письма"), key: "h", modifiers: [.command, .shift]) {
+            ClosureItem(String(localized: "Номера недель"), key: "", on: { model.showWeekNumbers }) { model.showWeekNumbers.toggle() },
+            ClosureItem(String(localized: "Скрывать разобранные письма"), key: "h", modifiers: [.command, .shift],
+                        on: { model.hideResolvedMail }) {
                 withAnimation(HoverMotion.animation) { model.hideResolvedMail.toggle() }
             },
-            ClosureItem(String(localized: "Чат с ИИ-ассистентом"), key: "a", modifiers: [.command, .option]) {
+            ClosureItem(String(localized: "Чат с ИИ-ассистентом"), key: "a", modifiers: [.command, .option],
+                        on: { model.assistantOpen }) {
                 withAnimation(Motion.move) { model.assistantOpen.toggle() }
             },
-            ClosureItem(String(localized: "Телефон"), key: "p", modifiers: [.command, .option]) {
-                withAnimation(Motion.move) { model.phoneOpen.toggle() }
+            ClosureItem(String(localized: "Телефон"), key: "p", modifiers: [.command, .option],
+                        on: { model.phoneOpen }) {
+                withAnimation(Motion.quick) { model.phoneOpen.toggle() }
             },
-            ClosureItem(String(localized: "Таймлайн внизу окна"), key: "b", modifiers: [.command, .option]) {
+            ClosureItem(String(localized: "Таймлайн внизу окна"), key: "b", modifiers: [.command, .option],
+                        on: { model.timelineAtBottom }) {
                 withAnimation(HoverMotion.animation) { model.timelineAtBottom.toggle() }
             },
-            ClosureItem(String(localized: "День"), key: "1", modifiers: [.command, .option]) { model.timelineSpan = .day },
-            ClosureItem(String(localized: "Неделя"), key: "2", modifiers: [.command, .option]) { model.timelineSpan = .week },
+            ClosureItem(String(localized: "День"), key: "1", modifiers: [.command, .option],
+                        on: { model.timelineSpan == .day }) { model.timelineSpan = .day },
+            ClosureItem(String(localized: "Неделя"), key: "2", modifiers: [.command, .option],
+                        on: { model.timelineSpan == .week }) { model.timelineSpan = .week },
         ]))
 
         let windowMenu = submenu(String(localized: "Окно"), [
             item(String(localized: "Свернуть"), #selector(NSWindow.performMiniaturize(_:)), key: "m"),
+            item(String(localized: "Масштаб"), #selector(NSWindow.performZoom(_:))),
+            item(String(localized: "Во весь экран"), #selector(NSWindow.toggleFullScreen(_:)), key: "f", modifiers: [.command, .control]),
             item(String(localized: "Закрыть"), #selector(NSWindow.performClose(_:)), key: "w"),
+            .separator(),
+            // Спрятанное ⌘W главное окно — обратно. Список окон AppKit
+            // дописывает сам, но спрятанного в нём не видно.
+            ClosureItem(String(localized: "Главное окно"), key: "") {
+                NSApp.windows.first { $0 is MainWindow }?.makeKeyAndOrderFront(nil)
+            },
+            .separator(),
+            item(String(localized: "Все окна — на передний план"), #selector(NSApplication.arrangeInFront(_:))),
         ])
         NSApp.windowsMenu = windowMenu.submenu
         main.addItem(windowMenu)
 
         let helpMenu = submenu(String(localized: "Справка"), [
             ClosureItem(String(localized: "Обучение Trudaybook"), key: "") { TourWindow.show(main: primary) },
+            ClosureItem(String(localized: "Сочетания клавиш"), key: "/") { ShortcutsWindow.show() },
         ])
         NSApp.helpMenu = helpMenu.submenu
         main.addItem(helpMenu)
@@ -354,18 +433,113 @@ enum MainMenu {
 
     private static func item(_ title: String, _ action: Selector, key: String = "",
                              modifiers: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+        let (key, modifiers) = keyEquivalent(key, modifiers)
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         return item
     }
+
+    /// ⇧ с буквой — заглавной буквой (`KeyCombo`): строчная с маской ⇧
+    /// до пункта не доходила, ⇧⌘N, ⇧⌘F, ⇧⌘H молча не работали.
+    nonisolated static func keyEquivalent(_ key: String, _ modifiers: NSEvent.ModifierFlags) -> (String, NSEvent.ModifierFlags) {
+        let combo = KeyCombo(key, KeyCombo.Modifiers(modifiers))
+        var flags = modifiers
+        if !combo.modifiers.contains(.shift) { flags.remove(.shift) }
+        return (combo.key, flags)
+    }
+
+    /// Фокус в поле ввода: буквенные сочетания действий — его, а не списка.
+    static var typing: Bool { NSApp.keyWindow?.firstResponder is NSText }
+}
+
+/// «Отменить» и «Повторить». В поле ввода — его правка, иначе — история
+/// окна: в главном это архив, корзина, перенос (`AppModel.undo`).
+///
+/// Через свою цель, а не по цепочке ответчиков: после щелчка по списку
+/// фокус у служебного ответчика SwiftUI, он не отдаёт историю окна,
+/// и ⌘Z молча ничего не делал.
+@MainActor
+final class UndoMenuTarget: NSObject, NSMenuItemValidation {
+    static let shared = UndoMenuTarget()
+    /// История окна, если она не своя у окна: главное — `AppModel.undo`.
+    var history: (NSWindow) -> UndoManager? = { _ in nil }
+
+    static func item(redo: Bool) -> NSMenuItem {
+        let item = NSMenuItem(title: redo ? String(localized: "Повторить") : String(localized: "menu.undo", defaultValue: "Отменить"),
+                              action: redo ? #selector(redo(_:)) : #selector(undo(_:)), keyEquivalent: redo ? "Z" : "z")
+        // ⇧ — заглавной буквой, как в стандартном меню AppKit: «z» с маской ⇧
+        // меню показывало, но нажатие ⇧⌘Z до пункта не доходило.
+        item.keyEquivalentModifierMask = .command
+        item.target = shared
+        return item
+    }
+
+    /// Поле ввода в фокусе (и поле поиска, и ответ) — оно и отменяет.
+    private var text: NSResponder? {
+        guard let responder = NSApp.keyWindow?.firstResponder, responder is NSText else { return nil }
+        return responder
+    }
+
+    private var manager: UndoManager? {
+        if let text { return text.undoManager }
+        guard let window = NSApp.keyWindow else { return nil }
+        return history(window) ?? window.undoManager
+    }
+
+    @objc func undo(_ sender: Any?) { run(redo: false, sender) }
+    @objc func redo(_ sender: Any?) { run(redo: true, sender) }
+
+    private func run(redo: Bool, _ sender: Any?) {
+        // Поле — своим путём: `NSTextView` сам закрывает набор и группу.
+        if let text {
+            NSApp.sendAction(redo ? Selector(("redo:")) : Selector(("undo:")), to: text, from: sender)
+            return
+        }
+        guard let manager else { return }
+        Self.perform(redo: redo, on: manager)
+    }
+
+    /// Группа шагов закрывается в конце прохода цикла событий; пока она
+    /// открыта, `undo()` бросает исключение — тогда на следующем проходе.
+    static func perform(redo: Bool, on manager: UndoManager) {
+        guard manager.groupingLevel == 0 else {
+            DispatchQueue.main.async { perform(redo: redo, on: manager) }
+            return
+        }
+        if redo {
+            if manager.canRedo { manager.redo() }
+        } else if manager.canUndo {
+            manager.undo()
+        }
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        let redo = item.action == #selector(redo(_:))
+        guard let manager else {
+            item.title = redo ? String(localized: "Повторить") : String(localized: "menu.undo", defaultValue: "Отменить")
+            return false
+        }
+        item.title = redo ? manager.redoMenuItemTitle : manager.undoMenuItemTitle
+        return redo ? manager.canRedo : manager.canUndo
+    }
 }
 
 /// Пункт меню с замыканием вместо селектора.
-final class ClosureItem: NSMenuItem {
+///
+/// `enabled` — можно ли сейчас: пункт сереет, и сочетание не срабатывает
+/// (⌘E при наборе ответа не уносит письмо в архив). `on` — галочка
+/// у переключателя.
+final class ClosureItem: NSMenuItem, NSMenuItemValidation {
     private let handler: () -> Void
+    private let availability: (() -> Bool)?
+    private let checked: (() -> Bool)?
 
-    init(_ title: String, key: String, modifiers: NSEvent.ModifierFlags = .command, handler: @escaping () -> Void) {
+    init(_ title: String, key: String, modifiers: NSEvent.ModifierFlags = .command,
+         enabled: (() -> Bool)? = nil, on: (() -> Bool)? = nil, handler: @escaping () -> Void) {
         self.handler = handler
+        self.availability = enabled
+        self.checked = on
+        let (key, modifiers) = MainMenu.keyEquivalent(key, modifiers)
         super.init(title: title, action: #selector(run), keyEquivalent: key)
         keyEquivalentModifierMask = modifiers
         target = self
@@ -374,6 +548,11 @@ final class ClosureItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError("не используется") }
 
     @objc private func run() { handler() }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if let checked { state = checked() ? .on : .off }
+        return availability?() ?? true
+    }
 }
 
 extension WindowSnapshot {
@@ -495,5 +674,23 @@ enum WindowSnapshot {
         } catch {
             DebugLog.write("снимок: не записан — \(error.localizedDescription)")
         }
+    }
+}
+
+extension KeyCombo.Modifiers {
+    init(_ flags: NSEvent.ModifierFlags) {
+        self = []
+        if flags.contains(.control) { insert(.control) }
+        if flags.contains(.option) { insert(.option) }
+        if flags.contains(.shift) { insert(.shift) }
+        if flags.contains(.command) { insert(.command) }
+    }
+}
+
+extension KeyCombo {
+    /// Сочетание пункта меню; `nil` — у пункта его нет.
+    init?(_ item: NSMenuItem) {
+        guard !item.keyEquivalent.isEmpty else { return nil }
+        self.init(item.keyEquivalent, Modifiers(item.keyEquivalentModifierMask))
     }
 }

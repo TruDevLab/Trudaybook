@@ -73,6 +73,11 @@ public protocol CalendarProvider: AnyObject {
     /// «Отклонить»: встреча — отказ организатору или отмена своей (где это
     /// умеет календарь) и уход из календаря; напоминание — удалить.
     func decline(_ item: TimelineItem) async throws
+    /// Ответ на чужую встречу прямо из календаря: принять, под вопросом,
+    /// отклонить; `proposed` — предложить организатору другое время.
+    /// `InvitationError.unsupported` — календарь так не умеет (EventKit),
+    /// тогда ответ уходит письмом iTIP.
+    func respond(_ item: TimelineItem, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws
 
     /// Чей это элемент и календарь — чтобы общий календарь знал, кому
     /// передать правку.
@@ -85,6 +90,12 @@ public protocol CalendarProvider: AnyObject {
 }
 
 public extension CalendarProvider {
+    /// Календарь macOS отвечать на приглашения не умеет (`EKParticipant`
+    /// только для чтения).
+    func respond(_ item: TimelineItem, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws {
+        throw InvitationError.unsupported
+    }
+
     /// EventKit отдаёт описание только текстом.
     func richDescription(of item: TimelineItem) async throws -> MailBody? { nil }
 

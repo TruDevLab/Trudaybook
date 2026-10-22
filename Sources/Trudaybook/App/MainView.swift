@@ -62,6 +62,13 @@ struct MainView: View {
                 .background(WindowAppearanceSetter(appearance: model.windowAppearance))
         }
         .environment(\.auroraTheme, model.customBackground)
+        // После архива и корзины — «Отменить» внизу окна. Только пока есть
+        // что показать: пустой слой поверх окна забирал фокус у поля ответа.
+        .overlay(alignment: .bottom) {
+            if let notice = model.undoNotice {
+                UndoBanner(notice: notice)
+            }
+        }
         // Снимок обзора года: окошко popover в захват своего окна не
         // попадает, поэтому для `--year` он рисуется поверх окна.
         .overlay {
@@ -313,13 +320,14 @@ extension MainView {
     /// Чату и письму под ним — не меньше этого: иначе ни ответа, ни письма не прочесть.
     static let minSplitPart: Double = 180
 
-    /// Правая колонка. Чат открыт и есть что показать под ним (письмо,
-    /// встреча, ответ, выделение) — чат сверху, выбранное снизу, между ними
-    /// ручка; нечего — чат на всю высоту.
+    /// Правая колонка. Сверху всегда чат с ассистентом: свёрнутый — одно
+    /// поле вопроса над письмом или встречей, раскрытый — разговор. Есть что
+    /// показать под ним (письмо, встреча, ответ, выделение) — чат сверху,
+    /// выбранное снизу, между ними ручка; нечего — чат на всю высоту.
     ///
-    /// Правая панель — один и тот же вид при открытом и закрытом чате: так
-    /// при открытии письмо плавно уезжает вниз, а чат вырастает сверху
-    /// (`ChatReveal`), а не подменяет одно другим.
+    /// Свёрнутое поле и раскрытый чат — один и тот же вид: при раскрытии
+    /// письмо плавно уезжает вниз, а разговор вырастает над полем, и
+    /// набранное в нём никуда не девается.
     func rightColumn(height: Double) -> some View {
         let open = model.assistantOpen
         let split = model.inspectorHasContent && height - Self.gap > Self.minSplitPart * 2
@@ -339,24 +347,22 @@ extension MainView {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .animation(Motion.move, value: model.phoneOpen)
+        // Телефон — сразу: пружина в треть секунды читалась как задержка.
+        .animation(Motion.quick, value: model.phoneOpen)
     }
 
     private func chatAndInspector(open: Bool, split: Bool, total: Double, upper: Double, chat: Double) -> some View {
         VStack(spacing: 0) {
-            if open {
-                assistantCard
-                    .transition(.asymmetric(
-                        insertion: .modifier(active: ChatReveal(height: 0), identity: ChatReveal(height: chat)),
-                        removal: .modifier(active: ChatReveal(height: 0), identity: ChatReveal(height: chat))))
-                    .frame(height: chat, alignment: .top)
-                    .tourSpot(.assistant)
-                if split {
-                    ResizeHandle(value: Binding(get: { assistantShare * total }, set: { assistantShare = $0 / total }),
-                                 current: chat, range: Self.minSplitPart...upper, dimension: .height,
-                                 reset: total / 2, name: String(localized: "высота чата с ассистентом"))
-                        .transition(.opacity)
-                }
+            assistantCard
+                .frame(height: open ? chat : nil, alignment: .top)
+                .tourSpot(.assistant)
+            if open, split {
+                ResizeHandle(value: Binding(get: { assistantShare * total }, set: { assistantShare = $0 / total }),
+                             current: chat, range: Self.minSplitPart...upper, dimension: .height,
+                             reset: total / 2, name: String(localized: "высота чата с ассистентом"))
+                    .transition(.opacity)
+            } else if !open {
+                Color.clear.frame(height: Self.gap)
             }
             if !open || split {
                 // Под чатом — сколько осталось: приглашение со шкалой дня выше
@@ -380,24 +386,6 @@ extension MainView {
     }
 }
 
-/// «Чат с ИИ-ассистентом»: чат открывается в правой колонке над выбранным.
-struct AssistantButton: View {
-    @EnvironmentObject private var model: AppModel
-
-    var body: some View {
-        Button {
-            withAnimation(Motion.move) { model.assistantOpen.toggle() }
-        } label: {
-            Label("Ассистент", systemImage: "bubble.left.and.text.bubble.right")
-                .foregroundStyle(model.assistantOpen ? Palette.violet : Color.primary)
-        }
-        .buttonStyle(.plain)
-        .glassCapsule()
-        .labelHelp(model.assistantOpen ? String(localized: "Закрыть чат с ИИ-ассистентом (⌥⌘A)")
-                                       : String(localized: "Чат с ИИ-ассистентом (⌥⌘A)"))
-    }
-}
-
 /// «Телефон»: открывает набор номера справа. Во время разговора — зелёная
 /// с временем, у пропущенных — их число.
 struct PhoneButton: View {
@@ -406,7 +394,7 @@ struct PhoneButton: View {
 
     var body: some View {
         Button {
-            withAnimation(Motion.move) { model.phoneOpen.toggle() }
+            withAnimation(Motion.quick) { model.phoneOpen.toggle() }
         } label: {
             HStack(spacing: Space.sm) {
                 Image(systemName: phone.inCall ? "phone.connection.fill" : "phone.fill")
@@ -458,8 +446,6 @@ struct ActionBar: View {
                 PhoneButton(phone: model.phone)
                     .tourSpot(.phoneButton)
             }
-            AssistantButton()
-                .tourSpot(.assistantButton)
             // «Создать» — отдельно от действий над выбранным, в правом краю.
             CreateButton()
                 .tourSpot(.create)
@@ -909,18 +895,5 @@ enum Format {
             return "\(short.string(from: item.time)) – \(short.string(from: end))"
         }
         return "\(dayTitle(item.time)), \(range(item.time, item.end))"
-    }
-}
-
-/// Чат вырастает сверху: высота от нуля до своей, содержимое прижато
-/// к верху и обрезано — а не выезжает целиком и не проявляется.
-private struct ChatReveal: ViewModifier {
-    let height: Double
-
-    func body(content: Content) -> some View {
-        content
-            .frame(height: height, alignment: .top)
-            .clipped()
-            .opacity(height > 0 ? 1 : 0)
     }
 }

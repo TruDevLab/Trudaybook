@@ -281,3 +281,43 @@ struct MeetingCancellationTests {
         #expect(!invitation.isSeriesCancellation)
     }
 }
+
+@Suite("Ответ на встречу из календаря")
+struct EventResponseTests {
+    private let organizer = Person(name: "Ольга Смирнова", address: "olga@company.test")
+    private let me = Person(name: "Иван", address: "me@company.test")
+
+    private func meeting(recurring: Bool = false, uid: String? = "UID-42", organizer: Person?) -> TimelineItem {
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        return TimelineItem(id: "event:ABC@1790000000", title: "Обзор плана", time: start, end: start.addingTimeInterval(3600),
+                            detail: .event(EventInfo(calendarTitle: "Работа", organizer: organizer,
+                                                     attendees: [Attendee(person: me, response: .pending, isMe: true)],
+                                                     isRecurring: recurring, canEdit: false, uid: uid)))
+    }
+
+    @Test func invitationFromEvent() throws {
+        let invitation = try #require(Invitation.event(meeting(recurring: true, organizer: organizer)))
+        #expect(invitation.uid == "UID-42")
+        #expect(invitation.organizer == organizer)
+        // Вхождение серии — ответ про него.
+        #expect(invitation.recurrenceID == invitation.start)
+        #expect(Invitation.event(meeting(uid: nil, organizer: organizer)) == nil)
+        #expect(Invitation.event(meeting(organizer: nil)) == nil)
+    }
+
+    @Test func counterProposesNewTime() throws {
+        let invitation = try #require(Invitation.event(meeting(organizer: organizer)))
+        let start = Date(timeIntervalSince1970: 1_790_010_800)
+        let ics = ICalendar.counter(to: invitation, start: start, end: start.addingTimeInterval(1800), me: me,
+                                    comment: "Можно позже?", now: start)
+        #expect(ics.contains("METHOD:COUNTER"))
+        #expect(ics.contains("UID:UID-42"))
+        #expect(ics.contains("DTSTART:20260921T171320Z"))
+        #expect(ics.contains("DTEND:20260921T174320Z"))
+        #expect(ics.contains("ORGANIZER:mailto:olga@company.test"))
+        #expect(ics.contains("COMMENT:Можно позже?"))
+        let mail = try ICalendar.counterMail(to: invitation, start: start, end: start.addingTimeInterval(1800), me: me, comment: nil)
+        #expect(mail.to == [organizer])
+        #expect(mail.attachments.first?.mimeType.contains("method=COUNTER") == true)
+    }
+}

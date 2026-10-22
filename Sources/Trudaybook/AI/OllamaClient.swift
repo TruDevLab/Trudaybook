@@ -62,12 +62,12 @@ struct OllamaClient: Sendable {
 
     /// Ответ модели потоком. `onText` получает весь текст на этот миг —
     /// чату, чтобы показывать ответ по мере написания.
-    func chat(model: String, messages: [Ollama.Message],
+    func chat(model: String, messages: [Ollama.Message], temperature: Double? = nil,
               onText: (@MainActor @Sendable (String) -> Void)? = nil) async throws -> String {
         var request = URLRequest(url: url("api/chat"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: Ollama.chatBody(model: model, messages: messages))
+        request.httpBody = try JSONSerialization.data(withJSONObject: Ollama.chatBody(model: model, messages: messages, temperature: temperature))
         let (bytes, response) = try await stream(request)
         try check(response, nil)
         var text = ""

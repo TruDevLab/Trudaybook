@@ -42,7 +42,9 @@ On the right: the whole email or meeting (the 📄 button next to the priority f
 shows the email on a white sheet in any theme; it is also in the email window and the
 reply window, and the choice is remembered). Reply, Reply All and Forward (⇧⌘F) are in
 the right panel, the email window and the toolbar. Replies with formatting,
-attachments, invitations with Accept and Decline, attendees and the online
+attachments, invitations with Accept and Decline (and, on someone else's
+meeting in the calendar, Your response: accept, maybe, decline or propose a
+new time — no need to look for the invitation email), attendees and the online
 meeting link.
 
 Swipe two fingers on the trackpad to go to the next or previous day (week in
@@ -59,9 +61,10 @@ press-and-hold placeholder into it, for a new all-day meeting. Working hours are
 they are and how many hours you see at once (6 by default) — Settings →
 Calendars → Timeline. A checkmark on an email or a bundle means handled;
 a past meeting simply fades. A meeting card shows, when there is room, who set it
-up and how many people attend. Color a meeting or a whole series with “Color” in
-the right-click menu or with the calendar-name button in the right panel; the color
-is yours only, the calendar doesn’t change. An unanswered meeting is pale, outlined
+up and how many people attend. Color a meeting, a whole series or a whole calendar with “Color” in
+the right-click menu, the calendar-name button in the right panel or the calendar’s
+color dot in Settings → Calendars; the color is yours only, the calendar doesn’t
+change. A stripe of the calendar’s color runs down the left of each card. An unanswered meeting is pale, outlined
 with a dashed line and marked “?”; a cancelled one is grey and struck through.
 While nothing is selected, the right panel shows a day summary: upcoming meetings,
 unhandled mail, reminders and the week ahead day by day. Clicking an empty spot in
@@ -170,8 +173,10 @@ recents and saved numbers. You can skip it and take it again from Help → Truda
 
 **AI on this Mac** — through [Ollama](https://ollama.com) (free; Trudaybook
 offers to install it and download a suitable model itself, Settings → AI):
-- **assistant chat** (the “Assistant” button or ⌥⌘A): opens above the selected
-  email or meeting, with a draggable divider between them; it starts with tiles
+- **assistant chat**: the question field always sits above the selected email
+  or meeting — just type, and after sending the chat expands with the answer;
+  the button left of the field or ⌥⌘A opens it too. The divider between the
+  chat and the email is draggable; it starts with tiles
   of ready requests (My day, Awaiting reply, Summarize email, Meeting prep,
   Reminder…); conversations in tabs,
   questions about meetings, emails and the daily note, “what do I have today”,
@@ -223,21 +228,35 @@ notch app by the same author (optional, all off by default):
 
 | Keys | Action |
 |---|---|
+| ⌘Z / ⇧⌘Z | Undo / redo: archive, trash, reschedule, priority, marks |
+| ⌘N / ⇧⌘N / ⌥⌘N | New email / event / reminder |
 | ⌘E | Archive |
 | ⌘R / ⇧⌘R | Reply / reply all |
+| ⇧⌘F | Forward |
 | ⌘S | Snooze or reschedule |
 | ⌘D | Decline a meeting |
-| ⌘1 ⌘2 ⌘3 / ⌘0 | High, medium, low priority / clear |
+| ⌘1 ⌘2 ⌘3 / ⌘0 | High, medium, low priority / clear (in the list, just 1 2 3 0) |
+| ⌘O or ↩ | Email in its own window |
+| ⌘P | Print the email |
+| ⌫ | Move to Trash |
+| Esc | Deselect — back to the day summary |
+| ⌘F | Search mail; in an email, reply or note — find in text, ⌘G / ⇧⌘G — next / previous |
 | ⌘T | Today |
 | ⌘J | Note in a window |
 | ⌃⌥⌘J | Join the current or next meeting (from any app) |
 | ⌘[ / ⌘] | Previous / next day (week in week view) |
 | ⌘= / ⌘− | Zoom in / out |
 | ⌥⌘1 / ⌥⌘2 | Day / week |
-| ⇧⌘H | Hide / show handled emails on the timeline |
 | ⌥⌘B | Timeline at the bottom of the window |
-| ⌥⌘P | Phone |
-| ↑ ↓ | Neighbouring item |
+| ⌥⌘A / ⌥⌘P | Assistant chat / phone |
+| ⇧⌘H | Hide / show handled emails on the timeline |
+| ↑ ↓ | Neighbouring item (with ⇧ — select several) |
+| ⌘W | Hide the main window — mail and reminders keep working |
+| ⌘/ | All keyboard shortcuts |
+
+Archive and Trash reach the server after 10 seconds: while the Undo banner
+is visible at the bottom of the window, ⌘Z brings the email back and nothing
+changes on the server.
 
 ---
 
@@ -328,9 +347,10 @@ so you can see how it works. Add mail in Settings → Mail.
 - Gmail and Microsoft 365 with OAuth sign-in aren't supported: only an app
   password (Gmail) or your own Exchange server with EWS.
 - Someone else's meeting can't be moved — only the organizer can.
-- You can't answer the organizer for a meeting from a macOS calendar:
-  EventKit can't do that. Answer from the invitation email or in an Exchange
-  calendar connected directly.
+- A response to a meeting from a macOS calendar (iCloud, Google) goes to
+  the organizer by email from your mailbox: EventKit can't respond itself,
+  and only the server updates the status in your calendar. A directly
+  connected Exchange calendar responds with its own command.
 
 ## Development
 

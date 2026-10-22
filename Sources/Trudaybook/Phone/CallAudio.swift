@@ -37,6 +37,11 @@ final class CallAudio: @unchecked Sendable {
 
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
+    /// Слежение за сменой устройств у работающего движка.
+    private var configurationObserver: NSObjectProtocol?
+    private var lastRestart = Date.distantPast
+    /// Звук так и не включился — сказать человеку, а не молчать в трубке.
+    var onProblem: (@Sendable (String) -> Void)?
     private var echoCancellation = true
     /// Выбранные микрофон и динамик (`uid`); пусто — как в системе.
     private var inputUID = ""
@@ -131,6 +136,8 @@ final class CallAudio: @unchecked Sendable {
     }
 
     private func stopEngine() {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        configurationObserver = nil
         if let engine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
@@ -217,19 +224,51 @@ final class CallAudio: @unchecked Sendable {
 
     // MARK: - Микрофон и динамик
 
+    /// Включить микрофон и динамик. Не вышло с подавлением эха (наушники
+    /// и встроенный микрофон — разные устройства, Bluetooth-гарнитура в
+    /// своём режиме: `-10875`, ошибка запуска) — без него; не вышло на
+    /// выбранных устройствах — на системных. Раньше первая же ошибка
+    /// оставляла разговор без звука, и в журнале было только «не включился».
     private func startEngine() {
+        let routed = !inputUID.isEmpty || !outputUID.isEmpty
+        var attempts: [(voice: Bool, route: Bool)] = []
+        if echoCancellation { attempts.append((true, routed)) }
+        attempts.append((false, routed))
+        if routed { attempts.append((false, false)) }
+        for (index, attempt) in attempts.enumerated() {
+            guard let (engine, player) = makeEngine(voice: attempt.voice, route: attempt.route) else { continue }
+            if index > 0 { DebugLog.write("телефон: звук включён " + (attempt.route || !routed ? "без подавления эха" : "на системных устройствах")) }
+            self.engine = engine
+            self.player = player
+            // Подавление эха само сообщает о смене устройств сразу после
+            // запуска — такие первые сообщения не повод перезапускаться.
+            lastRestart = Date()
+            watchConfiguration(of: engine)
+            return
+        }
+        onProblem?(String(localized: "Звук разговора не включился. Выберите микрофон и динамик в меню телефона (значок динамика) или в настройках звука macOS."))
+    }
+
+    private func makeEngine(voice: Bool, route: Bool) -> (AVAudioEngine, AVAudioPlayerNode)? {
         let engine = AVAudioEngine()
         let input = engine.inputNode
         // Подавление эха системой: без него собеседник слышит себя из динамиков.
-        if echoCancellation { try? input.setVoiceProcessingEnabled(true) }
+        if voice {
+            do {
+                try input.setVoiceProcessingEnabled(true)
+            } catch {
+                DebugLog.write("телефон: подавление эха не включилось — \(error.localizedDescription)")
+                return nil
+            }
+        }
         // Устройства — после подавления эха: оно заменяет узлы ввода и вывода,
         // и выбор, сделанный раньше, пропал бы. Нет устройства (наушники
         // отключили) — остаётся системное.
-        if let device = AudioDevices.deviceID(uid: inputUID), let unit = input.audioUnit {
+        if route, let device = AudioDevices.deviceID(uid: inputUID), let unit = input.audioUnit {
             let status = AudioDevices.route(unit, to: device)
             if status != noErr { DebugLog.write("телефон: микрофон не выбран — код \(status)") }
         }
-        if let device = AudioDevices.deviceID(uid: outputUID), let unit = engine.outputNode.audioUnit {
+        if route, let device = AudioDevices.deviceID(uid: outputUID), let unit = engine.outputNode.audioUnit {
             let status = AudioDevices.route(unit, to: device)
             if status != noErr { DebugLog.write("телефон: динамик не выбран — код \(status)") }
         }
@@ -241,14 +280,36 @@ final class CallAudio: @unchecked Sendable {
             input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
                 self?.capture(buffer, converter: converter, rate: inputFormat.sampleRate)
             }
+        } else {
+            DebugLog.write("телефон: микрофона нет — собеседник вас не услышит")
         }
         do {
             try engine.start()
+            return (engine, player)
         } catch {
-            DebugLog.write("телефон: звук не включился — \(error.localizedDescription)")
+            input.removeTap(onBus: 0)
+            engine.stop()
+            DebugLog.write("телефон: звук не включился \(voice ? "с подавлением эха" : "без подавления эха") — \(error.localizedDescription)")
+            return nil
         }
-        self.engine = engine
-        self.player = player
+    }
+
+    /// Подключили или отключили наушники, сменилось устройство в системе —
+    /// `AVAudioEngine` останавливается и сам не запускается: разговор шёл
+    /// дальше без звука. Перезапуск на новых устройствах, не чаще раза в 2 секунды.
+    private func watchConfiguration(of engine: AVAudioEngine) {
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.queue.async {
+                guard self.engine === engine, Date().timeIntervalSince(self.lastRestart) > 2 else { return }
+                self.lastRestart = Date()
+                DebugLog.write("телефон: устройства звука сменились — звук перезапущен")
+                self.stopEngine()
+                self.startEngine()
+            }
+        }
     }
 
     private func capture(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, rate: Double) {

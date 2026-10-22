@@ -72,6 +72,7 @@
 "macOS спросит разрешение при включении" = "macOS will ask for permission when turned on";
 "menu.undo" = "Undo";
 "pbx.company.ru или 10.0.0.5:5060" = "pbx.company.com or 10.0.0.5:5060";
+"«%@» · сейчас %@" = "“%@” · now %@";
 "«%@» не изменить отсюда: встречу меняет организатор или это календарь только для чтения. Ответить можно справа." = "“%@” can't be changed from here: the organizer changes this meeting, or the calendar is read-only. You can reply on the right.";
 "«%@» через %lld мин" = "“%@” in %lld min";
 "«Напрямую» — ящик Exchange, подключённый в Trudaybook. «Через macOS» — учётные записи из Системных настроек → Учётные записи интернета. Новые календари, добавленные в системе, появятся сами." = "“Direct” is an Exchange mailbox connected in Trudaybook. “Via macOS” are accounts from System Settings → Internet Accounts. New calendars added in the system appear automatically.";
@@ -108,6 +109,7 @@
 "В Trunook выключен приём уведомлений от программ" = "Trunook doesn't accept notifications from apps";
 "В Trunook она появится заметкой «Trudaybook · день»; правки идут в обе стороны." = "In Trunook it appears as a “Trudaybook · day” note; edits go both ways.";
 "В «Загрузки»" = "To Downloads";
+"В «Корзину»" = "To Trash";
 "В «Корзину» ящика — вернуть можно оттуда же · ⌫" = "To the mailbox Trash — you can restore from there · ⌫";
 "В «Не разобрано», в папках и в найденном. Разделы сворачиваются щелчком по заголовку." = "In “To handle”, in folders and in search results. Click a heading to collapse its section.";
 "В Центре уведомлений macOS" = "In the macOS Notification Center";
@@ -115,7 +117,7 @@
 "В архив всё выделенное" = "Archive All Selected";
 "В архив всё выделенное · ⌘E" = "Archive everything selected · ⌘E";
 "В архив всё выделенное: %lld" = "Archive All Selected: %lld";
-"В архив, ответить, переслать, отложить — кнопками, клавишами (⌘E, ⌘R, ⇧⌘F…) или перетаскиванием: бросьте карточку на кнопку. Наведите на значок — появится подпись. Набор и порядок кнопок — в Настройках → Оформление." = "Archive, reply, forward, snooze — with buttons, shortcuts (⌘E, ⌘R, ⇧⌘F…) or drag and drop: drop a card onto a button. Hover over an icon to see its label. Which buttons appear and in what order — Settings → Appearance.";
+"В архив, ответить, переслать, отложить — кнопками, клавишами (⌘E, ⌘R, ⇧⌘F…) или перетаскиванием: бросьте карточку на кнопку. Ошиблись — ⌘Z. Наведите на значок — появится подпись. Набор и порядок кнопок — в Настройках → Оформление." = "Archive, reply, forward, snooze — with buttons, shortcuts (⌘E, ⌘R, ⇧⌘F…) or drag and drop: drop a card onto a button. Made a mistake — ⌘Z. Hover over an icon to see its label. Which buttons appear and in what order — Settings → Appearance.";
 "В архив: %lld" = "Archive: %lld";
 "В архиве" = "Archived";
 "В ваших встречах за три месяца ссылок нет." = "No links in your meetings over the last three months.";
@@ -143,6 +145,7 @@
 "Важные письма" = "Important emails";
 "Важных: %lld" = "Important: %lld";
 "Ваш календарь в этот день; снизу — приглашение" = "Your calendar that day; the invitation is below";
+"Ваш ответ" = "Your response";
 "Везде" = "Everywhere";
 "Вернувшееся отложенное письмо" = "Snoozed email coming back";
 "Вернулось %lld %@" = "%lld %@ back from snooze";
@@ -153,6 +156,7 @@
 "Версия последняя" = "Up to date";
 "Весна" = "Spring";
 "Весь день" = "All day";
+"Весь календарь «%@»" = "Whole calendar “%@”";
 "Вид" = "Style";
 "Виджеты на рабочем столе" = "Desktop Widgets";
 "Видно на шкале дня" = "Visible on the day timeline";
@@ -162,6 +166,7 @@
 "Вложения" = "Attachments";
 "Вместе больше 20 МБ — почтовый сервер может не принять" = "Over 20 MB in total — the mail server may reject it";
 "Вне окна" = "Outside the window";
+"Во весь экран" = "Enter Full Screen";
 "Впереди" = "Upcoming";
 "Времена года: осенью листопад, зимой иней на стекле, весной цветущие деревья, летом цветы" = "Seasons: falling leaves in autumn, frost on the glass in winter, trees in bloom in spring, flowers in summer";
 "Время" = "Time";
@@ -169,6 +174,7 @@
 "Время, повтор, участники, описание" = "Time, repeat, attendees, description";
 "Вс" = "Su";
 "Все" = "All";
+"Все окна — на передний план" = "Bring All to Front";
 "Все события серии" = "All events in the series";
 "Всем участникам" = "To all attendees";
 "Вставить" = "Paste";
@@ -219,6 +225,10 @@
 "Входящий звонок показывается окошком в правом верхнем углу экрана — поверх всех окон." = "An incoming call appears in a small window in the top-right corner of the screen, above all windows.";
 "Вчера" = "Yesterday";
 "Вы" = "You";
+"Вы ещё не ответили на приглашение" = "You haven't responded to the invitation yet";
+"Вы ответили «под вопросом»" = "You responded “Maybe”";
+"Вы отклонили встречу" = "You declined the meeting";
+"Вы приняли встречу" = "You accepted the meeting";
 "Вы только в копии" = "You are only in Cc";
 "Выберите город." = "Choose a city.";
 "Выберите письмо или событие — подробности появятся здесь." = "Select an email or event — its details will appear here.";
@@ -235,6 +245,7 @@
 "Выделите текст в письме" = "Select text in the message";
 "Выделите текст, который пересказать." = "Select the text to summarize.";
 "Выделить всё" = "Select All";
+"Выделить несколько" = "Select several";
 "Выделить цветом" = "Highlight";
 "Вызов отменён" = "Call cancelled";
 "Вызов сброшен" = "Call rejected";
@@ -252,6 +263,7 @@
 "Где я сейчас" = "My location";
 "Главное" = "Key items";
 "Главное о Trudaybook — на тестовых письмах и встречах; ваши данные не затронуты." = "The essentials of Trudaybook on sample emails and meetings; your data stays untouched.";
+"Главное окно" = "Main Window";
 "Глубина" = "Depth";
 "Говорите…" = "Speak…";
 "Голосовой ввод" = "Voice input";
@@ -293,6 +305,7 @@
 "Другая программа…" = "Other App…";
 "Другая своя картинка…" = "Another custom picture…";
 "Другое" = "Other";
+"Другое время…" = "Propose new time…";
 "Другой" = "Other";
 "Другой город" = "Another city";
 "Дружелюбный тон" = "Friendly tone";
@@ -306,7 +319,9 @@
 "Ещё час" = "Another hour";
 "Ждут ответа" = "Awaiting reply";
 "Ждёт действия" = "Needs action";
+"Жирный" = "Bold";
 "Жирный (⌘B)" = "Bold (⌘B)";
+"Жирный, курсив, подчёркнутый" = "Bold, italic, underline";
 "Журнал" = "Call log";
 "Журнал и номера хранятся только на этом Mac." = "The call log and numbers are stored only on this Mac.";
 "Жёлтый" = "Yellow";
@@ -322,6 +337,7 @@
 "Загружаю…" = "Loading…";
 "Загрузить" = "Load";
 "Загрузка %lld %%" = "Downloading %lld %%";
+"Задайте вопрос или откройте чат кнопкой слева" = "Ask a question or open the chat with the button on the left";
 "Задачи из письма" = "Tasks from email";
 "Закончить" = "Finish";
 "Закрыть" = "Close";
@@ -329,7 +345,6 @@
 "Закрыть разговор" = "Close conversation";
 "Закрыть телефон (⌥⌘P)" = "Close phone (⌥⌘P)";
 "Закрыть чат (⌥⌘A)" = "Close chat (⌥⌘A)";
-"Закрыть чат с ИИ-ассистентом (⌥⌘A)" = "Close the AI assistant chat (⌥⌘A)";
 "Заметка" = "Note";
 "Заметка · %@" = "Note · %@";
 "Заметка в окне" = "Note in Window";
@@ -352,6 +367,7 @@
 "Звонок" = "Call";
 "Звук входящего" = "Ring sound";
 "Звук клавиш набора" = "Keypad sounds";
+"Звук разговора не включился. Выберите микрофон и динамик в меню телефона (значок динамика) или в настройках звука macOS." = "Call audio didn't start. Choose a microphone and speaker in the phone menu (speaker icon) or in macOS Sound settings.";
 "Здесь читают и отвечают. Значки вверху справа: письмо на белом листе, приоритет, «Сохранить» в файл и отдельное окно. У приглашения — «Принять» и «Отклонить». Пока ничего не выбрано, здесь сводка дня: встречи впереди, неразобранная почта и напоминания." = "Read and reply here. Icons at the top right: the email on a white sheet, priority, “Save” to a file and a separate window. Invitations have “Accept” and “Decline”. While nothing is selected, this shows a day summary: upcoming meetings, unhandled mail and reminders.";
 "Зелёный" = "Green";
 "Зима" = "Winter";
@@ -422,9 +438,11 @@
 "Кнопки панели" = "Toolbar Buttons";
 "Когда" = "When";
 "Когда модель нужна, Trudaybook запускает Ollama сам." = "When a model is needed, Trudaybook starts Ollama itself.";
+"Комментарий" = "Comment";
 "Комментарий организатору — необязательно" = "Comment for the organizer — optional";
 "Кому" = "To";
 "Кому: %@" = "To: %@";
+"Конец" = "End";
 "Контрольная сумма не сошлась" = "Checksum doesn't match";
 "Конфетти, когда всё разобрано" = "Confetti when everything is done";
 "Копировать" = "Copy";
@@ -436,10 +454,12 @@
 "Кратко" = "Summary";
 "Кратко о выделенном" = "Selection in brief";
 "Кратко пересказать выделенное" = "Summarize Selection";
+"Кружок с цветом — сменить цвет календаря. Только в Trudaybook: в самом календаре и у других людей цвет прежний." = "Click the color dot to change the calendar’s color. Only in Trudaybook: the calendar itself and other people keep the original color.";
 "Крупнее" = "Zoom In";
 "Крупнее (⌘=)" = "Zoom in (⌘=)";
 "Куда" = "Where";
 "Куда переносить письмо кнопкой «В архив» (E) и перетаскиванием. Эта же папка открывается вкладкой «Архив». «Автоматически» — папка с отметкой архива на сервере или «Архив» / «Archive»." = "Where to move an email with the “Archive” button (E) and by dragging. The same folder opens in the “Archive” tab. “Automatic” is the folder marked as archive on the server, or “Archive”.";
+"Курсив" = "Italic";
 "Курсив (⌘I)" = "Italic (⌘I)";
 "Кэш почты не открылся: %@" = "The mail cache didn't open: %@";
 "Лаванда" = "Lavender";
@@ -448,6 +468,7 @@
 "Лёгкая" = "Light";
 "Лён" = "Linen";
 "Маркированный список" = "Bulleted list";
+"Масштаб" = "Zoom";
 "Мельче" = "Zoom Out";
 "Мельче (⌘−)" = "Zoom out (⌘−)";
 "Место" = "Location";
@@ -516,8 +537,14 @@
 "Назначить встречу…" = "Schedule Meeting…";
 "Назначь встречу " = "Schedule a meeting ";
 "Найди письма про " = "Find emails about ";
+"Найти" = "Find";
+"Найти в письме" = "Find in message";
 "Найти в почте" = "Find in mail";
 "Найти город" = "Find a city";
+"Найти далее" = "Find Next";
+"Найти ранее" = "Find Previous";
+"Найти…" = "Find…";
+"Напечатать письмо…" = "Print Message…";
 "Написать организатору" = "Email the Organizer";
 "Написать участникам" = "Email Attendees";
 "Напиши письмо " = "Write an email ";
@@ -544,6 +571,7 @@
 "Настройки ИИ…" = "AI Settings…";
 "Настройки телефона" = "Phone settings";
 "Настройки…" = "Settings…";
+"Начало" = "Start";
 "Начало просьбы появится в поле — допишите и нажмите ↩" = "The start of the request appears in the field — finish it and press ↩";
 "Начат ответ — черновик" = "Reply started — draft";
 "Начать" = "Start";
@@ -628,6 +656,7 @@
 "Новые письма" = "New emails";
 "Новые письма — с ящика" = "New emails — from mailbox";
 "Новый разговор" = "New conversation";
+"Новый разговор (⌘K)" = "New conversation (⌘K)";
 "Новый разговор (⌘T)" = "New conversation (⌘T)";
 "Номер" = "Number";
 "Номер или добавочный" = "Number or extension";
@@ -671,6 +700,7 @@
 "Оранжевый" = "Orange";
 "Организатор её отменил — в календаре она осталась." = "The organizer canceled it — it's still in your calendar.";
 "Организатор получит отказ, встреча уйдёт из календаря." = "The organizer will get a decline, and the meeting will be removed from the calendar.";
+"Организатор получит предложение и решит, переносить ли встречу. До его ответа встреча остаётся в прежнее время, а ваш ответ — «под вопросом»." = "The organizer receives your proposal and decides whether to move the meeting. Until then the meeting stays at its current time and your response is “Maybe”.";
 "Организатор: %@" = "Organizer: %@";
 "Организатору" = "To the organizer";
 "Осень" = "Autumn";
@@ -685,11 +715,13 @@
 "От: %@" = "From: %@";
 "Ответ" = "Reply";
 "Ответ GitHub не разобран" = "Couldn't read GitHub's response";
+"Ответ и заметка" = "Reply and note";
 "Ответ не отправился: %@" = "The reply wasn't sent: %@";
 "Ответ не отправлен: %@" = "The reply wasn't sent: %@";
 "Ответ отправлен, но в календарь встреча не добавилась: %@" = "The reply was sent, but the meeting wasn't added to the calendar: %@";
 "Ответ отправлен: %@" = "Reply sent: %@";
 "Ответ уйдёт организатору %@ — это не отправитель письма" = "The reply will go to the organizer %@ — not the sender of the email";
+"Ответ уйдёт организатору письмом из вашего ящика." = "The response is sent to the organizer by email from your mailbox.";
 "Ответить" = "Reply";
 "Ответить всем" = "Reply All";
 "Ответить всем — черновик откроется в главном окне" = "Reply all — the draft opens in the main window";
@@ -700,6 +732,7 @@
 "Отвечает сразу, но в длинных письмах ошибается чаще." = "Answers instantly but makes more mistakes in long emails.";
 "Отвечает только модель на этом Mac — письма и заметки в интернет не уходят. Отправить письмо или создать встречу ИИ может только после вашего подтверждения." = "Only a model on this Mac answers — emails and notes never go online. AI can send an email or create a meeting only after you confirm.";
 "Отвечено" = "Replied";
+"Отказаться: организатор получит ответ, встреча уйдёт из календаря" = "Decline: the organizer is notified and the meeting is removed from your calendar";
 "Отклонено" = "Declined";
 "Отклонить" = "Decline";
 "Отклонить встречу «%@»?" = "Decline the meeting “%@”?";
@@ -712,7 +745,6 @@
 "Отключить…" = "Disconnect…";
 "Откроется в отдельном окне — отправите сами" = "Opens in a separate window — you send it yourself";
 "Откроется сайт %@: создайте встречу и скопируйте ссылку — она вставится сюда сама" = "The %@ website will open: create a meeting and copy the link — it will be pasted here automatically";
-"Откройте ассистента" = "Open the assistant";
 "Откройте телефон" = "Open the phone";
 "Открывать ссылку на встречу в момент начала" = "Open the meeting link when it starts";
 "Открытая встреча «%@»" = "Open meeting “%@”";
@@ -741,6 +773,7 @@
 "Открыть ссылку не из интернета?" = "Open a link that isn't a website?";
 "Открыть файл…" = "Open File…";
 "Открыть файл…  ⇧⌘O" = "Open File…  ⇧⌘O";
+"Открыть чат с ассистентом (⌥⌘A)" = "Open the assistant chat (⌥⌘A)";
 "Отложенное" = "Snoozed";
 "Отложено до %@" = "Snoozed until %@";
 "Отложить" = "Snooze";
@@ -752,6 +785,8 @@
 "Отмена" = "Cancel";
 "Отменена вся серия — удалятся все её встречи" = "The whole series is canceled — all its meetings will be removed";
 "Отменить" = "Cancel";
+"Отменить «%@»" = "Undo %@";
+"Отменить · ⌘Z" = "Undo · ⌘Z";
 "Отменить встречу" = "Cancel meeting";
 "Отменить встречу «%@»?" = "Cancel the meeting “%@”?";
 "Отменить встречу…" = "Cancel Meeting…";
@@ -791,6 +826,8 @@
 "Перенести напоминание" = "Reschedule reminder";
 "Перенести нельзя" = "Can't be moved";
 "Перенести…" = "Reschedule…";
+"Перенесённое не нашлось — верните его на место вручную." = "The moved item wasn't found — move it back manually.";
+"Перенос" = "Move";
 "Перенос перетаскиванием" = "Reschedule by dragging";
 "Переписка" = "Conversation";
 "Переподключить" = "Reconnect";
@@ -812,17 +849,20 @@
 "Перетащите строку, чтобы поменять порядок. Галочка — папка вкладкой над списком писем, без галочки — в меню «Ещё»." = "Drag a row to change the order. Checked — a folder tab above the email list; unchecked — in the “More” menu.";
 "Период" = "Period";
 "Песок" = "Sand";
+"Писем в «Корзине»: %lld" = "Messages moved to Trash: %lld";
 "Писем в диалоге: %lld" = "Emails in conversation: %lld";
 "Письма" = "Emails";
 "Письма в корзину: %lld" = "Move messages to Trash: %lld";
 "Письма всех ящиков — на одном таймлайне. Ответ уходит с того ящика, куда пришло письмо." = "Emails from all mailboxes are on one timeline. A reply goes from the mailbox the email came to.";
 "Письма от участников" = "Emails from attendees";
 "Письма тестовые" = "Test emails";
+"Письма уже в «Корзине» на сервере — вернуть их можно из папки «Корзина»." = "The messages are already in Trash on the server — restore them from the Trash folder.";
 "Письма уже нет на сервере: %@" = "The message is no longer on the server: %@";
-"Письма, которые ждут решения. ↑↓ — соседнее письмо, ⇧ или ⌘ со щелчком — выделить несколько и убрать пачкой, ⌫ — в корзину. Разобрали всё — список пуст." = "Emails waiting for a decision. ↑↓ — next email, ⇧ or ⌘ with a click — select several and clear them at once, ⌫ — move to Trash. All sorted — the list is empty.";
+"Письма, которые ждут решения. ↑↓ — соседнее письмо, ⇧ или ⌘ со щелчком — выделить несколько и убрать пачкой, ⌫ — в корзину, Esc — к сводке дня. Разобрали всё — список пуст." = "Emails waiting for a decision. ↑↓ — next email, ⇧ or ⌘ with a click — select several and clear them at once, ⌫ — move to Trash, Esc — back to the day summary. All sorted — the list is empty.";
 "Письмо" = "Email";
 "Письмо  ⌘N" = "Email  ⌘N";
 "Письмо адресовано вам" = "Addressed to you";
+"Письмо в «Корзине»" = "Message moved to Trash";
 "Письмо для ответа не найдено — возможно, его уже убрали" = "The email to reply to wasn't found — it may have been removed already";
 "Письмо ещё загружается" = "The message is still loading";
 "Письмо и встреча" = "Email and meeting";
@@ -859,6 +899,7 @@
 "Повтор" = "Repeat";
 "Повтор задан в Outlook сложным правилом — здесь он не меняется, остальное можно править" = "The repeat is set in Outlook with a complex rule — it can't be changed here, everything else can be edited";
 "Повторить" = "Redo";
+"Повторить «%@»" = "Redo %@";
 "Повторяется" = "Repeats";
 "Повторяющаяся встреча" = "Recurring meeting";
 "Погода" = "Weather";
@@ -895,6 +936,7 @@
 "Подпись:" = "Signature:";
 "Подробнее" = "Details";
 "Подставляются первыми, когда создаёте встречу или напоминание; в самом окне создания можно выбрать другой. Встречу можно создать и на самом календаре: перетащите «+» на нужное время или зажмите мышь на пустом месте." = "Used first when you create a meeting or reminder; you can pick another in the creation window. You can also create a meeting right on the calendar: drag “+” to a time or press and hold on an empty spot.";
+"Подчёркнутый" = "Underline";
 "Подчёркнутый (⌘U)" = "Underline (⌘U)";
 "Позвоните — в обучении ответят понарошку" = "Make a call — in the tour, someone pretends to answer";
 "Позвонить" = "Call";
@@ -920,6 +962,7 @@
 "Показывать отправителя и тему" = "Show sender and subject";
 "Показывать темы писем" = "Show email subjects";
 "Показываются первыми, когда вы ставите курсор в «Место» новой встречи. Там же — ссылки из ваших встреч за три месяца и кнопки «создать новую» на сайте Zoom, Google Meet и Телемоста. Хранятся только на этом Mac." = "Shown first when you place the cursor in a new meeting's “Location”. There you'll also find links from your meetings over three months and “create new” buttons for the Zoom, Google Meet and Telemost websites. Stored only on this Mac.";
+"Поле над письмом — вопрос ИИ, который знает ваши встречи, напоминания, письма и заметку дня. Пишите сразу: после ↩ чат раскроется с ответом. Кнопка слева от поля или ⌥⌘A открывает чат и так. Всё работает на этом Mac через Ollama — письма в интернет не уходят." = "The field above the email is a question to an AI that knows your meetings, reminders, emails and day note. Just type: after ↩ the chat expands with the answer. The button left of the field or ⌥⌘A opens the chat too. It all runs on this Mac through Ollama — emails never go to the internet.";
 "Полночь" = "Midnight";
 "Положить трубку" = "Hang up";
 "Получать погоду напрямую, если Trunook её не прислал" = "Get the weather directly when Trunook doesn't provide it";
@@ -943,6 +986,10 @@
 "Почтовые ящики" = "Mailboxes";
 "Правка" = "Edit";
 "Предлагает ассистент — решаете вы" = "The assistant suggests, you decide";
+"Предлагаю новое время: %@" = "New time proposed: %@";
+"Предложить" = "Propose";
+"Предложить новое время" = "Propose New Time";
+"Предложить организатору новое время встречи" = "Propose a new meeting time to the organizer";
 "Предыдущая неделя" = "Previous Week";
 "Предыдущая неделя (⌘[)" = "Previous week (⌘[)";
 "Предыдущий год" = "Previous Year";
@@ -967,9 +1014,11 @@
 "Приоритет выбранного: ⌘1 высокий, ⌘2 средний, ⌘3 низкий, ⌘0 снять" = "Priority of the selection: ⌘1 high, ⌘2 medium, ⌘3 low, ⌘0 clear";
 "Приоритет не сохранился: %@" = "The priority wasn't saved: %@";
 "Приоритет: %@" = "Priority: %@";
+"Приоритет: высокий, средний, низкий, без" = "Priority: high, medium, low, none";
 "Приоритет: ⌘1 высокий, ⌘2 средний, ⌘3 низкий, ⌘0 снять" = "Priority: ⌘1 high, ⌘2 medium, ⌘3 low, ⌘0 remove";
 "Прислать пробное" = "Send a test";
 "Прислать пробную" = "Send a test";
+"Пробел" = "Space";
 "Проверить" = "Check";
 "Проверить ещё раз" = "Check again";
 "Проверить обновления…" = "Check for Updates…";
@@ -1113,6 +1162,7 @@
 "Снизу" = "Bottom";
 "Снизу — список писем, месяц и заметка над ним (⌥⌘B)." = "Bottom — the email list, month and note sit above it (⌥⌘B).";
 "Снизу — список писем, месяц и заметка над ним. Можно и перетащить таймлайн за ручку ≡ слева от даты или нажать ⌥⌘B." = "Bottom — the email list, month and note sit above it. You can also drag the timeline by the ≡ handle left of the date, or press ⌥⌘B.";
+"Снять выбор — к сводке дня" = "Deselect — back to the day summary";
 "Снять выделение" = "Deselect";
 "Снять приоритет" = "Remove priority";
 "Со звуком" = "With sound";
@@ -1131,6 +1181,7 @@
 "Сообщать о новых письмах" = "Notify about new emails";
 "Сортировать по приоритету" = "Sort by Priority";
 "Сортировать по приоритету: сначала высокий, потом средний и низкий" = "Sort by priority: high first, then medium and low";
+"Соседнее письмо или событие" = "Next or previous message or event";
 "Сохранено файлов: %lld — %@" = "Files saved: %lld — %@";
 "Сохранено: %@/%@" = "Saved: %@/%@";
 "Сохранить" = "Save";
@@ -1149,11 +1200,13 @@
 "Сохранить сюда" = "Save Here";
 "Сохраняется…" = "Saving…";
 "Сохранённых номеров нет. Дайте номеру имя — из недавних звонков или кнопкой «Добавить номер»." = "No saved numbers. Give a number a name — from recent calls or with the Add number button.";
+"Сочетания клавиш" = "Keyboard Shortcuts";
 "Спам" = "Junk";
 "Список" = "List";
 "Список «%@» не сохранил новое время напоминания" = "The list “%@” didn't save the new reminder time";
 "Список «Не разобрано»" = "“To handle” list";
 "Список дел с галочками" = "Checklist";
+"Список и таймлайн" = "List and timeline";
 "Список писем" = "Email list";
 "Справка" = "Help";
 "Справляется со всем: пересказ, метки, повестка, чат." = "Handles everything: summaries, labels, agenda, chat.";
@@ -1208,6 +1261,8 @@
 "Тёмное окно с плывущими пятнами света — как настройки и знакомство в Trunook." = "A dark window with drifting spots of light — like the settings and welcome in Trunook.";
 "У встречи нет участников — отвечать некому" = "The meeting has no attendees — there's no one to reply to";
 "Уберите письмо в архив — ⌘E или кнопкой" = "Archive an email — ⌘E or the button";
+"Убрано в архив" = "Archived";
+"Убрано в архив: %lld" = "Archived: %lld";
 "Убрать" = "Remove";
 "Убрать из избранного" = "Remove from favorites";
 "Убрать ссылку" = "Remove link";
@@ -1249,18 +1304,20 @@
 "Фон приложения" = "App background";
 "Хвоя" = "Pine";
 "Цвет" = "Color";
+"Цвет встречи" = "Event color";
 "Цвет встречи не сохранился: %@" = "The meeting color wasn’t saved: %@";
 "Цвет встречи — только в Trudaybook" = "Meeting color — in Trudaybook only";
-"Цвет календаря" = "Calendar Color";
+"Цвет из календаря" = "Calendar’s own color";
+"Цвет календаря" = "Calendar color";
+"Цвет календаря — только в Trudaybook" = "Calendar color — only in Trudaybook";
 "Цвет окна как у системы — светлый или тёмный по настройке macOS." = "Window color as in the system — light or dark per your macOS setting.";
 "Цвет текста" = "Text color";
 "Цвет фона текста (маркер)" = "Text Background Color (Highlighter)";
 "Цвет этой встречи или всей серии — только в Trudaybook" = "Color of this meeting or the whole series — in Trudaybook only";
 "Цитировать исходное письмо" = "Quote the original email";
 "Часы идут сверху вниз: слева — письма по времени прихода, посередине — встречи и напоминания, справа — погода по часам. Красная линия — сейчас (в обучении всегда утро). Листать дни — «‹ Сегодня ›» над таймлайном, рядом — «День | Неделя». Двойной щелчок по своей встрече открывает её редактор, по письму — отдельное окно." = "Hours run top to bottom: emails on the left by arrival time, meetings and reminders in the middle, hourly weather on the right. The red line is now (always morning in the tour). Page through days with “‹ Today ›” above the timeline, next to “Day | Week”. Double-click your meeting to open its editor, or an email to open it in a separate window.";
-"Чат с ИИ, который знает ваши встречи, напоминания, письма и заметку дня. Он работает на этом Mac через Ollama — письма в интернет не уходят. Чат открывается над выбранным письмом, границу между ними можно двигать. ⌥⌘A — открыть и закрыть." = "An AI chat that knows your meetings, reminders, emails and daily note. It runs on this Mac through Ollama — your emails never go to the internet. The chat opens above the selected email, and you can drag the border between them. ⌥⌘A opens and closes it.";
 "Чат с ИИ-ассистентом" = "AI assistant chat";
-"Чат с ИИ-ассистентом (⌥⌘A)" = "AI assistant chat (⌥⌘A)";
+"Чат с ассистентом" = "Assistant chat";
 "Через 1 час" = "In 1 hour";
 "Через неделю" = "In a week";
 "Через час" = "In an hour";

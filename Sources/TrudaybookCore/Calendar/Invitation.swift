@@ -47,6 +47,20 @@ public struct Invitation: Hashable, Sendable {
         self.isRecurring = isRecurring
     }
 
+    /// Приглашение по самой встрече календаря — чтобы ответить организатору
+    /// письмом, не ища письма-приглашения. `nil` — нет UID или адреса
+    /// организатора: ответ некуда и не к чему привязать.
+    public static func event(_ item: TimelineItem) -> Invitation? {
+        guard let info = item.event, let uid = info.uid, !uid.isEmpty,
+              info.organizer?.address != nil else { return nil }
+        return Invitation(method: .request, uid: uid, summary: item.title, start: item.time,
+                          end: item.end ?? item.time.addingTimeInterval(1800), isAllDay: item.isAllDay,
+                          location: info.location, organizer: info.organizer,
+                          attendees: info.attendees.map(\.person), isRecurring: info.isRecurring,
+                          // Вхождение серии: ответ и предложение — про него, а не про всю серию.
+                          recurrenceID: info.isRecurring ? item.time : nil)
+    }
+
     /// Встречи, которые пересекаются с приглашением. Сама эта встреча
     /// (Exchange кладёт её в календарь «под вопросом» сразу) — не помеха.
     public func conflicts(in events: [TimelineItem]) -> [TimelineItem] {
@@ -176,6 +190,39 @@ public enum ICalendar {
         }
         let name = me.name.map { ";CN=\"\(sanitizeParameter($0))\"" } ?? ""
         lines.append("ATTENDEE;PARTSTAT=\(response.partstat)\(name):mailto:\(me.address ?? "")")
+        if let comment, !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append("COMMENT:\(escape(comment))")
+        }
+        lines += ["END:VEVENT", "END:VCALENDAR"]
+        return lines.map(fold).joined(separator: "\r\n") + "\r\n"
+    }
+
+    /// «Предложить новое время» — iTIP `COUNTER` (RFC 5546, 3.2.7): та же
+    /// встреча с другим временем. Outlook и Google показывают организатору
+    /// кнопку «Принять предложение».
+    public static func counter(to invitation: Invitation, start: Date, end: Date, me: Person,
+                               comment: String?, now: Date = Date()) -> String {
+        var lines = [
+            "BEGIN:VCALENDAR",
+            "PRODID:-//Trudaybook//RU",
+            "VERSION:2.0",
+            "METHOD:COUNTER",
+            "BEGIN:VEVENT",
+            "UID:\(invitation.uid)",
+            "SEQUENCE:\(invitation.sequence)",
+            "DTSTAMP:\(utcStamp(now))",
+        ]
+        if let recurrence = invitation.recurrenceID { lines.append("RECURRENCE-ID:\(utcStamp(recurrence))") }
+        lines += [
+            "DTSTART:\(utcStamp(start))",
+            "DTEND:\(utcStamp(end))",
+            "SUMMARY:\(escape(invitation.summary))",
+        ]
+        if let organizer = invitation.organizer?.address {
+            lines.append("ORGANIZER:mailto:\(organizer)")
+        }
+        let name = me.name.map { ";CN=\"\(sanitizeParameter($0))\"" } ?? ""
+        lines.append("ATTENDEE;PARTSTAT=TENTATIVE\(name):mailto:\(me.address ?? "")")
         if let comment, !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             lines.append("COMMENT:\(escape(comment))")
         }
@@ -391,6 +438,23 @@ public extension ICalendar {
             text: text,
             attachments: [MailBody.Attachment(name: "invite.ics", size: data.count,
                                               mimeType: "text/calendar; method=REPLY; charset=utf-8", data: data)]
+        )
+    }
+
+    /// Письмо организатору с предложенным временем (`COUNTER`).
+    static func counterMail(to invitation: Invitation, start: Date, end: Date, me: Person,
+                            comment: String?, now: Date = Date()) throws -> OutgoingMail {
+        guard let organizer = invitation.organizer, organizer.address != nil else { throw InvitationError.noOrganizer }
+        let ics = counter(to: invitation, start: start, end: end, me: me, comment: comment, now: now)
+        let note = comment?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let subject = String(localized: "Предлагаю новое время: \(invitation.summary)")
+        let data = Data(ics.utf8)
+        return OutgoingMail(
+            to: [organizer],
+            subject: subject,
+            text: note.isEmpty ? subject : note,
+            attachments: [MailBody.Attachment(name: "invite.ics", size: data.count,
+                                              mimeType: "text/calendar; method=COUNTER; charset=utf-8", data: data)]
         )
     }
 }

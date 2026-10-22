@@ -100,7 +100,9 @@ enum EWSRequest {
 
     /// Ответ на приглашение: `AcceptItem` / `TentativelyAcceptItem` / `DeclineItem`.
     /// `Body` — до `ReferenceItemId`: так требует схема.
-    static func respond(to id: String, response: InvitationResponse, comment: String?) -> String {
+    /// `proposed` — предложить другое время (Exchange 2013 SP1+): `ProposedStart`
+    /// и `ProposedEnd` идут после `ReferenceItemId`.
+    static func respond(to id: String, response: InvitationResponse, comment: String?, proposed: DateInterval? = nil) -> String {
         let element = switch response {
         case .accept: "AcceptItem"
         case .tentative: "TentativelyAcceptItem"
@@ -108,8 +110,9 @@ enum EWSRequest {
         }
         let note = comment?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let body = note.isEmpty ? "" : "<t:Body BodyType=\"Text\">\(XMLEscape.text(note))</t:Body>"
+        let times = proposed.map { "<t:ProposedStart>\(date($0.start))</t:ProposedStart><t:ProposedEnd>\(date($0.end))</t:ProposedEnd>" } ?? ""
         return "<m:CreateItem MessageDisposition=\"SendAndSaveCopy\"><m:Items><t:\(element)>\(body)"
-            + "<t:ReferenceItemId Id=\"\(XMLEscape.text(id))\"/></t:\(element)></m:Items></m:CreateItem>"
+            + "<t:ReferenceItemId Id=\"\(XMLEscape.text(id))\"/>\(times)</t:\(element)></m:Items></m:CreateItem>"
     }
 
     static func itemRef(_ id: String) -> String {

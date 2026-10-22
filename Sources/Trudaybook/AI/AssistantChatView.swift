@@ -1,9 +1,13 @@
 import SwiftUI
 import TrudaybookCore
 
-/// Чат с ассистентом — в правой панели вместо выбранного письма или встречи.
+/// Чат с ассистентом — в правой панели над выбранным письмом или встречей.
 ///
-/// Сверху — вкладки разговоров и «закрыть», посередине — разговор (прижат
+/// Свёрнутый — одно поле вопроса над письмом: писать можно сразу, после
+/// отправки чат раскрывается с ответом. Это тот же вид, а не отдельное
+/// поле: набранное, приложенное и фокус при раскрытии не теряются.
+///
+/// Раскрытый: сверху — вкладки разговоров и «закрыть», посередине — разговор (прижат
 /// к низу: новое появляется над полем ввода и уходит вверх), внизу — поле
 /// вопроса, справа от него приложить, модель, голос и «отправить».
 /// Предложенные ассистентом действия — карточками под его ответом: без
@@ -31,31 +35,24 @@ struct AssistantChatView: View {
     static let tabsHeight: CGFloat = 44
 
     var body: some View {
+        let open = model.assistantOpen
         VStack(spacing: 0) {
-            // Место под вкладки; сами вкладки — поверх (`overlay` ниже).
-            // Прокрутка разговора на macOS 26 растягивает свою рамку до верха
-            // окна и забирает щелчки у всего, что над ней в той же стопке:
-            // кнопки шапки не нажимались. Нарисованное позже — выше неё.
-            Color.clear.frame(height: Self.tabsHeight)
-            Divider()
-            conversation
-            Divider()
+            if open {
+                // Место под вкладки; сами вкладки — поверх (`overlay` ниже).
+                // Прокрутка разговора на macOS 26 растягивает свою рамку до верха
+                // окна и забирает щелчки у всего, что над ней в той же стопке:
+                // кнопки шапки не нажимались. Нарисованное позже — выше неё.
+                Color.clear.frame(height: Self.tabsHeight)
+                Divider()
+                conversation
+                    .transition(.opacity)
+                Divider()
+            }
             input
         }
         .overlay(alignment: .top) {
-            VStack(spacing: 0) {
-                tabs.frame(height: Self.tabsHeight)
-                if let problem = ai.problem {
-                    Divider()
-                    HStack(spacing: Space.md) {
-                        InlineNotice(problem).font(.callout)
-                        Spacer(minLength: Space.md)
-                        Button("Настройки") { SettingsWindow.show(model: model, tab: .ai) }
-                            .controlSize(.small)
-                    }
-                    .padding(Space.lg)
-                    .background(GlassPanelBackground(fallback: Color(nsColor: .textBackgroundColor)))
-                }
+            if open {
+                header
             }
         }
         .environment(\.chatTextSize, CGFloat(textSize))
@@ -64,7 +61,9 @@ struct AssistantChatView: View {
             session.refreshCapabilities()
         }
         .onAppear {
-            focused = true
+            // Свёрнутое поле фокус не берёт: иначе стрелки и Esc после
+            // запуска уходили бы в него, а не в список писем.
+            if open { focused = true }
             if let id = model.options.tile, session.entries.isEmpty, let tile = AssistantTile.all.first(where: { $0.id == id }) {
                 // Снимок: дать окну дорисоваться — плитка ждёт открытого письма.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { run(tile) }
@@ -74,7 +73,28 @@ struct AssistantChatView: View {
                 question = beforeVoice.isEmpty ? text : beforeVoice + " " + text
             }
         }
+        // Раскрыли кнопкой или ⌥⌘A — сразу писать; свернули — клавиатура
+        // снова у окна.
+        .onChange(of: open) { _, now in focused = now }
         .onDisappear { voice.stop() }
+    }
+
+    /// Вкладки и предупреждение «Ollama не отвечает» — у раскрытого чата.
+    private var header: some View {
+        VStack(spacing: 0) {
+            tabs.frame(height: Self.tabsHeight)
+            if let problem = ai.problem {
+                Divider()
+                HStack(spacing: Space.md) {
+                    InlineNotice(problem).font(.callout)
+                    Spacer(minLength: Space.md)
+                    Button("Настройки") { SettingsWindow.show(model: model, tab: .ai) }
+                        .controlSize(.small)
+                }
+                .padding(Space.lg)
+                .background(GlassPanelBackground(fallback: Color(nsColor: .textBackgroundColor)))
+            }
+        }
     }
 
     // MARK: - Вкладки
@@ -120,8 +140,10 @@ struct AssistantChatView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .keyboardShortcut("t", modifiers: .command)
-            .labelHelp(String(localized: "Новый разговор (⌘T)"))
+            // ⌘K, а не ⌘T: ⌘T — «Сегодня», и при открытом чате он молча
+            // начинал новый разговор вместо перехода к сегодняшнему дню.
+            .keyboardShortcut("k", modifiers: .command)
+            .labelHelp(String(localized: "Новый разговор (⌘K)"))
             Button { withAnimation(Motion.move) { model.assistantOpen = false } } label: {
                 Image(systemName: "xmark")
                     .frame(width: 24, height: 24)
@@ -285,11 +307,15 @@ struct AssistantChatView: View {
                 CommandList(suggestions: suggestions, highlight: min(highlight, suggestions.count - 1), pick: pick)
             }
             HStack(alignment: .bottom, spacing: Space.sm) {
+                if !model.assistantOpen {
+                    expandButton
+                }
                 TextField(voice.state == .listening ? String(localized: "Говорите…") : String(localized: "Спросите ассистента…"),
                           text: $question, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...10)
                     .focused($focused)
+                    .onChange(of: focused) { _, now in model.chatInputFocused = now }
                     .font(.chat(CGFloat(textSize)))
                     .onSubmit(send)
                     .onKeyPress(phases: .down, action: key)
@@ -304,14 +330,29 @@ struct AssistantChatView: View {
                     .help("↩ — отправить, ⇧↩ — новая строка, /mail и /cal — приложить письмо или встречу")
                 controls
             }
+            .tourSpot(.assistantButton)
         }
         .padding(Space.lg)
+    }
+
+    /// Слева от свёрнутого поля: раскрыть чат — вкладки, плитки, прошлые ответы.
+    private var expandButton: some View {
+        Button { withAnimation(Motion.move) { model.assistantOpen = true } } label: {
+            Image(systemName: "bubble.left.and.text.bubble.right")
+                .font(.title3)
+                .foregroundStyle(Palette.violet)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .labelHelp(String(localized: "Открыть чат с ассистентом (⌥⌘A)"))
     }
 
     private var controls: some View {
         HStack(spacing: Space.xxs) {
             attachMenu
-            modelMenu
+            // Модель — у раскрытого чата: свёрнутому полю нужно место под текст.
+            if model.assistantOpen { modelMenu }
             if session.busy {
                 Button { session.stop() } label: {
                     Image(systemName: "stop.circle.fill").font(.title2)
@@ -327,8 +368,11 @@ struct AssistantChatView: View {
                                 onSend: send)
                     // ⌘↩ — как раньше: жест кнопке сочетаний не даёт.
                     .background {
+                        // Только пока курсор в поле чата: ответ письмом
+                        // поверх чата тоже ждёт ⌘↩, и письмо не должно
+                        // уйти, когда человек пишет ассистенту (и наоборот).
                         Button("", action: send)
-                            .keyboardShortcut(.return, modifiers: .command)
+                            .keyboardShortcut(focused ? KeyboardShortcut(.return, modifiers: .command) : nil)
                             .opacity(0)
                             .frame(width: 0, height: 0)
                             .accessibilityHidden(true)
@@ -343,8 +387,11 @@ struct AssistantChatView: View {
     private var attachMenu: some View {
         Menu {
             if let item = model.selectedItem, item.kind != .reminder {
-                Button(item.kind == .mail ? String(localized: "Открытое письмо «\(item.title)»")
-                                          : String(localized: "Открытая встреча «\(item.title)»")) {
+                // Тема — коротко: меню шириной в самый длинный пункт, и тема
+                // письма из Jira растягивала его на весь экран.
+                let title = Self.menuTitle(item.title)
+                Button(item.kind == .mail ? String(localized: "Открытое письмо «\(title)»")
+                                          : String(localized: "Открытая встреча «\(title)»")) {
                     if item.kind == .mail { session.attachLetter(item) } else { session.attachEvent(item) }
                 }
                 Divider()
@@ -440,6 +487,11 @@ struct AssistantChatView: View {
             question += "\n"
             return .handled
         }
+        // Esc в свёрнутом поле — вернуть клавиатуру окну; набранное остаётся.
+        if press.key == .escape, !model.assistantOpen {
+            focused = false
+            return .handled
+        }
         return .ignored
     }
 
@@ -502,6 +554,11 @@ struct AssistantChatView: View {
         .help(String(localized: "Модель для чата — только на этом Mac") + (session.seesImages ? " · " + String(localized: "видит картинки") : ""))
     }
 
+    /// Тема для пункта меню: длинная — первые 50 знаков и «…».
+    static func menuTitle(_ title: String, limit: Int = 50) -> String {
+        title.count <= limit ? title : title.prefix(limit).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
     /// «qwen3:8b» — как есть; длинное «hf.co/автор/модель:метка» — без пути.
     static func shortName(_ name: String?) -> String {
         guard let name, !name.isEmpty else { return String(localized: "Модель") }
@@ -513,11 +570,19 @@ struct AssistantChatView: View {
     }
 
     private func send() {
-        guard !session.busy else { return }
+        guard !session.busy, canSend else { return }
         voice.stop()
+        // Вопрос из свёрнутого поля — новый разговор: чат закрыли, значит,
+        // прежний закончен. Он остаётся вкладкой; пустой разговор
+        // `newDialog` не плодит, а приложенное переходит в новый.
+        if !model.assistantOpen { session.newDialog() }
         session.send(question)
         question = ""
         beforeVoice = ""
+        // Спросили из свёрнутого поля — раскрыть чат: ответ появится в нём.
+        if !model.assistantOpen {
+            withAnimation(Motion.move) { model.assistantOpen = true }
+        }
     }
 }
 

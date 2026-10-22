@@ -49,6 +49,12 @@ final class PhoneService: ObservableObject {
     }
     @Published private(set) var inputDevices: [AudioDevice] = []
     @Published private(set) var outputDevices: [AudioDevice] = []
+    /// Имена устройств «как в системе» — запоминаются при смене устройств,
+    /// а не спрашиваются у CoreAudio при каждой отрисовке панели: с
+    /// Bluetooth-наушниками такой запрос бывает долгим, и телефон открывался
+    /// с задержкой.
+    @Published private(set) var defaultInputName: String?
+    @Published private(set) var defaultOutputName: String?
     /// Пропущенные, которых человек ещё не видел в панели.
     @Published private(set) var unseenMissed = 0
     /// Что мешает звонить: нет микрофона и т. п.
@@ -81,6 +87,9 @@ final class PhoneService: ObservableObject {
         outputDevice = defaults.string(forKey: "phoneOutputDevice") ?? ""
         media.echo = echoCancellation
         media.setDevices(input: inputDevice, output: outputDevice)
+        media.onProblem = { [weak self] text in
+            Task { @MainActor in self?.notice = text }
+        }
         refreshDevices()
         // Подключили наушники — сразу в списке; отключили — список без них,
         // а звонок продолжается на системных.
@@ -106,6 +115,8 @@ final class PhoneService: ObservableObject {
     func refreshDevices() {
         inputDevices = AudioDevices.list(input: true)
         outputDevices = AudioDevices.list(input: false)
+        defaultInputName = AudioDevices.defaultName(input: true)
+        defaultOutputName = AudioDevices.defaultName(input: false)
     }
 
     private func save(_ value: Any, _ key: String) {
@@ -475,6 +486,8 @@ final class MediaRegistry: @unchecked Sendable {
     private var _echo = true
     private var input = ""
     private var output = ""
+    /// Звук звонка не включился — сказать в панели телефона.
+    var onProblem: (@Sendable (String) -> Void)?
 
     var echo: Bool {
         get { lock.lock(); defer { lock.unlock() }; return _echo }
@@ -486,6 +499,7 @@ final class MediaRegistry: @unchecked Sendable {
         defer { lock.unlock() }
         if let existing = calls[id] { return existing.port }
         guard let audio = CallAudio.open() else { return nil }
+        audio.onProblem = onProblem
         calls[id] = audio
         return audio.port
     }

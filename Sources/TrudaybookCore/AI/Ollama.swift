@@ -55,7 +55,10 @@ public enum Ollama {
     /// это велит (`Offer.skipsThinking`): `qwen3:8b` без раздумий отвечает
     /// за секунды при тех же ответах, а иные модели, наоборот, выносят
     /// рассуждение прямо в текст.
-    public static func chatBody(model: String, messages: [Message], keepAlive: String = "30m") -> [String: Any] {
+    /// `temperature` — для пересказа и меток почти ноль: с обычной (0,8)
+    /// маленькая модель досочиняла задачи и сроки, которых в письме нет.
+    public static func chatBody(model: String, messages: [Message], keepAlive: String = "30m",
+                                temperature: Double? = nil) -> [String: Any] {
         let characters = messages.map(\.content.count).reduce(0, +)
         var body: [String: Any] = [
             "model": model,
@@ -69,6 +72,10 @@ public enum Ollama {
             "options": ["num_predict": answerTokens, "num_ctx": contextWindow(forCharacters: characters)],
         ]
         if skipsThinking(model) { body["think"] = false }
+        if let temperature, var options = body["options"] as? [String: Any] {
+            options["temperature"] = temperature
+            body["options"] = options
+        }
         return body
     }
 

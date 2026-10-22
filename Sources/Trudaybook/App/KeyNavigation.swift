@@ -4,7 +4,9 @@ import TrudaybookCore
 
 /// Стрелки вверх-вниз без модификаторов — к соседнему письму или событию
 /// (с ⇧ — растянуть выделение);
-/// цифры 0–3 — приоритет выбранного.
+/// цифры 0–3 — приоритет выбранного;
+/// Esc — снять выбор и вернуться к сводке дня (или очистить поиск);
+/// ↩ — открыть выбранное письмо в отдельном окне.
 ///
 /// Через перехват клавиш окна, а не фокус SwiftUI: список писем и таймлайн
 /// — не поля ввода, фокуса у них нет, а переходить хочется сразу после
@@ -16,6 +18,9 @@ enum KeyNavigation {
     static let down: UInt16 = 125
     static let delete: UInt16 = 51
     static let forwardDelete: UInt16 = 117
+    static let escape: UInt16 = 53
+    static let returnKey: UInt16 = 36
+    static let enter: UInt16 = 76
 
     /// `true` — клавиша обработана и дальше не идёт.
     static func handle(_ event: NSEvent, window: NSWindow?, model: AppModel) -> Bool {
@@ -24,16 +29,30 @@ enum KeyNavigation {
         let erase = event.keyCode == delete || event.keyCode == forwardDelete
         // Цифры 0–3 — приоритет выбранного письма (как ⌘0…⌘3 в меню).
         let priority = event.charactersIgnoringModifiers.flatMap(Int.init).flatMap(Priority.init(rawValue:))
+        let escape = event.keyCode == Self.escape
+        let open = event.keyCode == returnKey || event.keyCode == enter
         // ⇧ со стрелкой — растянуть выделение в списке.
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let extend = arrow && modifiers == .shift
-        guard event.type == .keyDown, arrow || priority != nil || erase,
+        guard event.type == .keyDown, arrow || priority != nil || erase || escape || open,
               let window, event.window === window, window.attachedSheet == nil,
               modifiers.isEmpty || extend || (erase && modifiers == .command),
               model.draft == nil
         else { return false }
         if let responder = window.firstResponder, isTextOrWeb(responder) { return false }
-        if erase {
+        if escape {
+            // Как щелчок по пустому месту: к сводке дня.
+            if model.selectedID != nil || !model.multiSelection.isEmpty {
+                model.showDayOverview()
+            } else if !model.searchText.isEmpty {
+                model.searchText = ""
+            } else {
+                return false
+            }
+        } else if open {
+            guard let item = model.selectedItem, item.kind == .mail else { return false }
+            LetterWindow.show(item, model: model)
+        } else if erase {
             let targets = model.trashTargets
             guard !targets.isEmpty else { return false }
             model.trash(targets)

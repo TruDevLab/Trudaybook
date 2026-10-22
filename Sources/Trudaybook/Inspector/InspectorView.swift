@@ -116,10 +116,12 @@ private struct ActionButtons: View {
     @EnvironmentObject private var model: AppModel
     let item: TimelineItem
     var titles: [ItemAction: String] = [:]
+    /// Действия, у которых есть своя кнопка рядом (отказ — в «Ваш ответ»).
+    var hidden: Set<ItemAction> = []
 
     var body: some View {
         // Значки в одну строку, как в панели действий: подпись — под курсором.
-        ForEach(ItemAction.allCases.filter { $0.applies(to: item.kind) }) { action in
+        ForEach(ItemAction.allCases.filter { $0.applies(to: item.kind) && !hidden.contains($0) }) { action in
             let availability = model.availability(of: action, for: item)
             let title = titles[action] ?? action.title
             HoverIconButton(title: title, symbol: action.symbol,
@@ -493,8 +495,10 @@ struct MailBodyView: NSViewRepresentable {
     /// на тёмной теме его не прочесть. Поверх письма кладётся стиль: текст
     /// светлый, фоны прозрачные, ссылки голубые; картинки не трогаются.
     /// Стиль в конце документа и с `!important` — перебивает стили письма.
+    /// Только на экране: на печати (⌘P) светлый текст на белом не прочесть.
     static let darkStyle = """
         <style>
+        @media screen {
         :root { color-scheme: dark; }
         html, body { background: transparent !important; color: #E6E6E6 !important; }
         body *:not(img):not(svg):not(video):not(picture) {
@@ -503,6 +507,7 @@ struct MailBodyView: NSViewRepresentable {
             border-color: rgba(255,255,255,0.18) !important;
         }
         a, a * { color: #6CB6FF !important; }
+        }
         </style>
         """
 
@@ -638,7 +643,7 @@ struct MailBodyView: NSViewRepresentable {
 /// письма — свои «Открыть» и «Сохранить»: пункты WebKit без окна браузера
 /// и загрузок, которых у просмотра нет, ничего не делают. У выделенного
 /// текста — «Кратко пересказать»: ответ модели всплывает рядом.
-final class MailWebView: WKWebView {
+final class MailWebView: WKWebView, NSSearchFieldDelegate {
     var forwardsScroll = false
     var onWidthChange: (() -> Void)?
     weak var images: MailBodyView.Coordinator?
@@ -662,6 +667,78 @@ final class MailWebView: WKWebView {
         super.setFrameSize(newSize)
         // Уже стала панель — текст переносится и описание растёт.
         if changed { onWidthChange?() }
+        placeFindField()
+    }
+
+    // MARK: - Поиск по письму (⌘F, ⌘G)
+
+    /// Поле поиска поверх письма. `NSTextFinder` здесь не годится: открыто
+    /// `WKWebView` его клиентом не объявлен, и приведение роняло программу.
+    private var findField: NSSearchField?
+
+    override func performTextFinderAction(_ sender: Any?) {
+        guard let tag = (sender as? NSValidatedUserInterfaceItem)?.tag,
+              let action = NSTextFinder.Action(rawValue: tag) else { return }
+        switch action {
+        case .showFindInterface: showFindField()
+        case .nextMatch: findNext(backwards: false)
+        case .previousMatch: findNext(backwards: true)
+        case .hideFindInterface: hideFindField()
+        default: break
+        }
+    }
+
+    private func showFindField() {
+        let field = findField ?? {
+            let field = NSSearchField()
+            field.placeholderString = String(localized: "Найти в письме")
+            field.sendsSearchStringImmediately = false
+            field.target = self
+            field.action = #selector(findFromField)
+            field.delegate = self
+            addSubview(field)
+            findField = field
+            return field
+        }()
+        placeFindField()
+        window?.makeFirstResponder(field)
+    }
+
+    private func hideFindField() {
+        findField?.removeFromSuperview()
+        findField = nil
+        window?.makeFirstResponder(self)
+    }
+
+    @objc private func findFromField() { findNext(backwards: false) }
+
+    private func findNext(backwards: Bool) {
+        guard let text = findField?.stringValue, !text.isEmpty else {
+            showFindField()
+            return
+        }
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        configuration.wraps = true
+        find(text, configuration: configuration) { result in
+            if !result.matchFound { NSSound.beep() }
+        }
+    }
+
+    /// Esc в поле — закрыть поиск, ↩ — следующее совпадение.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard selector == #selector(NSResponder.cancelOperation(_:)) else { return false }
+        hideFindField()
+        return true
+    }
+
+    /// В правом верхнем углу письма.
+    private func placeFindField() {
+        guard let findField else { return }
+        let width = min(260, bounds.width - 16)
+        let height = findField.intrinsicContentSize.height
+        findField.frame = NSRect(x: bounds.width - width - 8, y: isFlipped ? 8 : bounds.height - height - 8,
+                                 width: width, height: height)
     }
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
@@ -925,10 +1002,19 @@ private struct EventDetail: View {
                     }
                 }
 
+                // Чужая встреча — ответить прямо здесь, не ища приглашения в почте.
+                let answers = info.myResponse != nil && !info.isCancelled
+                if answers {
+                    Field(title: String(localized: "Ваш ответ")) {
+                        EventResponseBlock(item: item).id(item.id)
+                    }
+                }
+
                 HStack(spacing: Space.sm) {
                     ActionButtons(item: item, titles: [.archive: String(localized: "Разобрано"), .reply: String(localized: "Организатору"),
                                                        .replyAll: String(localized: "Всем участникам"),
-                                                       .decline: info.canEdit ? String(localized: "Отменить") : String(localized: "Отклонить")])
+                                                       .decline: info.canEdit ? String(localized: "Отменить") : String(localized: "Отклонить")],
+                                  hidden: answers ? [.decline] : [])
                     HoverIconButton(title: String(localized: "Изменить…"), symbol: "pencil",
                                     help: info.canEdit ? String(localized: "Время, повтор, участники, описание")
                                                        : String(localized: "Изменить встречу может только организатор")) {
@@ -1321,7 +1407,8 @@ struct ComposerView: View {
             } label: {
                 if isSending { ProgressView().controlSize(.small) } else { Text("Отправить") }
             }
-            .keyboardShortcut(.return, modifiers: .command)
+            // Курсор в поле чата — ⌘↩ отправляет вопрос ассистенту, не письмо.
+            .keyboardShortcut(model.chatInputFocused ? nil : KeyboardShortcut(.return, modifiers: .command))
             .buttonStyle(.borderedProminent)
             .disabled(isSending)
             .help("Отправить · ⌘↩")

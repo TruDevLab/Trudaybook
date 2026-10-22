@@ -250,6 +250,14 @@ public actor EWSCalendarService: SchedulingService {
         log("встреча удалена: \(scope.rawValue)")
     }
 
+    /// Ответ на встречу командой Exchange по самой встрече календаря —
+    /// без письма-приглашения. Сервер отметит ответ и отправит его организатору.
+    func respond(id: String, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws {
+        try EWSRequest.requireSuccess(try await call("CreateItem",
+            EWSRequest.respond(to: id, response: response, comment: comment, proposed: proposed)))
+        log(proposed == nil ? "ответ на встречу отправлен" : "предложено новое время")
+    }
+
     /// Отказаться от встречи: организатор получит отказ.
     func decline(id: String) async throws {
         try EWSRequest.requireSuccess(try await call("CreateItem", EWSCalendarRequest.decline(id)))
@@ -387,6 +395,11 @@ public final class ExchangeCalendar: CalendarProvider {
 
     /// Своя встреча — отмена участникам (или просто удаление, если их нет),
     /// чужая — отказ организатору. У повторяющейся — только это вхождение.
+    public func respond(_ item: TimelineItem, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws {
+        try await service.respond(id: try remoteID(item), response: response, comment: comment, proposed: proposed)
+        onChange?()
+    }
+
     public func decline(_ item: TimelineItem) async throws {
         let id = try remoteID(item)
         if item.event?.canEdit == true {

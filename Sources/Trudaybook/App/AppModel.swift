@@ -121,6 +121,8 @@ struct LaunchOptions {
     var tourStep: Int?
     /// Окошко значка в строке меню перед снимком: `--menubar`.
     var menubar = false
+    /// `--shortcuts` — окно «Сочетания клавиш».
+    var shortcuts = false
     /// Все диалоги списка раскрыты: `--open-threads` (с `-groupThreads YES`).
     var openThreads = false
     /// Обзор года открыт: `--year`.
@@ -132,11 +134,15 @@ struct LaunchOptions {
     /// перетаскивания. Сам бросок так не проверить: сеанс следит за
     /// настоящим курсором.
     var dragProbe: String?
+    /// `--drag-probe-inactive` — тащить в неактивном окне (не выводить его вперёд).
+    var dragProbeInactive = false
     /// `--scroll-probe x,y,dy` — прокрутка колёсиком в точке окна (сверху слева).
     var scrollProbe: String?
     /// `--click-probe x,y` — щелчок в точке окна (сверху слева); в журнале —
     /// что после него выбрано.
     var clickProbe: String?
+    /// `--key-probe "текст,esc,cmd+z"` — нажатия клавиш по очереди (`KeyProbe`).
+    var keyProbe: String?
     /// Кнопка поиска для снимка: `--search-scope from|to|cc`.
     var searchScope: MailSearchQuery.Scope?
 
@@ -184,7 +190,9 @@ struct LaunchOptions {
             case "--summary": options.summary = true
             case "--template": options.template = true
             case "--drag-probe": options.dragProbe = iterator.next()
+            case "--drag-probe-inactive": options.dragProbeInactive = true
             case "--click-probe": options.clickProbe = iterator.next()
+            case "--key-probe": options.keyProbe = iterator.next()
             case "--scroll-probe": options.scrollProbe = iterator.next()
             case "--search-scope": options.searchScope = iterator.next().flatMap(MailSearchQuery.Scope.init(rawValue:))
             case "--label-mail": options.labelMail = true
@@ -199,13 +207,13 @@ struct LaunchOptions {
             case "--tile":
                 options.assistant = true
                 options.tile = iterator.next()
-            case "--chat-input":
-                options.assistant = true
-                options.chatInput = iterator.next()
+            // Без `--assistant` — в свёрнутом поле над письмом.
+            case "--chat-input": options.chatInput = iterator.next()
             case "--open-file": options.openFile = iterator.next()
             case "--multi": options.multi = iterator.next().flatMap(Int.init)
             case "--tour": options.tourStep = iterator.next().flatMap(Int.init) ?? 0
             case "--menubar": options.menubar = true
+            case "--shortcuts": options.shortcuts = true
             case "--background": options.backgroundKind = iterator.next()
             case "--hover": options.hoverAction = iterator.next()
             case "--size":
@@ -273,6 +281,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var readHere: Set<String> = []
     /// Письма, отправленные в «Корзину»: скрыты сразу, не дожидаясь сервера.
     private var trashed: Set<String> = []
+    /// История отмены главного окна (⌘Z): архив, корзина, перенос,
+    /// приоритет, отметки, цвет. Меню «Правка» берёт её у модели
+    /// (`UndoMenuTarget`); поля ввода ведут свою.
+    let undo = AppUndoManager()
+    /// Плашка «… · Отменить» внизу окна — после архива и корзины.
+    @Published private(set) var undoNotice: UndoNotice?
+    /// Плашка заведена в этом же нажатии (до конца прохода цикла событий).
+    private var noticeGroupOpen = false
+    /// Переносы писем на сервере, которые ещё ждут отмены: ключ — что
+    /// переносится, `run` — сам перенос.
+    private var pendingServer: [String: (task: Task<Void, Never>, run: @MainActor () async -> Void)] = [:]
     /// Масштаб шкалы: час дня — половина этого числа по высоте (неделя —
     /// своя доля). Сам подбирается под высоту таймлайна (`fitTimeline`),
     /// пока масштаб не меняли руками.
@@ -334,6 +353,9 @@ final class AppModel: ObservableObject {
     let assistant = AssistantSession()
     /// Правая панель показывает чат, а не выбранное. Ответ или новое письмо
     /// из карточки открываются поверх, закрыли — снова чат.
+    /// Курсор в поле чата с ассистентом: ⌘↩ — его, а не ответа письмом.
+    @Published var chatInputFocused = false
+
     @Published var assistantOpen = false {
         didSet { if assistantOpen, phoneOpen { phoneOpen = false } }
     }
@@ -341,8 +363,11 @@ final class AppModel: ObservableObject {
     let phone: PhoneService
     /// Правая панель показывает телефон вместо выбранного. Выбрали письмо
     /// или встречу — панель снова у них; разговор не прерывается.
+    /// Когда открыли телефон — замер задержки открытия для журнала.
+    var phoneOpenedAt = Date()
     @Published var phoneOpen = false {
         didSet {
+            if phoneOpen { phoneOpenedAt = Date() }
             if phoneOpen, assistantOpen { assistantOpen = false }
             if phoneOpen { phone.markMissedSeen() }
         }
@@ -1170,8 +1195,45 @@ final class AppModel: ObservableObject {
     // MARK: - Календари
 
     func loadCalendarSources() {
-        calendarSources = calendarSource.calendars()
+        systemCalendars = calendarSource.calendars()
+        applyCalendarColors()
         hideSystemCopiesOfExchange()
+    }
+
+    /// Календари как их отдал источник — со своими цветами, до замены.
+    private var systemCalendars: [CalendarSourceInfo] = []
+
+    /// Свой цвет календаря — и в списках календарей (настройки, выбор
+    /// календаря у новой встречи), а не только на встречах.
+    private func applyCalendarColors() {
+        calendarSources = systemCalendars.map { source in
+            var colored = source
+            if let own = eventColorOverrides[EventColors.calendarKey(source.id)] { colored.color = own }
+            return colored
+        }
+    }
+
+    /// Свой ли цвет у календаря.
+    func hasOwnColor(calendar id: String) -> Bool {
+        eventColorOverrides[EventColors.calendarKey(id)] != nil
+    }
+
+    /// Поставить цвет всему календарю — только у себя: в Exchange, iCloud
+    /// и у других людей календарь прежнего цвета. `nil` — цвет из календаря.
+    func setCalendarColor(_ color: RGB?, for id: String) {
+        let key = EventColors.calendarKey(id)
+        let previous = eventColorOverrides[key]
+        guard restoreEventColors([(key, color)]) else { return }
+        applyCalendarColors()
+        registerUndo(String(localized: "Цвет календаря")) { model in
+            if model.restoreEventColors([(key, previous)]) {
+                model.applyCalendarColors()
+                model.registerUndo(String(localized: "Цвет календаря")) {
+                    if $0.restoreEventColors([(key, color)]) { $0.applyCalendarColors() }
+                }
+            }
+        }
+        DebugLog.write("цвет календаря: \(color == nil ? "как в календаре" : "свой")")
     }
 
     private static let autoHiddenKey = "autoHiddenSystemExchangeMain"
@@ -1850,9 +1912,13 @@ final class AppModel: ObservableObject {
         // уровень и поменяется, если письмо придёт заново.
         let sender = item(id)?.mail?.senderPriority ?? .none
         let stored: Priority? = priority == sender ? nil : priority
+        let previous = priorities[id]
         do {
             try store.setPriority(stored, for: id)
             priorities[id] = stored
+            if previous != stored {
+                registerUndo(String(localized: "Приоритет")) { $0.setPriority(previous ?? sender, for: id) }
+            }
         } catch {
             errorMessage = String(localized: "Приоритет не сохранился: \(error.localizedDescription)")
         }
@@ -1902,10 +1968,24 @@ final class AppModel: ObservableObject {
             return
         }
         summaries[item.id] = .loading
-        let prompt = ModelPrompts.summary(subject: item.title, from: item.mail?.from.display ?? "",
-                                          text: text, language: AppLanguage.code)
+        let info = item.mail
+        func recipients(_ people: [Person]) -> [ModelPrompts.Recipient] {
+            people.map { person in
+                let display = [person.name, person.address.map { "<\($0)>" }].compactMap { $0 }.joined(separator: " ")
+                return ModelPrompts.Recipient(display: display, isReader: isMine(person))
+            }
+        }
+        // Кто читает: имя ящика, куда пришло письмо, и все свои адреса.
+        let account = info.flatMap { mail in accounts.first { $0.id == mail.accountID } } ?? accounts.first
+        let reader = ModelPrompts.Reader(name: account?.me.name, addresses: ownAddresses)
+        let prompt = ModelPrompts.summary(subject: item.title, from: info.map { recipients([$0.from])[0].display } ?? "",
+                                          to: recipients(info?.to ?? []), cc: recipients(info?.cc ?? []),
+                                          reader: reader, text: text, language: AppLanguage.code)
+        // В журнал — только где стоит читающий, без адресов и текста.
+        let toList = recipients(info?.to ?? []), ccList = recipients(info?.cc ?? [])
+        let inTo = toList.contains(where: \.isReader), inCc = ccList.contains(where: \.isReader), alone = toList.count == 1
         Task {
-            switch await ai.complete(prompt, purpose: "пересказ письма, \(text.count) знаков") {
+            switch await ai.complete(prompt, purpose: "пересказ письма, \(text.count) знаков, читающий \(inTo ? (alone ? "единственный в «Кому»" : "в «Кому»") : inCc ? "в копии" : "не в получателях")", precise: true) {
             case .success(let answer):
                 if let summary = ModelPrompts.summaryText(answer) {
                     summaries[item.id] = .ready(summary)
@@ -1929,7 +2009,7 @@ final class AppModel: ObservableObject {
             return .failure(.init(code: "empty", message: String(localized: "Выделите текст, который пересказать.")))
         }
         let prompt = ModelPrompts.selectionSummary(text, language: AppLanguage.code)
-        switch await ai.complete(prompt, purpose: "пересказ выделенного, знаков \(text.count)") {
+        switch await ai.complete(prompt, purpose: "пересказ выделенного, знаков \(text.count)", precise: true) {
         case .success(let answer):
             guard let summary = ModelPrompts.summaryText(answer) else {
                 return .failure(.init(code: "empty", message: String(localized: "Модель вернула пустой ответ.")))
@@ -2045,7 +2125,7 @@ final class AppModel: ObservableObject {
                 let batch = Array(pending[start ..< min(start + MailModel.batchSize, pending.count)])
                 let (letters, ids) = MailModel.letters(batch)
                 let prompt = ModelPrompts.labels(letters, language: AppLanguage.code)
-                switch await ai.complete(prompt, purpose: "метки, писем \(letters.count)") {
+                switch await ai.complete(prompt, purpose: "метки, писем \(letters.count)", precise: true) {
                 case .success(let answer):
                     // Источник `.trunook` — имя метки «от модели» в базе; переименовать
                     // значило бы потерять уже поставленные.
@@ -2232,19 +2312,33 @@ final class AppModel: ObservableObject {
 
     /// Поставить встрече (или всей серии) свой цвет; `nil` — цвет календаря.
     func setEventColor(_ color: RGB?, for item: TimelineItem, scope: EventColors.Scope) {
+        let changes = EventColors.changes(setting: color, for: item, scope: scope)
+        let previous = changes.map { (key: $0.key, color: eventColorOverrides[$0.key]) }
+        guard restoreEventColors(changes.map { (key: $0.key, color: $0.color) }) else { return }
+        registerUndo(String(localized: "Цвет встречи")) { model in
+            let current = previous.map { (key: $0.key, color: model.eventColorOverrides[$0.key]) }
+            if model.restoreEventColors(previous) {
+                model.registerUndo(String(localized: "Цвет встречи")) { _ = $0.restoreEventColors(current) }
+            }
+        }
+        DebugLog.write("цвет встречи: \(color == nil ? "как у календаря" : "свой")\(scope == .series ? ", серия" : "")")
+    }
+
+    /// Записать цвета встреч (`nil` — как у календаря). `false` — не сохранилось.
+    private func restoreEventColors(_ colors: [(key: String, color: RGB?)]) -> Bool {
         do {
-            for change in EventColors.changes(setting: color, for: item, scope: scope) {
+            for change in colors {
                 try store.setEventColor(change.color?.hex, for: change.key)
                 eventColorOverrides[change.key] = change.color
             }
         } catch {
             errorMessage = String(localized: "Цвет встречи не сохранился: \(error.localizedDescription)")
-            return
+            return false
         }
-        DebugLog.write("цвет встречи: \(color == nil ? "как у календаря" : "свой")\(scope == .series ? ", серия" : "")")
         weekItems = decorate(weekItems, fresh: false)
         events = decorate(events, fresh: false)
         recompute()
+        return true
     }
 
     /// Встреча в календаре, которую отменяет письмо; `nil` — её там уже нет.
@@ -2351,6 +2445,53 @@ final class AppModel: ObservableObject {
                 errorMessage = String(localized: "Ответ не отправился: \(MailAccounts.describe(error))")
             }
         }
+    }
+
+    /// Ответ на чужую встречу прямо из её карточки — не ища письма-приглашения.
+    /// Exchange отвечает своей командой по встрече; календарь macOS так не
+    /// умеет — тогда организатору уходит письмо iTIP (REPLY или COUNTER) из
+    /// ящика, чей адрес стоит у меня в участниках. `proposed` — новое время.
+    func respondToEvent(_ item: TimelineItem, _ response: InvitationResponse, comment: String = "", proposed: DateInterval? = nil) {
+        guard respondingTo == nil else { return }
+        let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = text.isEmpty ? nil : text
+        respondingTo = item.id
+        Task {
+            defer { respondingTo = nil }
+            do {
+                do {
+                    try await calendarSource.respond(item, response: response, comment: note, proposed: proposed)
+                } catch InvitationError.unsupported {
+                    try await respondByMail(item, response, comment: note, proposed: proposed)
+                    // Отказ: встреча уходит из календаря, как у Exchange.
+                    if response == .decline, proposed == nil { try? await calendarSource.decline(item) }
+                }
+                eventResponses[item.id] = proposed == nil ? response : .tentative
+                DebugLog.write(proposed == nil ? "встреча: ответ «\(response.title)» отправлен" : "встреча: предложено новое время")
+                if response == .decline, proposed == nil, selectedID == item.id { selectedID = nil }
+                await reload()
+            } catch {
+                errorMessage = String(localized: "Ответ не отправился: \(MailAccounts.describe(error))")
+            }
+        }
+    }
+
+    /// Ответ, данный в этом запуске, — пока календарь macOS его не покажет
+    /// (письмом он меняет только календарь организатора).
+    @Published private(set) var eventResponses: [String: InvitationResponse] = [:]
+
+    private func respondByMail(_ item: TimelineItem, _ response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws {
+        guard let invitation = Invitation.event(item) else { throw InvitationError.noOrganizer }
+        let myAddress = item.event?.attendees.first(where: \.isMe)?.person.normalizedAddress
+        let account = accounts.first { $0.email.lowercased() == myAddress } ?? accounts.first
+        guard let account else { throw InvitationError.unsupported }
+        var letter = if let proposed {
+            try ICalendar.counterMail(to: invitation, start: proposed.start, end: proposed.end, me: account.me, comment: comment)
+        } else {
+            try ICalendar.replyMail(to: invitation, response: response, me: account.me, comment: comment)
+        }
+        letter.accountID = account.id
+        try await mail.send(letter, replyingTo: nil)
     }
 
     /// Ящик не Exchange — сервер сам встречу в календарь не положит. Принятую
@@ -2512,13 +2653,21 @@ final class AppModel: ObservableObject {
             let order = visibleListItems.map(\.id)
             // Первое письмо диалога уходит в архив вместе со всей цепочкой.
             let chain = threadTail(ofHead: id)
+            let before = snapshot([id] + chain.map(\.id))
             archiveLetter(item)
             for letter in chain { archiveLetter(letter) }
             selectNeighbour(of: id, leaving: order, gone: Set(chain.map(\.id)))
+            registerUndo(String(localized: "В архив"), notice: .archive, count: chain.count + 1) { $0.restore(before, select: id) }
             if !chain.isEmpty { DebugLog.write("в архив диалогом: \(chain.count + 1)") }
         case (.archive, .event):
+            let before = snapshot([id])
             mark(id) { $0.doneAt = self.now }
+            registerUndo(String(localized: "В архив"), notice: .archive) { $0.restore(before, select: id) }
         case (.archive, .reminder):
+            // Отмена — снова «не выполнено» в «Напоминаниях» macOS.
+            registerUndo(String(localized: "В архив"), notice: .archive) { model in
+                model.item(id).map(model.toggleReminder)
+            }
             Task {
                 do {
                     try await calendarSource.setCompleted(item, true)
@@ -2599,9 +2748,14 @@ final class AppModel: ObservableObject {
         switch item.kind {
         case .mail:
             let order = visibleListItems.map(\.id)
+            let before = snapshot([item.id])
             mark(item.id) { $0.snoozedUntil = date }
             selectNeighbour(of: item.id, leaving: order)
+            registerUndo(String(localized: "Отложить")) { $0.restore(before, select: item.id) }
         case .event, .reminder:
+            let original = item.time
+            let moved = TimelineItem.retimedID(item.id, to: date)
+            registerUndo(String(localized: "Перенос")) { $0.moveBack(moved, to: original) }
             Task {
                 do {
                     try await calendarSource.move(item, to: date)
@@ -2625,12 +2779,16 @@ final class AppModel: ObservableObject {
 
     /// Вернуть разобранное в работу: снять отметки приложения.
     func reopen(_ id: String) {
+        let before = snapshot([id])
         mark(id) { $0 = LocalState() }
+        registerUndo(String(localized: "Вернуть в работу")) { $0.restore(before, select: id) }
     }
 
     /// Письмо разобрано без ответа и архива — просто отметка приложения.
     func markDone(_ id: String) {
+        let before = snapshot([id])
         mark(id) { $0.doneAt = self.now }
+        registerUndo(String(localized: "Разобрано")) { $0.restore(before, select: id) }
     }
 
     /// Кружок напоминания на таймлайне: выполнено ↔ не выполнено — прямо
@@ -2639,6 +2797,9 @@ final class AppModel: ObservableObject {
         guard item.kind == .reminder else { return }
         let done = status(of: item).isDone
         if done, states[item.id]?.doneAt != nil { mark(item.id) { $0.doneAt = nil } }
+        let id = item.id
+        // Отмена — та же галочка обратно; во время отмены это запишется повтором.
+        registerUndo(String(localized: "Напоминание")) { model in model.item(id).map(model.toggleReminder) }
         Task {
             do {
                 try await calendarSource.setCompleted(item, !done)
@@ -3262,8 +3423,9 @@ final class AppModel: ObservableObject {
                         guests ? String(localized: "Участники получат отмену, встреча уйдёт из календаря.") : String(localized: "Встреча уйдёт из календаря."))
             }
             let viaExchange = info.calendarID?.hasPrefix("ews-cal:") == true
+            let byMail = info.myResponse != nil && Invitation.event(item) != nil
             return (String(localized: "Отклонить встречу «\(item.title)»?"), String(localized: "Отклонить"),
-                    viaExchange ? String(localized: "Организатор получит отказ, встреча уйдёт из календаря.")
+                    viaExchange || byMail ? String(localized: "Организатор получит отказ, встреча уйдёт из календаря.")
                                 : String(localized: "Встреча уйдёт из календаря «\(info.calendarTitle)»."))
         case .mail:
             return ("", "", "")
@@ -3272,6 +3434,12 @@ final class AppModel: ObservableObject {
 
     func confirmDecline(_ item: TimelineItem) {
         declineTarget = nil
+        // Чужая встреча — отказ организатору и у календаря macOS (письмом),
+        // а не тихое удаление у себя.
+        if let info = item.event, !info.canEdit, info.myResponse != nil {
+            respondToEvent(item, .decline)
+            return
+        }
         Task {
             do {
                 try await calendarSource.decline(item)
@@ -3584,7 +3752,10 @@ final class AppModel: ObservableObject {
         // на сервере переносить нечего.
         guard item.mail?.movedAway != true else { return }
         archiving.insert(id)
-        Task {
+        // На сервер — не сразу: пока идут секунды отмены, письмо остаётся
+        // во Входящих, и ⌘Z возвращает его без второго переноса.
+        deferToServer("archive:\(id)") { [weak self] in
+            guard let self else { return }
             defer { archiving.remove(id) }
             do {
                 try await mail.archive(id)
@@ -3651,7 +3822,14 @@ final class AppModel: ObservableObject {
             selectNeighbour(of: selected, leaving: order, gone: gone)
             if self.selectedID == selected { self.selectedID = nil }
         }
-        Task {
+        // На сервер — после секунд отмены: до тех пор ⌘Z просто покажет
+        // письма снова, и в «Корзину» они не попадут вовсе.
+        let key = "trash:\(UUID().uuidString)"
+        registerUndo(String(localized: "В корзину"), notice: .trash, count: letters.count) {
+            $0.untrash(key, letters: letters, select: selected)
+        }
+        deferToServer(key) { [weak self] in
+            guard let self else { return }
             var failed: [String] = []
             var lastError: Error?
             for letter in letters {
@@ -3672,6 +3850,125 @@ final class AppModel: ObservableObject {
             await reload()
             await reloadList()
         }
+    }
+
+    // MARK: - Отмена (⌘Z)
+
+    /// Столько ждёт перенос письма на сервере (архив, корзина): в эти
+    /// секунды ⌘Z или «Отменить» возвращает всё, и на сервере ничего не
+    /// происходит. Дольше — письмо надолго застряло бы во Входящих Outlook.
+    static let undoGrace: Duration = .seconds(10)
+
+    /// Записать шаг в историю отмены окна. `action` сам возвращает как было;
+    /// если он зовёт действия с отменой, они запишутся повтором (⇧⌘Z).
+    /// `notice` — показать плашку «Отменить»: шаги одного нажатия (архив
+    /// пачкой) — одна плашка со счётом.
+    func registerUndo(_ name: String, notice kind: UndoNotice.Kind? = nil, count: Int = 1,
+                      _ action: @escaping @MainActor (AppModel) -> Void) {
+        undo.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated {
+                model.undoNotice = nil
+                action(model)
+            }
+        }
+        undo.setActionName(name)
+        guard let kind, !undo.isUndoing, !undo.isRedoing else { return }
+        // Открытая группа — то же нажатие: прибавить к плашке, а не заменить.
+        if var notice = undoNotice, notice.kind == kind, undo.groupingLevel > 0, noticeGroupOpen {
+            notice.count += count
+            undoNotice = notice
+            return
+        }
+        let notice = UndoNotice(kind: kind, count: count)
+        undoNotice = notice
+        noticeGroupOpen = true
+        DispatchQueue.main.async { [weak self] in self?.noticeGroupOpen = false }
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.undoGrace)
+            if self?.undoNotice?.id == notice.id { self?.undoNotice = nil }
+        }
+    }
+
+    /// «Отменить» на плашке — то же, что ⌘Z в главном окне.
+    func undoFromNotice() {
+        undoNotice = nil
+        UndoMenuTarget.perform(redo: false, on: undo)
+    }
+
+    /// Отметки до действия — чтобы отмена вернула ровно их.
+    private func snapshot(_ ids: [String]) -> [String: LocalState] {
+        Dictionary(ids.map { ($0, states[$0] ?? LocalState()) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Вернуть отметки. Письмо, чей перенос в архив ещё ждёт, так и
+    /// остаётся во Входящих; уже перенесённое — в «Архиве» на сервере,
+    /// а здесь снова в работе, как после «Вернуть в работу».
+    private func restore(_ before: [String: LocalState], select id: String?) {
+        for (key, state) in before {
+            if cancelServer("archive:\(key)") { archiving.remove(key) }
+            mark(key) { $0 = state }
+        }
+        if let id, item(id) != nil { selectedID = id }
+    }
+
+    /// Отмена «В корзину»: пока письма не ушли на сервер — показать снова.
+    private func untrash(_ key: String, letters: [TimelineItem], select id: String?) {
+        guard cancelServer(key) else {
+            errorMessage = String(localized: "Письма уже в «Корзине» на сервере — вернуть их можно из папки «Корзина».")
+            return
+        }
+        trashed.subtract(letters.map(\.id))
+        // `recompute` уже вычеркнул их из писем дня — вернуть.
+        let known = Set(allMail.map(\.id))
+        allMail += letters.filter { !known.contains($0.id) }
+        recompute()
+        if let id { selectedID = id }
+        DebugLog.write("в корзину: отменено, писем \(letters.count)")
+    }
+
+    /// Отмена переноса: встречу или напоминание — на прежнее время.
+    /// У встречи с участниками — снова вопрос: им уйдёт ещё одно приглашение.
+    private func moveBack(_ id: String, to date: Date) {
+        guard let moved = item(id) else {
+            errorMessage = String(localized: "Перенесённое не нашлось — верните его на место вручную.")
+            return
+        }
+        if hasGuests(moved), availability(of: .reschedule, for: moved).isEnabled {
+            pendingMove = PendingMove(item: moved, date: date)
+        } else {
+            reschedule(moved, to: date)
+        }
+    }
+
+    /// Отложить работу с сервером на секунды отмены.
+    private func deferToServer(_ key: String, _ run: @escaping @MainActor () async -> Void) {
+        let task = Task { [weak self] in
+            try? await Task.sleep(for: Self.undoGrace)
+            guard !Task.isCancelled, let pending = self?.pendingServer.removeValue(forKey: key) else { return }
+            await pending.run()
+        }
+        pendingServer[key] = (task, run)
+    }
+
+    /// `true` — перенос ещё не начинался и теперь не начнётся.
+    private func cancelServer(_ key: String) -> Bool {
+        guard let pending = pendingServer.removeValue(forKey: key) else { return false }
+        pending.task.cancel()
+        return true
+    }
+
+    var hasPendingServer: Bool { !pendingServer.isEmpty }
+
+    /// Выход из программы: отложенное — на сервер сейчас, иначе письма
+    /// вернулись бы во Входящие при следующем запуске.
+    func flushServer() async {
+        let all = pendingServer
+        pendingServer = [:]
+        for pending in all.values {
+            pending.task.cancel()
+            await pending.run()
+        }
+        undoNotice = nil
     }
 
     /// Что удалит ⌘⌫: выделенные письма или выбранное.
@@ -3870,6 +4167,11 @@ final class AppModel: ObservableObject {
 
     /// Снять выбор — справа снова сводка дня. Начатое письмо не трогаем:
     /// смена выбора закрыла бы его.
+    /// ⌘F — курсор в поиск по почте (поле в нижней панели следит за счётчиком).
+    @Published private(set) var searchFocusRequest = 0
+
+    func focusSearch() { searchFocusRequest += 1 }
+
     func showDayOverview() {
         guard draft == nil, selectedID != nil || !multiSelection.isEmpty else { return }
         selectedID = nil
@@ -3878,10 +4180,13 @@ final class AppModel: ObservableObject {
 
     /// Подготовить окно к снимку: выбрать элемент, открыть ответ.
     func applyDebugSelection() {
+        if options.demo, let probe = options.keyProbe { KeyProbe.run(probe, model: self) }
         if options.demo, let probe = options.clickProbe {
             let parts = probe.split(separator: ",").compactMap { Double($0) }
-            if parts.count == 2 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            // Третье число — через сколько секунд щёлкнуть (по умолчанию 2):
+            // щелчок после шагов `--key-probe`.
+            if parts.count == 2 || parts.count == 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + (parts.count == 3 ? parts[2] : 2)) {
                     guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
                           let height = window.contentView?.bounds.height else { return }
                     let point = NSPoint(x: parts[0], y: height - parts[1])
@@ -3900,6 +4205,14 @@ final class AppModel: ObservableObject {
         if options.demo, let probe = options.dragProbe {
             let parts = probe.split(separator: ",").compactMap { Double($0) }
             if parts.count == 2 {
+                // Как у пробы клавиш: копия из оболочки не впереди, а неактивное
+                // окно первый щелчок тратит на то, чтобы стать активным.
+                if !options.dragProbeInactive {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        NSApp.activate(ignoringOtherApps: true)
+                        NSApp.windows.first { $0.isVisible && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                    }
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
                           let height = window.contentView?.bounds.height else { return }

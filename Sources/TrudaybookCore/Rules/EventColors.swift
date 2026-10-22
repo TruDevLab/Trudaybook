@@ -1,8 +1,9 @@
 import Foundation
 
 /// Свой цвет встречи — только у себя, в Trudaybook: календарь, Exchange
-/// и участники о нём не знают. Ставится одной встрече или всей серии;
-/// свой цвет вхождения сильнее цвета серии, оба — сильнее цвета календаря.
+/// и участники о нём не знают. Ставится одной встрече, всей серии или
+/// всему календарю: вхождение сильнее серии, серия — календаря, свой цвет
+/// календаря — сильнее того, что задан в самом календаре.
 public enum EventColors {
     public enum Scope: Sendable {
         /// Только это вхождение повторяющейся встречи.
@@ -24,11 +25,17 @@ public enum EventColors {
         "occurrence:" + item.id
     }
 
-    /// Свой цвет встречи; `nil` — цвет календаря.
+    /// Ключ своего цвета всего календаря.
+    public static func calendarKey(_ calendarID: String) -> String {
+        "calendar:" + calendarID
+    }
+
+    /// Свой цвет встречи (или её календаря); `nil` — цвет из самого календаря.
     public static func color(of item: TimelineItem, in overrides: [String: RGB]) -> RGB? {
         guard item.kind == .event, !overrides.isEmpty else { return nil }
         if item.event?.isRecurring == true, let own = overrides[occurrenceKey(of: item)] { return own }
-        return seriesKeys(of: item).lazy.compactMap { overrides[$0] }.first
+        if let series = seriesKeys(of: item).lazy.compactMap({ overrides[$0] }).first { return series }
+        return item.event?.calendarID.flatMap { overrides[calendarKey($0)] }
     }
 
     /// Чей цвет на встрече сейчас: вхождения, серии или ничей.

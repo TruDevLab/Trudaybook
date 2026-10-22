@@ -114,6 +114,9 @@ struct ItemRow: View {
             onSelect?()
         }
         .modifier(ListDragSource(item: item))
+        // Строка живёт в таблице AppKit — ей нужно своё разрешение на
+        // нажатие, которое заодно активирует окно (см. главное окно).
+        .allowsWindowActivationEvents(true)
         .contextMenu { ItemContextMenu(item: item) }
     }
 }
@@ -319,6 +322,7 @@ struct MailListPanel: View {
                         .textFieldStyle(.plain)
                         .focused($searchFocused)
                         .onSubmit { model.searchOnServer() }
+                        .onChange(of: model.searchFocusRequest) { searchFocused = true }
                     if !model.searchText.isEmpty {
                         Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
                             .labelHelp(String(localized: "Очистить поиск"))
@@ -847,22 +851,33 @@ private struct EmptyListClick: NSViewRepresentable {
             }
         }
 
+        private weak var table: NSTableView?
+
         private func handle(_ event: NSEvent) {
             guard event.window === window, event.modifierFlags.intersection([.shift, .command]).isEmpty,
                   bounds.contains(convert(event.locationInWindow, from: nil)),
-                  let hit = window?.contentView?.hitTest(event.locationInWindow) else { return }
-            // Таблица под точкой: сам попал в неё или в её прокрутку ниже строк.
-            var view: NSView? = hit
-            var table: NSTableView?
-            while let current = view, table == nil {
-                if let found = current as? NSTableView { table = found }
-                else if let scroll = current as? NSScrollView { table = scroll.documentView as? NSTableView }
-                view = current.superview
-            }
-            guard let table else { return }
+                  let table = table ?? findTable(at: event.locationInWindow) else { return }
             let row = table.row(at: table.convert(event.locationInWindow, from: nil))
             guard row < 0 else { return }
             DispatchQueue.main.async { [action] in action?() }
+        }
+
+        /// Таблица списка — обходом видов окна, а не `hitTest`: `hitTest`
+        /// у окна SwiftUI до того, как нажатие дошло до строки, сбивал жест
+        /// строки, и письмо или встреча начинали тащиться только со второго
+        /// нажатия.
+        private func findTable(at point: NSPoint) -> NSTableView? {
+            var queue = window?.contentView.map { [$0] } ?? []
+            while !queue.isEmpty {
+                let view = queue.removeFirst()
+                if let found = view as? NSTableView, let scroll = found.enclosingScrollView,
+                   scroll.convert(scroll.bounds, to: nil).contains(point) {
+                    table = found
+                    return found
+                }
+                queue += view.subviews
+            }
+            return nil
         }
 
         deinit {

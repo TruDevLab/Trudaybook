@@ -67,6 +67,9 @@ enum EventEditorWindow {
         content.sizingOptions = []
         if let window = entry.window {
             // Новый запрос при открытом окне (другая встреча, ⇧⌘N) — то же окно.
+            // История отмены — от прежнего редактора, а его поля сейчас
+            // уйдут: ⌘Z звал бы удалённый текст и ронял приложение.
+            window.undoManager?.removeAllActions()
             window.contentView = content
             window.title = title(request)
             window.makeKeyAndOrderFront(nil)

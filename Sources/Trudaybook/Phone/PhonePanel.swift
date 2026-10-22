@@ -36,6 +36,12 @@ struct PhonePanel: View {
             }
         }
         .onAppear {
+            // Долго открывается — в журнал: на этом Mac задержку видно по нему.
+            let opened = model.phoneOpenedAt
+            DispatchQueue.main.async {
+                let elapsed = Int(Date().timeIntervalSince(opened) * 1000)
+                if elapsed > 300 { DebugLog.write("телефон: панель открылась за \(elapsed) мс") }
+            }
             phone.markMissedSeen()
             numberFocused = true
         }
@@ -97,7 +103,7 @@ struct PhonePanel: View {
             }
             .buttonStyle(.borderless)
             .labelHelp(String(localized: "Настройки телефона"))
-            Button { withAnimation(Motion.move) { model.phoneOpen = false } } label: {
+            Button { withAnimation(Motion.quick) { model.phoneOpen = false } } label: {
                 Image(systemName: "xmark")
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
@@ -773,7 +779,7 @@ struct AudioDeviceMenu: View {
     /// Наушники выбраны — значок наушников: видно, куда пойдёт звук.
     private var icon: String {
         let name = phone.outputDevices.first { $0.uid == phone.outputDevice }?.name
-            ?? AudioDevices.defaultName(input: false) ?? ""
+            ?? phone.defaultOutputName ?? ""
         let headset = ["AirPods", "Headphone", "Headset", "Наушник", "Гарнитур", "Beats", "耳机"]
         return headset.contains { name.localizedCaseInsensitiveContains($0) } ? "headphones" : "speaker.wave.2"
     }
@@ -808,7 +814,7 @@ struct AudioDeviceOptions: View {
     }
 
     private var systemTitle: String {
-        if let name = AudioDevices.defaultName(input: input) {
+        if let name = input ? phone.defaultInputName : phone.defaultOutputName {
             return String(localized: "Как в системе — \(name)")
         }
         return String(localized: "Как в системе")

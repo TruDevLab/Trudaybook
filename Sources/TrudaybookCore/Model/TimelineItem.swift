@@ -361,3 +361,15 @@ public struct TimelineItem: Identifiable, Hashable, Sendable {
         }
     }
 }
+
+extension TimelineItem {
+    /// Ключ встречи после переноса на `start`. У встреч EventKit и тестовых
+    /// время начала — в ключе (`event:<id>@<начало>`), и перенесённая
+    /// встреча — уже другой элемент; у Exchange ключ от времени не зависит.
+    /// Нужен, чтобы отменить перенос (⌘Z): найти встречу на новом месте.
+    public static func retimedID(_ id: String, to start: Date) -> String {
+        guard id.hasPrefix("event:"), let at = id.lastIndex(of: "@"),
+              Int(id[id.index(after: at)...]) != nil else { return id }
+        return "\(id[..<at])@\(Int(start.timeIntervalSince1970))"
+    }
+}

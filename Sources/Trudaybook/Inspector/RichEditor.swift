@@ -16,7 +16,17 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
         return NSColor.controlAccentColor.withAlphaComponent(dark ? 0.6 : 0.4)
     }
 
-    weak var textView: NSTextView?
+    weak var textView: NSTextView? {
+        didSet { if textView !== oldValue { undo = UndoManager() } }
+    }
+    /// Своя история отмены у поля, а не общая у окна. `NSUndoManager` не
+    /// держит то, что отменяет: шаги закрытого ответа оставались в истории
+    /// окна, и ⌘Z после отправки звал уже удалённый текст — приложение падало.
+    /// Новое поле — новая история: старая уходит вместе со старым полем.
+    private var undo = UndoManager()
+
+    func undoManager(for view: NSTextView) -> UndoManager? { undo }
+
     /// Текст поправил человек (или вставка с отменой) — для сохранения
     /// заметки. Загрузка через `load` сюда не приходит.
     var onChange: (() -> Void)?
@@ -90,8 +100,7 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
     func load(_ text: NSAttributedString) {
         guard let textView, let storage = textView.textStorage else { return }
         storage.setAttributedString(text)
-        textView.undoManager?.removeAllActions(withTarget: storage)
-        textView.undoManager?.removeAllActions(withTarget: textView)
+        undo.removeAllActions()
         textView.typingAttributes = [.font: Self.bodyFont, .foregroundColor: NSColor.textColor]
         textView.setSelectedRange(NSRange(location: 0, length: 0))
     }
@@ -544,6 +553,9 @@ struct RichTextEditorView: NSViewRepresentable {
         text.isRichText = true
         text.importsGraphics = false
         text.allowsUndo = true
+        // ⌘F — строка поиска над полем (`FindMenuTarget`).
+        text.usesFindBar = true
+        text.isIncrementalSearchingEnabled = true
         text.drawsBackground = false
         text.font = RichTextController.bodyFont
         text.textContainerInset = NSSize(width: 6, height: 8)

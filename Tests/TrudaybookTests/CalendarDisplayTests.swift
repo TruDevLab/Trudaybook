@@ -110,6 +110,21 @@ struct EventColorTests {
         #expect(EventColors.scope(of: first, in: overrides) == nil)
     }
 
+    @Test("Цвет календаря — слабее своего цвета встречи и серии")
+    func календарь() {
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        let item = TimelineItem(id: "event:A@1", title: "Обед", time: start, end: start.addingTimeInterval(3600),
+                                detail: .event(EventInfo(calendarTitle: "Работа", calendarID: "cal-1", uid: "U1")))
+        var overrides = [EventColors.calendarKey("cal-1"): blue]
+        #expect(EventColors.color(of: item, in: overrides) == blue)
+        // Свой цвет календаря — не «свой цвет встречи»: меню встречи его не отмечает.
+        #expect(EventColors.scope(of: item, in: overrides) == nil)
+        for change in EventColors.changes(setting: red, for: item, scope: .series) { overrides[change.key] = change.color }
+        #expect(EventColors.color(of: item, in: overrides) == red)
+        // Чужой календарь — без цвета.
+        #expect(EventColors.color(of: item, in: [EventColors.calendarKey("cal-2"): blue]) == nil)
+    }
+
     @Test("Цвета хранятся в базе; nil — забыть")
     func база() throws {
         let store = try ItemStateStore.inMemory()
