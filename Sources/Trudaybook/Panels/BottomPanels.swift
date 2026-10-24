@@ -244,6 +244,8 @@ struct MailListPanel: View {
     @EnvironmentObject private var model: AppModel
     /// В поле поиска стоит курсор: оно раздвигается, чтобы был виден весь запрос.
     @FocusState private var searchFocused: Bool
+    /// Вкладки папок. В разделе «Почта» папки — своей колонкой слева.
+    var showsTabs = true
 
     /// Папки на вкладках — в порядке и выборе из настроек; остальные — в меню «Ещё».
     private var primary: [MailFolder] {
@@ -257,165 +259,192 @@ struct MailListPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(spacing: Space.xs) {
-                // Вкладки прокручиваются: их столько, сколько выбрано в
-                // настройках, и раздвигать панель они не должны.
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Space.xs) {
-                        tab(String(localized: "Не разобрано"), count: model.unresolved.count, mode: .unresolved)
-                        ForEach(primary) { folder in
-                            tab(folder.name, count: nil, mode: .folder(folder.id))
-                        }
-                    }
-                }
-                .layoutPriority(1)
-                if !others.isEmpty {
-                    Menu {
-                        // Когда ящиков несколько — папки каждого под его адресом.
-                        ForEach(otherGroups, id: \.name) { group in
-                            if let name = group.name {
-                                Section(name) {
-                                    ForEach(group.folders) { folder in
-                                        Button(folder.path) { model.show(list: .folder(folder.id)) }
-                                    }
-                                }
-                            } else {
-                                ForEach(group.folders) { folder in
-                                    Button(folder.path) { model.show(list: .folder(folder.id)) }
-                                }
-                            }
-                        }
-                    } label: {
-                        Text(currentOtherName ?? String(localized: "Ещё"))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .frame(maxWidth: 170)
-                    .fixedSize(horizontal: currentOtherName == nil, vertical: false)
-                    .padding(.horizontal, Space.sm)
-                    .background(Capsule().fill(currentOtherName == nil ? .clear : Fill.accentSoft))
+                if showsTabs {
+                    tabs
+                } else {
+                    Text(listTitle)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
-                if model.isLoadingList { ProgressView().controlSize(.small) }
-                // Стрелки сортировки, а не воронка: воронка — это фильтр
-                // (она же у «скрыть разобранные»), а здесь меняется порядок.
-                // Включено — рядом флажок: «по приоритету».
-                Button { model.sortByPriority.toggle() } label: {
-                    HStack(spacing: Space.xxs) {
-                        Image(systemName: "arrow.up.arrow.down")
-                        if model.sortByPriority {
-                            Image(systemName: "flag.fill").font(.app(.tiny))
-                        }
-                    }
-                    .foregroundStyle(model.sortByPriority ? Color.accentColor : .secondary)
-                    .padding(.horizontal, model.sortByPriority ? 6 : 4)
-                    .padding(.vertical, Space.xs)
-                    .background(Capsule().fill(model.sortByPriority ? Fill.accentSoft : .clear))
-                }
-                .buttonStyle(.borderless)
-                .help(model.sortByPriority
-                      ? "Сейчас сначала важное. Нажмите — по времени"
-                      : "Сортировать по приоритету: сначала высокий, потом средний и низкий")
-                HStack(spacing: Space.xs) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Поиск", text: $model.searchText)
-                        .textFieldStyle(.plain)
-                        .focused($searchFocused)
-                        .onSubmit { model.searchOnServer() }
-                        .onChange(of: model.searchFocusRequest) { searchFocused = true }
-                    if !model.searchText.isEmpty {
-                        Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
-                            .labelHelp(String(localized: "Очистить поиск"))
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, Space.md)
-                .padding(.vertical, Space.xs)
-                .background(RoundedRectangle(cornerRadius: Radius.sm).fill(Fill.subtle))
-                // Нажали в поле — оно занимает всё место, что есть: вкладки
-                // уступают (они прокручиваются), и запрос виден целиком.
-                .frame(minWidth: searchFocused ? 260 : 80, maxWidth: searchFocused ? .infinity : 210)
-                .layoutPriority(searchFocused ? 2 : 0)
-                .animation(HoverMotion.animation, value: searchFocused)
-                .help("Набор ищет по теме, отправителю, получателям и копии; «от:иван», «кому:анна», «копия:анна» — по одному полю. Return — ещё и в тексте писем на сервере")
+                controls
             }
-
-            // Где искать — кнопками, а не «от:» руками. Видны, пока ищут.
-            if searchFocused || !model.searchText.isEmpty || model.searchScope != .all {
-                SearchScopeBar()
-            }
-
-            if model.listMode == .unresolved, model.searchResults == nil, !model.unresolved.isEmpty {
-                LabelFilterBar()
-            }
-
-            if let results = model.searchResults {
-                HStack {
-                    Text("В тексте писем найдено: \(results.count)")
-                    Spacer()
-                    Button("Сбросить") { model.searchText = "" }.buttonStyle(.link)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, Space.sm)
-            } else if !model.searchText.isEmpty, model.searchScope == .all {
-                Button("Искать «\(model.searchText)» в тексте писем на сервере  ⏎") { model.searchOnServer() }
-                    .buttonStyle(.link)
-                    .font(.caption)
-                    .padding(.horizontal, Space.sm)
-            }
-
-            let items = model.listItems
-            if items.isEmpty {
-                EmptyState(symbol: emptySymbol, text: emptyText,
-                           tint: model.listMode == .unresolved && model.searchText.isEmpty ? Palette.success : .secondary,
-                           loading: model.isLoadingList || (model.listMode == .unresolved && model.isAwaitingFirstMail && model.searchText.isEmpty))
-                    .contentShape(Rectangle())
-                    .onTapGesture { model.showDayOverview() }
-            } else {
-                ScrollViewReader { proxy in
-                    // Системный список, а не стопка строк: только в нём
-                    // работают свайпы двумя пальцами по трекпаду.
-                    List {
-                        if let sections = model.listSections {
-                            ForEach(sections, id: \.section) { group in
-                                let collapsed = model.collapsedSections.contains(group.section.key)
-                                SectionHeader(title: title(of: group.section), count: group.threads.reduce(0) { $0 + $1.count },
-                                              collapsed: collapsed) { model.toggleSection(group.section) }
-                                    .plainListRow()
-                                if !collapsed {
-                                    ForEach(model.rows(of: group.threads)) { entry in
-                                        row(entry)
-                                    }
-                                }
-                            }
-                        } else {
-                            ForEach(model.rows(of: model.listThreads)) { entry in
-                                row(entry)
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    // Щелчок мимо строк — снять выбор, справа снова сводка дня:
-                    // иначе, открыв письмо, к ней было не вернуться. `onTapGesture`
-                    // у `List` не срабатывал: пустое место — это таблица AppKit под
-                    // списком, щелчок она забирает себе.
-                    .background(EmptyListClick { model.showDayOverview() })
-                    .environment(\.defaultMinListRowHeight, 1)
-                    .contentMargins(.horizontal, 0, for: .scrollContent)
-                    // Стрелками ушли к письму за краем — список следует за выбором.
-                    .onChange(of: model.selectedID) { _, id in
-                        guard let id, items.contains(where: { $0.id == id }) else { return }
-                        withAnimation(Motion.quick) { proxy.scrollTo(id) }
-                    }
-                }
-            }
+            listBody
         }
         .padding(Space.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Panel())
+    }
+
+    /// Название открытой папки — над списком без вкладок.
+    private var listTitle: String {
+        guard case .folder(let id) = model.listMode else { return String(localized: "Не разобрано") }
+        return model.folders.first { $0.id == id }?.name ?? id
+    }
+
+    @ViewBuilder private var tabs: some View {
+        // Вкладки прокручиваются: их столько, сколько выбрано в
+        // настройках, и раздвигать панель они не должны.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.xs) {
+                tab(String(localized: "Не разобрано"), count: model.unresolved.count, mode: .unresolved)
+                ForEach(primary) { folder in
+                    tab(folder.name, count: nil, mode: .folder(folder.id))
+                }
+            }
+        }
+        // Отступ под капсулой раздела — только спискам сверху вниз.
+        .contentMargins(.vertical, 0, for: .scrollContent)
+        .layoutPriority(1)
+        if !others.isEmpty {
+            Menu {
+                // Когда ящиков несколько — папки каждого под его адресом.
+                ForEach(otherGroups, id: \.name) { group in
+                    if let name = group.name {
+                        Section(name) {
+                            ForEach(group.folders) { folder in
+                                Button(folder.path) { model.show(list: .folder(folder.id)) }
+                            }
+                        }
+                    } else {
+                        ForEach(group.folders) { folder in
+                            Button(folder.path) { model.show(list: .folder(folder.id)) }
+                        }
+                    }
+                }
+            } label: {
+                Text(currentOtherName ?? String(localized: "Ещё"))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .menuStyle(.borderlessButton)
+            .frame(maxWidth: 170)
+            .fixedSize(horizontal: currentOtherName == nil, vertical: false)
+            .padding(.horizontal, Space.sm)
+            .background(Capsule().fill(currentOtherName == nil ? .clear : Fill.accentSoft))
+        }
+    }
+
+    /// Загрузка, порядок и поиск — справа над списком.
+    @ViewBuilder private var controls: some View {
+        if model.isLoadingList { ProgressView().controlSize(.small) }
+        // Стрелки сортировки, а не воронка: воронка — это фильтр
+        // (она же у «скрыть разобранные»), а здесь меняется порядок.
+        // Включено — рядом флажок: «по приоритету».
+        Button { model.sortByPriority.toggle() } label: {
+            HStack(spacing: Space.xxs) {
+                Image(systemName: "arrow.up.arrow.down")
+                if model.sortByPriority {
+                    Image(systemName: "flag.fill").font(.app(.tiny))
+                }
+            }
+            .foregroundStyle(model.sortByPriority ? Color.accentColor : .secondary)
+            .padding(.horizontal, model.sortByPriority ? 6 : 4)
+            .padding(.vertical, Space.xs)
+            .background(Capsule().fill(model.sortByPriority ? Fill.accentSoft : .clear))
+        }
+        .buttonStyle(.borderless)
+        .help(model.sortByPriority
+              ? "Сейчас сначала важное. Нажмите — по времени"
+              : "Сортировать по приоритету: сначала высокий, потом средний и низкий")
+        HStack(spacing: Space.xs) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Поиск", text: $model.searchText)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                .onSubmit { model.searchOnServer() }
+                .onChange(of: model.searchFocusRequest) { searchFocused = true }
+            if !model.searchText.isEmpty {
+                Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .labelHelp(String(localized: "Очистить поиск"))
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.xs)
+        .background(RoundedRectangle(cornerRadius: Radius.sm).fill(Fill.subtle))
+        // Нажали в поле — оно занимает всё место, что есть: вкладки
+        // уступают (они прокручиваются), и запрос виден целиком.
+        .frame(minWidth: searchFocused ? 260 : 80, maxWidth: searchFocused ? .infinity : 210)
+        .layoutPriority(searchFocused ? 2 : 0)
+        .animation(HoverMotion.animation, value: searchFocused)
+        .help("Набор ищет по теме, отправителю, получателям и копии; «от:иван», «кому:анна», «копия:анна» — по одному полю. Return — ещё и в тексте писем на сервере")
+    }
+
+    @ViewBuilder private var listBody: some View {
+        // Где искать — кнопками, а не «от:» руками. Видны, пока ищут.
+        if searchFocused || !model.searchText.isEmpty || model.searchScope != .all {
+            SearchScopeBar()
+        }
+
+        if model.listMode == .unresolved, model.searchResults == nil, !model.unresolved.isEmpty {
+            LabelFilterBar()
+        }
+
+        if let results = model.searchResults {
+            HStack {
+                Text("В тексте писем найдено: \(results.count)")
+                Spacer()
+                Button("Сбросить") { model.searchText = "" }.buttonStyle(.link)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, Space.sm)
+        } else if !model.searchText.isEmpty, model.searchScope == .all {
+            Button("Искать «\(model.searchText)» в тексте писем на сервере  ⏎") { model.searchOnServer() }
+                .buttonStyle(.link)
+                .font(.caption)
+                .padding(.horizontal, Space.sm)
+        }
+
+        let items = model.listItems
+        if items.isEmpty {
+            EmptyState(symbol: emptySymbol, text: emptyText,
+                       tint: model.listMode == .unresolved && model.searchText.isEmpty ? Palette.success : .secondary,
+                       loading: model.isLoadingList || (model.listMode == .unresolved && model.isAwaitingFirstMail && model.searchText.isEmpty))
+                .contentShape(Rectangle())
+                .onTapGesture { model.showDayOverview() }
+        } else {
+            ScrollViewReader { proxy in
+                // Системный список, а не стопка строк: только в нём
+                // работают свайпы двумя пальцами по трекпаду.
+                List {
+                    if let sections = model.listSections {
+                        ForEach(sections, id: \.section) { group in
+                            let collapsed = model.collapsedSections.contains(group.section.key)
+                            SectionHeader(title: title(of: group.section), count: group.threads.reduce(0) { $0 + $1.count },
+                                          collapsed: collapsed) { model.toggleSection(group.section) }
+                                .plainListRow()
+                            if !collapsed {
+                                ForEach(model.rows(of: group.threads)) { entry in
+                                    row(entry)
+                                }
+                            }
+                        }
+                    } else {
+                        ForEach(model.rows(of: model.listThreads)) { entry in
+                            row(entry)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                // Щелчок мимо строк — снять выбор, справа снова сводка дня:
+                // иначе, открыв письмо, к ней было не вернуться. `onTapGesture`
+                // у `List` не срабатывал: пустое место — это таблица AppKit под
+                // списком, щелчок она забирает себе.
+                .background(EmptyListClick { model.showDayOverview() })
+                .environment(\.defaultMinListRowHeight, 1)
+                .contentMargins(.horizontal, 0, for: .scrollContent)
+                // Стрелками ушли к письму за краем — список следует за выбором.
+                .onChange(of: model.selectedID) { _, id in
+                    guard let id, items.contains(where: { $0.id == id }) else { return }
+                    withAnimation(Motion.quick) { proxy.scrollTo(id) }
+                }
+            }
+        }
     }
 
     /// Строка со свайпами: влево — действие справа, вправо — слева.

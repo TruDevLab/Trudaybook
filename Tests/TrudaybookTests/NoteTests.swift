@@ -60,6 +60,32 @@ struct NoteTests {
         #expect(store.richNote(for: "2026-09-27") == nil)
     }
 
+    @Test("Свободные заметки: ключ, название, разбор ключей периодов")
+    func свободные() throws {
+        let key = NoteKeys.newFreeKey()
+        #expect(NoteKeys.isFreeKey(key))
+        #expect(!NoteKeys.isDayKey(key))
+        #expect(NoteKeys.parse(key, calendar: calendar) == nil)
+        #expect(NoteKeys.title(of: "\n  • Купить хлеб\nи молоко") == "Купить хлеб")
+        #expect(NoteKeys.title(of: "   \n ") == nil)
+        let day = try #require(NoteKeys.parse("2026-09-27", calendar: calendar))
+        #expect(day.period == .day && ItemStateStore.dayKey(day.date, calendar: calendar) == "2026-09-27")
+        let week = try #require(NoteKeys.parse("2026-W39", calendar: calendar))
+        #expect(week.period == .week && ItemStateStore.dayKey(week.date, calendar: calendar) == "2026-09-21")
+        let month = try #require(NoteKeys.parse("2026-09", calendar: calendar))
+        #expect(month.period == .month && ItemStateStore.dayKey(month.date, calendar: calendar) == "2026-09-01")
+        #expect(NoteKeys.parse("2026-13", calendar: calendar) == nil)
+
+        // В общей таблице — все, свежие первыми; в отметки календаря свободная не идёт.
+        let store = try ItemStateStore.inMemory()
+        try store.setNote("день", for: "2026-09-27", now: date("2026-09-27 10:00"))
+        try store.setNote("Список покупок", for: key, now: date("2026-09-27 11:00"))
+        #expect(store.allNotes().map(\.key) == [key, "2026-09-27"])
+        #expect(store.daysWithNotes() == ["2026-09-27"])
+        try store.setNote("  ", for: key)
+        #expect(store.allNotes().map(\.key) == ["2026-09-27"])
+    }
+
     @Test("Markdown модели — в метки редактора")
     func разборMarkdown() {
         let blocks = NoteMarkdown.blocks(from: """

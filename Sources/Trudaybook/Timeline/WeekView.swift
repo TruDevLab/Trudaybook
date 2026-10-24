@@ -7,13 +7,18 @@ import TrudaybookCore
 struct WeekView: View {
     @EnvironmentObject private var model: AppModel
     @ViewState private var pinchBase: Double?
+    /// Час, при котором сутки ровно во всю высоту: мельче сетка кончилась бы
+    /// раньше окна.
+    @ViewState private var fillHour: Double = 0
 
     static let hoursWidth: CGFloat = 44
     static let inset: CGFloat = 8
+    /// Доля масштаба таймлайна, которая идёт на час недели.
+    static let scaleShare: Double = 0.3
 
     /// Час по вертикали — от масштаба таймлайна, но мельче: неделе нужно
     /// видеть рабочий день целиком.
-    private var hourHeight: Double { min(max(model.hourWidth * 0.3, 24), 90) }
+    private var hourHeight: Double { max(min(max(model.hourWidth * Self.scaleShare, 24), 90), fillHour) }
 
     var body: some View {
         let days = model.weekDays
@@ -81,6 +86,10 @@ struct WeekView: View {
                 .frame(width: width, height: height, alignment: .topLeading)
                 .padding(.vertical, Space.md)
                 .padding(.horizontal, Self.inset)
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visible in
+                fillHour = max(Double(visible - Space.md * 2) / 24, 0)
+                model.setHourWidthFloor(fillHour / Self.scaleShare)
             }
             .simultaneousGesture(
                 MagnifyGesture()

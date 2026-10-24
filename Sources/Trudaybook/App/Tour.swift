@@ -6,7 +6,7 @@ import TrudaybookCore
 
 /// Части главного окна, на которые показывает обучение.
 enum TourSpot: Hashable {
-    case actionBar, create, timeline, inspector, mailList, month, note, assistantButton, assistant, phoneButton, phone
+    case actionBar, create, timeline, inspector, mailList, month, note, assistantButton, assistant, phoneButton, phone, sections
 }
 
 /// Где на экране эти части: собирается со всего окна через предпочтения.
@@ -44,7 +44,10 @@ struct TourStep {
         [
             TourStep(spots: [], symbol: "hand.wave",
                      title: String(localized: "Добро пожаловать в Trudaybook"),
-                     text: String(localized: "Почта, встречи и напоминания — на одной линии дня. Покажем главное на тестовых письмах и встречах: нажимайте смело — ваши почта и календарь не затронуты.")),
+                     text: String(localized: "Почта, календарь, заметки и телефон — в одном окне, а главное — линия дня. Покажем всё на тестовых письмах и встречах: нажимайте смело — ваши почта и календарь не затронуты.")),
+            TourStep(spots: [.sections], symbol: "square.stack",
+                     title: String(localized: "Разделы"),
+                     text: String(localized: "Слева — разделы: почта, календарь, заметки и телефон на всё окно, а домик — домашняя, эта страница, где всё вместе (⌃⌘1–⌃⌘5). Под ними — «Сейчас»: дата, погода и ближайшая встреча. Круг сверху — профиль, внизу — ассистент и настройки. Дальше — по домашней.")),
             TourStep(spots: [.timeline], symbol: "calendar.day.timeline.left",
                      title: String(localized: "Таймлайн дня"),
                      text: String(localized: "Часы идут сверху вниз: слева — письма по времени прихода, посередине — встречи и напоминания, справа — погода по часам. Красная линия — сейчас (в обучении всегда утро). Листать дни — «‹ Сегодня ›» над таймлайном, рядом — «День | Неделя». Двойной щелчок по своей встрече открывает её редактор, по письму — отдельное окно."),
@@ -72,7 +75,7 @@ struct TourStep {
                      text: String(localized: "Щёлкните день — таймлайн перейдёт к нему; точки — дни со встречами. Название месяца открывает весь год, «#» — номера недель. Ниже — заметка дня, ⌘J открывает её в окне. Месяц и встречи есть и в значке в строке меню.")),
             TourStep(spots: [.assistantButton], symbol: "bubble.left.and.text.bubble.right",
                      title: String(localized: "Ассистент"),
-                     text: String(localized: "Поле над письмом — вопрос ИИ, который знает ваши встречи, напоминания, письма и заметку дня. Пишите сразу: после ↩ чат раскроется с ответом. Кнопка слева от поля или ⌥⌘A открывает чат и так. Всё работает на этом Mac через Ollama — письма в интернет не уходят."),
+                     text: String(localized: "Поле над письмом — вопрос ИИ, который знает ваши встречи, напоминания, письма и заметку дня. Пишите сразу: после ↩ чат раскроется с ответом. Кнопка слева от поля или ⌥⌘A открывает чат и так, в разделах — кнопка внизу панели слева. Всё работает на этом Mac через Ollama — письма в интернет не уходят."),
                      task: .openAssistant, taskTitle: String(localized: "Задайте вопрос или откройте чат кнопкой слева")),
             TourStep(spots: [.assistant], symbol: "square.grid.2x2",
                      title: String(localized: "Плитки и вопросы"),
@@ -84,7 +87,7 @@ struct TourStep {
                      task: .useCard, taskTitle: String(localized: "Нажмите «Создать» на карточке")),
             TourStep(spots: [.phoneButton], symbol: "phone.fill",
                      title: String(localized: "Телефон"),
-                     text: String(localized: "Звонки через АТС компании (SIP) — прямо в Trudaybook. Включается в Настройках → Телефон: адрес АТС, добавочный и пароль. Кнопка открывает телефон справа, на месте письма; во время разговора на ней идёт время, а у пропущенных — их число. ⌥⌘P — открыть и закрыть."),
+                     text: String(localized: "Звонки через АТС компании (SIP) — прямо в Trudaybook. Включается в Настройках → Телефон: адрес АТС, добавочный и пароль. Кнопка открывает телефон справа, на месте письма; во время разговора на ней идёт время, а у пропущенных — их число. ⌥⌘P — открыть и закрыть; у телефона есть и свой раздел."),
                      task: .openPhone, taskTitle: String(localized: "Откройте телефон")),
             TourStep(spots: [.phone], symbol: "circle.grid.3x3.fill",
                      title: String(localized: "Набор, недавние и номера"),
@@ -92,7 +95,7 @@ struct TourStep {
                      task: .dial, taskTitle: String(localized: "Позвоните — в обучении ответят понарошку")),
             TourStep(spots: [], symbol: "checkmark.seal",
                      title: String(localized: "Готово"),
-                     text: String(localized: "Подключите почту и календари — и таймлайн заполнится вашими делами. Ассистенту нужна Ollama: Настройки → ИИ предложат её установить. Пройти обучение снова можно в Настройках → Оформление или в меню «Справка».")),
+                     text: String(localized: "Подключите почту и календари — и таймлайн заполнится вашими делами. Ассистенту нужна Ollama: Настройки → ИИ предложат её установить. Пройти обучение снова — в меню профиля (круг слева вверху), в Настройках → Оформление или в меню «Справка».")),
         ]
     }
 }
@@ -122,6 +125,9 @@ final class TourState: ObservableObject {
 
     /// Подготовить окно к шагу: правой панели нужно выбранное письмо.
     func enter(model: AppModel) {
+        // Ушли в другой раздел — остальные шаги про домашнюю: вернуть на неё,
+        // иначе подсвечивать было бы нечего.
+        if !step.spots.contains(.sections), !step.spots.isEmpty, model.section != .home { model.show(.home) }
         switch step.task {
         case .archive: unresolvedBefore = model.unresolved.count
         case .moveMeeting:
@@ -241,6 +247,8 @@ enum TourWindow {
         var options = LaunchOptions()
         options.demo = true
         options.tour = true
+        // Шаги обучения — про домашнюю, какой бы раздел ни был открыт.
+        options.section = .home
         // В обучении всегда утро: тестовый день расписан с утра до вечера,
         // и вечером встречи и время для отложенного письма были бы в прошлом —
         // переносить и откладывать стало бы некуда. Для снимков — «сейчас»

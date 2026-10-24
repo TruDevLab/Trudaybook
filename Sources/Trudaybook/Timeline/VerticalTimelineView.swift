@@ -9,6 +9,10 @@ import TrudaybookCore
 struct VerticalTimelineView: View {
     @EnvironmentObject private var model: AppModel
     @ViewState private var pinchBase: Double?
+    /// Колонка писем. В разделе «Календарь» её нет: там только встречи.
+    var showsMail = true
+    /// Час, при котором сутки ровно во всю высоту.
+    @ViewState private var fillHour: Double = 0
 
     static let hoursWidth: CGFloat = 44
     static let rowHeight: CGFloat = 22
@@ -31,7 +35,7 @@ struct VerticalTimelineView: View {
     }
 
     private var scale: TimelineScale {
-        TimelineScale(dayStart: model.day, hourWidth: Self.hourHeight(model.hourWidth))
+        TimelineScale(dayStart: model.day, hourWidth: max(Self.hourHeight(model.hourWidth), fillHour))
     }
 
     /// Колонки дня: письма, встречи, погода (если хватает ширины).
@@ -40,24 +44,26 @@ struct VerticalTimelineView: View {
         let eventWidth: CGFloat
         let weatherWidth: CGFloat
         var mailX: CGFloat { VerticalTimelineView.hoursWidth + VerticalTimelineView.columnGap }
-        var eventX: CGFloat { mailX + mailWidth + VerticalTimelineView.columnGap }
+        var eventX: CGFloat { mailWidth > 0 ? mailX + mailWidth + VerticalTimelineView.columnGap : mailX }
         var eventEnd: CGFloat { eventX + eventWidth }
         var weatherX: CGFloat { eventEnd + VerticalTimelineView.columnGap }
         var end: CGFloat { weatherWidth > 0 ? weatherX + weatherWidth : eventEnd }
     }
 
-    static func columns(width: CGFloat) -> DayColumns {
+    static func columns(width: CGFloat, mail: Bool = true) -> DayColumns {
         let free = width - hoursWidth - inset * 2
         let weather = free >= weatherFrom ? weatherWidth : 0
         // Промежутки: после часов, между письмами и встречами, перед погодой.
-        let inner = free - columnGap * (weather > 0 ? 3 : 2) - weather
+        let inner = free - columnGap * ((weather > 0 ? 3 : 2) - (mail ? 0 : 1)) - weather
+        // Без писем встречи забирают всю ширину: рядом им тесниться не с кем.
+        guard mail else { return DayColumns(mailWidth: 0, eventWidth: max(inner, 90), weatherWidth: weather) }
         let events = min(max(inner * 0.5, 90), maxEventWidth)
         return DayColumns(mailWidth: max(inner - events, 80), eventWidth: events, weatherWidth: weather)
     }
 
     var body: some View {
         GeometryReader { geometry in
-            let columns = Self.columns(width: geometry.size.width)
+            let columns = Self.columns(width: geometry.size.width, mail: showsMail)
             VStack(spacing: 0) {
                 header(columns)
                 allDayRow(columns)
@@ -77,10 +83,12 @@ struct VerticalTimelineView: View {
         let open = mail.filter { !model.status(of: $0).isDone }.count
         return ZStack(alignment: .topLeading) {
             Color.clear.frame(height: 24)
-            ColumnHeader(title: String(localized: "Почта · \(open) из \(mail.count + model.hiddenDayMail)"), symbol: "envelope")
-                .frame(width: columns.mailWidth)
-                .help("Почта: открытых из всех писем за день")
-                .offset(x: Self.inset + columns.mailX)
+            if columns.mailWidth > 0 {
+                ColumnHeader(title: String(localized: "Почта · \(open) из \(mail.count + model.hiddenDayMail)"), symbol: "envelope")
+                    .frame(width: columns.mailWidth)
+                    .help("Почта: открытых из всех писем за день")
+                    .offset(x: Self.inset + columns.mailX)
+            }
             ColumnHeader(title: String(localized: "Встречи и напоминания"), symbol: "calendar")
                 .frame(width: columns.eventWidth)
                 .offset(x: Self.inset + columns.eventX)
@@ -124,9 +132,11 @@ struct VerticalTimelineView: View {
             ScrollView(.vertical) {
                 ZStack(alignment: .topLeading) {
                     VerticalHourGrid(scale: scale, width: columns.end)
-                    DayMailColumn(items: items, scale: scale, width: columns.mailWidth)
-                        .frame(width: columns.mailWidth, height: height, alignment: .topLeading)
-                        .offset(x: columns.mailX)
+                    if columns.mailWidth > 0 {
+                        DayMailColumn(items: items, scale: scale, width: columns.mailWidth)
+                            .frame(width: columns.mailWidth, height: height, alignment: .topLeading)
+                            .offset(x: columns.mailX)
+                    }
                     DayEventColumn(items: items, scale: scale, width: columns.eventWidth)
                         .frame(width: columns.eventWidth, height: height, alignment: .topLeading)
                         .offset(x: columns.eventX)
@@ -153,6 +163,9 @@ struct VerticalTimelineView: View {
             }
             // Масштаб — под высоту: видно столько часов, сколько в настройках.
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                // Сутки во всю высоту — меньше не отдалить (`hourWidthFloor`).
+                fillHour = max(Double(height - Space.xl * 2) / 24, 0)
+                model.setHourWidthFloor(fillHour * 2)
                 model.fitTimeline(height: Double(height - Space.xl * 2))
             }
             .simultaneousGesture(

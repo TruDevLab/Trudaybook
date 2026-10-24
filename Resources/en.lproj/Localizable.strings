@@ -19,6 +19,7 @@
 "%@ — перетащите сюда элемент или нажмите ⌘%@" = "%@ — drag an item here or press ⌘%@";
 "%@, %@ пишет:" = "On %@, %@ wrote:";
 "%@, весь день" = "%@, all day";
+"%@. Или перетащите на день или час — встреча начнётся там, где отпустите" = "%@. Or drag it onto a day or hour — the meeting starts where you drop it";
 "%@. Разрешите доступ: Системные настройки → Конфиденциальность и безопасность." = "%@. Allow access: System Settings → Privacy & Security.";
 "%lld %@ от участников" = "%lld %@ from attendees";
 "%lld из %lld" = "%lld of %lld";
@@ -124,6 +125,8 @@
 "В вырезе Trunook" = "In the Trunook notch";
 "В заметку дня" = "To daily note";
 "В избранное" = "Add to favorites";
+"В избранное — кнопкой внизу" = "Add to favorites — a button at the bottom";
+"В избранном уже четыре папки — уберите одну" = "Four folders are already in favorites — remove one";
 "В календаре этой встречи уже нет" = "This meeting is no longer in your calendar";
 "В календаре: %@, %@ %@" = "In calendar: %@, %@ %@";
 "В корзину" = "Move to Trash";
@@ -155,6 +158,7 @@
 "Версия" = "Version";
 "Версия последняя" = "Up to date";
 "Весна" = "Spring";
+"Весь год" = "Whole year";
 "Весь день" = "All day";
 "Весь календарь «%@»" = "Whole calendar “%@”";
 "Вид" = "Style";
@@ -174,6 +178,7 @@
 "Время, повтор, участники, описание" = "Time, repeat, attendees, description";
 "Вс" = "Su";
 "Все" = "All";
+"Все звонки" = "All calls";
 "Все окна — на передний план" = "Bring All to Front";
 "Все события серии" = "All events in the series";
 "Всем участникам" = "To all attendees";
@@ -231,6 +236,7 @@
 "Вы приняли встречу" = "You accepted the meeting";
 "Вы только в копии" = "You are only in Cc";
 "Выберите город." = "Choose a city.";
+"Выберите письмо" = "Select a message";
 "Выберите письмо или событие — подробности появятся здесь." = "Select an email or event — its details will appear here.";
 "Выберите, с чего начать, или спросите сами. Отвечает модель на этом Mac; письмо, встречу и запись в заметку вы подтверждаете сами. Приложить письмо или встречу — /mail или /cal и слова из темы." = "Pick where to start or ask yourself. A model on this Mac answers; you confirm any email, meeting or note entry yourself. To attach an email or a meeting, type /mail or /cal and words from its subject.";
 "Выбранное не подключено — сейчас как в системе" = "Selected device not connected — using system default";
@@ -266,6 +272,7 @@
 "Главное окно" = "Main Window";
 "Глубина" = "Depth";
 "Говорите…" = "Speak…";
+"Год" = "Year";
 "Голосовой ввод" = "Voice input";
 "Голубой" = "Light blue";
 "Город" = "City";
@@ -282,6 +289,7 @@
 "Деловой тон" = "Formal tone";
 "День" = "Day";
 "День или неделя (⌥⌘1 / ⌥⌘2)" = "Day or week (⌥⌘1 / ⌥⌘2)";
+"День по часам" = "Day by the hour";
 "День — переключить на неделю (⌥⌘2)" = "Day — switch to week (⌥⌘2)";
 "Диалоги: письма одной переписки — одной строкой" = "Conversations: emails of one thread in a single row";
 "Динамик" = "Speaker";
@@ -298,6 +306,7 @@
 "Добавочный" = "Extension";
 "Добро пожаловать в Trudaybook" = "Welcome to Trudaybook";
 "Дождь" = "Rain";
+"Домашняя" = "Home";
 "Дописано в заметку дня" = "Added to the daily note";
 "Дописать" = "Add";
 "Допиши в заметку дня: " = "Add to the daily note: ";
@@ -311,6 +320,7 @@
 "Дружелюбный тон" = "Friendly tone";
 "Думает… Местной модели нужно до минуты." = "Thinking… A local model can take up to a minute.";
 "Дюны" = "Dunes";
+"Ежедневные" = "Daily";
 "Если вы собирали Trudaybook сами, обновляйтесь так же: git pull и make install." = "If you built Trudaybook yourself, update the same way: git pull and make install.";
 "Есть несохранённые изменения" = "Unsaved changes";
 "Ещё" = "More";
@@ -323,6 +333,7 @@
 "Жирный (⌘B)" = "Bold (⌘B)";
 "Жирный, курсив, подчёркнутый" = "Bold, italic, underline";
 "Журнал" = "Call log";
+"Журнал звонков" = "Call log";
 "Журнал и номера хранятся только на этом Mac." = "The call log and numbers are stored only on this Mac.";
 "Жёлтый" = "Yellow";
 "За этот месяц нет заметок дней." = "There are no daily notes for this month.";
@@ -345,6 +356,7 @@
 "Закрыть разговор" = "Close conversation";
 "Закрыть телефон (⌥⌘P)" = "Close phone (⌥⌘P)";
 "Закрыть чат (⌥⌘A)" = "Close chat (⌥⌘A)";
+"Закрыть чат с ассистентом (⌥⌘A)" = "Close assistant chat (⌥⌘A)";
 "Заметка" = "Note";
 "Заметка · %@" = "Note · %@";
 "Заметка в окне" = "Note in Window";
@@ -352,8 +364,14 @@
 "Заметка дня в окне · ⌘J" = "Day note in a window · ⌘J";
 "Заметка дня — общая с заметками Trunook" = "Day note — shared with Trunook notes";
 "Заметка на %@" = "Note for %@";
+"Заметка на белом листе и в тёмной теме" = "Note on a white sheet, even in dark mode";
+"Заметка на сегодня" = "Note for today";
+"Заметка на этот месяц" = "Note for this month";
+"Заметка на эту неделю" = "Note for this week";
 "Заметка не сохранилась: %@" = "The note wasn't saved: %@";
+"Заметка хранится только на этом Mac — вернуть её будет нельзя." = "The note is stored only on this Mac — it can't be restored.";
 "Заметки" = "Notes";
+"Заметок пока нет" = "No notes yet";
 "Занято" = "Busy";
 "Заняты хоть кто-то из участников" = "At least one attendee is busy";
 "Запускаю Ollama…" = "Starting Ollama…";
@@ -361,10 +379,11 @@
 "Затемнение" = "Dimming";
 "Звонить и принимать звонки в Trudaybook" = "Make and receive calls in Trudaybook";
 "Звонит…" = "Ringing…";
-"Звонки через АТС компании (SIP) — прямо в Trudaybook. Включается в Настройках → Телефон: адрес АТС, добавочный и пароль. Кнопка открывает телефон справа, на месте письма; во время разговора на ней идёт время, а у пропущенных — их число. ⌥⌘P — открыть и закрыть." = "Calls through your company PBX (SIP), right in Trudaybook. Turn it on in Settings → Phone: PBX address, extension and password. The button opens the phone on the right, in place of the email; during a call it shows the time, and the number of missed calls when there are any. ⌥⌘P opens and closes it.";
+"Звонки через АТС компании (SIP) — прямо в Trudaybook. Включается в Настройках → Телефон: адрес АТС, добавочный и пароль. Кнопка открывает телефон справа, на месте письма; во время разговора на ней идёт время, а у пропущенных — их число. ⌥⌘P — открыть и закрыть; у телефона есть и свой раздел." = "Calls through your company's PBX (SIP) — right in Trudaybook. Turn it on in Settings → Phone: the PBX address, extension and password. The button opens the phone on the right, in place of the email; during a call it shows the time, and missed calls show their count. ⌥⌘P opens and closes it; the phone also has its own section.";
 "Звонков в журнале: %lld, сохранённых номеров: %lld" = "Calls in log: %lld, saved numbers: %lld";
 "Звонков ещё не было" = "No calls yet";
 "Звонок" = "Call";
+"Звук" = "Sound";
 "Звук входящего" = "Ring sound";
 "Звук клавиш набора" = "Keypad sounds";
 "Звук разговора не включился. Выберите микрофон и динамик в меню телефона (значок динамика) или в настройках звука macOS." = "Call audio didn't start. Choose a microphone and speaker in the phone menu (speaker icon) or in macOS Sound settings.";
@@ -377,15 +396,19 @@
 "ИИ выключен в Настройках → ИИ." = "AI is turned off in Settings → AI.";
 "ИИ: исправить ошибки, улучшить написание или структуру выделенного текста. Модель — только на этом Mac." = "AI: fix mistakes, improve the writing or structure of the selected text. The model runs only on this Mac.";
 "ИИ: шаблон ответа на письмо, правка выделенного текста. Модель — только на этом Mac." = "AI: a reply template, editing the selected text. The model runs on this Mac only.";
+"Идеи к квартальному плану\nСократить согласования до двух кругов\nЗапросить бюджет на подрядчиков" = "Ideas for the quarterly plan\nCut approvals down to two rounds\nRequest a budget for contractors";
 "Идёт запись — нажмите, чтобы остановить. Ничего не отправится" = "Recording — click to stop. Nothing will be sent";
 "Из любой программы: идущая или ближайшая сегодня онлайн-встреча открывается в Zoom, Teams, Телемосте… Подключаться не к чему — откроется окошко с днём." = "From any app: the ongoing or next online meeting today opens in Zoom, Teams, Telemost… Nothing to join — the day’s pop-up opens instead.";
 "Из моих встреч" = "From my meetings";
+"Избранные" = "Favorites";
+"Избранных нет — отметьте номер звёздочкой." = "No favorites — mark a number with a star.";
 "Изменить встречу может только организатор" = "Only the organizer can change the meeting";
 "Изменить имя…" = "Edit name…";
 "Изменить повторяющуюся встречу" = "Change recurring meeting";
 "Изменить…" = "Edit…";
 "Или перетащите файлы в это окно — участники получат их с приглашением" = "Or drag files into this window — attendees will get them with the invitation";
 "Имя" = "Name";
+"Имя или номер" = "Name or number";
 "Имя номера" = "Number name";
 "Искать «%@» в тексте писем на сервере  ⏎" = "Search “%@” in email text on the server  ⏎";
 "Исправить ошибки" = "Fix Mistakes";
@@ -397,6 +420,7 @@
 "Их же можно сменить в телефоне — значком в шапке, и посреди разговора тоже. Мелодия входящего играет на динамике по умолчанию в системе, чтобы звонок был слышен и без наушников." = "You can also change them in the phone panel with the icon in its header, even during a call. The ringtone plays on the system default speaker so you hear calls without headphones too.";
 "Ищу…" = "Searching…";
 "К встрече" = "To prepare";
+"К сегодняшнему дню (⌘T)" = "Go to today (⌘T)";
 "К сегодняшнему дню · ⌘T" = "Go to today · ⌘T";
 "К сегодняшнему дню и текущему времени (⌘T)" = "Go to today and the current time (⌘T)";
 "Каждую неделю" = "Every week";
@@ -475,6 +499,8 @@
 "Место не определилось: %@" = "Couldn't get the location: %@";
 "Месяц" = "Month";
 "Месяц и заметка дня" = "Month and day note";
+"Месяц со встречами" = "Month with meetings";
+"Месячная" = "Monthly";
 "Метка" = "Label";
 "Метка в строке письма: вы среди адресатов или только в копии. «Мне» красным — письмо только вам." = "A tag in the email row: you are a recipient or only in Cc. A red “Me” means the email is for you alone.";
 "Метка не сохранилась: %@" = "The label wasn't saved: %@";
@@ -530,6 +556,7 @@
 "Нажмите плитку или задайте вопрос" = "Click a tile or ask a question";
 "Нажмите — письмо, встреча или напоминание. Или перетащите кнопку на колонку встреч: встреча начнётся там, где отпустите; на колонку писем — новое письмо; на полосу над колонками — встреча на весь день." = "Click it for an email, meeting or reminder. Or drag the button onto the meetings column: the meeting starts where you drop it; onto the emails column — a new email; onto the strip above the columns — an all-day meeting.";
 "Нажмите — письмо, встреча или напоминание. Или потяните на таймлайн: на почту — новое письмо, на встречи — встреча с того времени, где отпустите" = "Click for a message, meeting or reminder. Or drag onto the timeline: onto mail for a new message, onto meetings for a meeting starting where you drop it";
+"Нажмите — подключиться" = "Click to join";
 "Назад" = "Back";
 "Назначить встречу с участниками выбранного письма" = "Schedule a meeting with the selected message's participants";
 "Назначить встречу с участниками письма" = "Schedule a meeting with the email's participants";
@@ -568,6 +595,7 @@
 "Настройка встречи не сохранилась: %@" = "The meeting setting wasn't saved: %@";
 "Настройка не сохранилась: %@" = "The setting wasn't saved: %@";
 "Настройки" = "Settings";
+"Настройки (⌘,)" = "Settings (⌘,)";
 "Настройки ИИ…" = "AI Settings…";
 "Настройки телефона" = "Phone settings";
 "Настройки…" = "Settings…";
@@ -613,11 +641,13 @@
 "Неверный порт сервера" = "Invalid server port";
 "Нед" = "Wk";
 "Недавние" = "Recents";
+"Недельная" = "Weekly";
 "Недельный вид включается над таймлайном: «День | Неделя». Писем в нём нет — у каждого дня счётчик неразобранных." = "The week view is turned on above the timeline: “Day | Week”. It has no emails — each day shows a count of emails to handle.";
 "Неделя" = "Week";
 "Неделя %lld" = "Week %lld";
 "Неделя %lld · %@" = "Week %lld · %@";
 "Неделя вперёд" = "Week ahead";
+"Неделя по часам" = "Week by the hour";
 "Неделя — переключить на день (⌥⌘1)" = "Week — switch to day (⌥⌘1)";
 "Неизвестный отправитель" = "Unknown sender";
 "Непонятный ответ сервера: %@" = "Unclear server response: %@";
@@ -646,7 +676,9 @@
 "Ничего не нашлось" = "Nothing found";
 "Новая версия ставится, лишь если подписана тем же сертификатом, что и эта: подпись проверяется после загрузки и ещё раз перед установкой. Доступы к календарю и паролям сохраняются." = "A new version is installed only if it's signed with the same certificate as this one: the signature is checked after the download and again right before installing. Access to calendars and passwords stays granted.";
 "Новая встреча" = "New meeting";
+"Новая встреча (⇧⌘N)" = "New meeting (⇧⌘N)";
 "Новая встреча или напоминание (⇧⌘N). Потяните «+» на нужное время — встреча начнётся там; передумали — верните «+» на место или нажмите Esc" = "New meeting or reminder (⇧⌘N). Drag “+” to a time — the meeting will start there; changed your mind — return “+” to its place or press Esc";
+"Новая заметка" = "New note";
 "Новое напоминание" = "New reminder";
 "Новое письмо" = "New email";
 "Новое письмо (⌘N)" = "New email (⌘N)";
@@ -664,6 +696,7 @@
 "Номер не найден" = "Number not found";
 "Номера" = "Numbers";
 "Номера недель" = "Week numbers";
+"Номера недель показаны — скрыть" = "Week numbers are shown — hide";
 "Ночью — тёмное окно, луна и звёзды; днём — светлое и солнце. Облака, дождь, снег, туман и гроза — по погоде из Trunook или Open-Meteo; без погоды — только время суток." = "At night — a dark window, the moon and stars; by day — a light one and the sun. Clouds, rain, snow, fog and storms follow the weather from Trunook or Open-Meteo; without weather — only the time of day.";
 "Нужен пароль для внешнего приложения: настройки Mail.ru → Безопасность." = "You need a password for an external app: Mail.ru settings → Security.";
 "Нужен пароль приложения (id.yandex.ru → Безопасность) и включённый IMAP в настройках Почты." = "You need an app password (id.yandex.ru → Security) and IMAP turned on in Mail settings.";
@@ -809,14 +842,17 @@
 "Панели — стекло (Liquid Glass): фон просвечивает сквозь них. Окно само становится светлым или тёмным — по яркости фона." = "Panels are glass (Liquid Glass): the background shows through them. The window turns light or dark by itself — based on the background's brightness.";
 "Папка не открылась: %@" = "The folder didn't open: %@";
 "Папка пуста" = "The folder is empty";
+"Папки" = "Folders";
 "Папки в списке писем" = "Folders in the email list";
 "Папки появятся после первой синхронизации" = "Folders will appear after the first sync";
 "Пароль" = "Password";
 "Пароль удалится из Связки ключей, а скачанные письма — с этого Mac. На сервере ничего не изменится." = "The password will be removed from the Keychain, and downloaded emails from this Mac. Nothing changes on the server.";
 "Пасмурно" = "Overcast";
+"Первая строка станет названием…" = "The first line becomes the title…";
 "Первый цвет" = "First color";
 "Перезапустить" = "Restart";
 "Перезапустить и обновить" = "Restart and Update";
+"Перезвонить" = "Call back";
 "Переменная облачность" = "Partly cloudy";
 "Перенесите встречу или бросьте письмо на время" = "Move a meeting or drop an email on a time";
 "Перенесите встречу на другое время" = "Move a meeting to another time";
@@ -919,7 +955,7 @@
 "Подключаться к ближайшей встрече по %@" = "Join the nearest meeting with %@";
 "Подключение к встречам" = "Joining meetings";
 "Подключение…" = "Connecting…";
-"Подключите почту и календари — и таймлайн заполнится вашими делами. Ассистенту нужна Ollama: Настройки → ИИ предложат её установить. Пройти обучение снова можно в Настройках → Оформление или в меню «Справка»." = "Connect your mail and calendars and the timeline fills with your own day. The assistant needs Ollama: Settings → AI will offer to install it. You can take the tutorial again in Settings → Appearance or from the Help menu.";
+"Подключите почту и календари — и таймлайн заполнится вашими делами. Ассистенту нужна Ollama: Настройки → ИИ предложат её установить. Пройти обучение снова — в меню профиля (круг слева вверху), в Настройках → Оформление или в меню «Справка»." = "Connect your mail and calendars, and the timeline will fill with your own work. The assistant needs Ollama: Settings → AI will offer to install it. Take the tutorial again from the profile menu (the circle at the top left), Settings → Appearance or the Help menu.";
 "Подключится само в начале встречи" = "Will join automatically when the meeting starts";
 "Подключить" = "Connect";
 "Подключить почту" = "Connect mail";
@@ -941,7 +977,9 @@
 "Позвоните — в обучении ответят понарошку" = "Make a call — in the tour, someone pretends to answer";
 "Позвонить" = "Call";
 "Позвонить Дмитрию Орлову" = "Call Dmitry Orlov";
+"Позвонить: %@" = "Call: %@";
 "Поиск" = "Search";
+"Поиск в заметках" = "Search notes";
 "Поиск не удался: %@" = "Search failed: %@";
 "Пока вы работали — %lld %@" = "While you were working — %lld %@";
 "Пока ящик не подключён, на таймлайне тестовые письма." = "Until a mailbox is connected, the timeline shows test emails.";
@@ -956,13 +994,14 @@
 "Показать звонок в окне Trudaybook" = "Show the call in the Trudaybook window";
 "Показать на белом листе (в цветах письма)" = "Show on a white sheet (in the email’s colors)";
 "Показать номера недель" = "Show week numbers";
+"Показать папки" = "Show folders";
 "Показать письмо в главном окне" = "Show the message in the main window";
 "Показать превью" = "Show preview";
 "Показывать вкладкой; остальные — в меню «Ещё»" = "Show as a tab; the rest go to the “More” menu";
 "Показывать отправителя и тему" = "Show sender and subject";
 "Показывать темы писем" = "Show email subjects";
 "Показываются первыми, когда вы ставите курсор в «Место» новой встречи. Там же — ссылки из ваших встреч за три месяца и кнопки «создать новую» на сайте Zoom, Google Meet и Телемоста. Хранятся только на этом Mac." = "Shown first when you place the cursor in a new meeting's “Location”. There you'll also find links from your meetings over three months and “create new” buttons for the Zoom, Google Meet and Telemost websites. Stored only on this Mac.";
-"Поле над письмом — вопрос ИИ, который знает ваши встречи, напоминания, письма и заметку дня. Пишите сразу: после ↩ чат раскроется с ответом. Кнопка слева от поля или ⌥⌘A открывает чат и так. Всё работает на этом Mac через Ollama — письма в интернет не уходят." = "The field above the email is a question to an AI that knows your meetings, reminders, emails and day note. Just type: after ↩ the chat expands with the answer. The button left of the field or ⌥⌘A opens the chat too. It all runs on this Mac through Ollama — emails never go to the internet.";
+"Поле над письмом — вопрос ИИ, который знает ваши встречи, напоминания, письма и заметку дня. Пишите сразу: после ↩ чат раскроется с ответом. Кнопка слева от поля или ⌥⌘A открывает чат и так, в разделах — кнопка внизу панели слева. Всё работает на этом Mac через Ollama — письма в интернет не уходят." = "The field above the email is a question to the AI, which knows your meetings, reminders, emails and day note. Just type: after ↩ the chat opens with the answer. The button to the left of the field or ⌥⌘A opens the chat anyway; in the sections — the button at the bottom of the left bar. Everything runs on this Mac through Ollama — emails don't go to the internet.";
 "Полночь" = "Midnight";
 "Положить трубку" = "Hang up";
 "Получать погоду напрямую, если Trunook её не прислал" = "Get the weather directly when Trunook doesn't provide it";
@@ -981,7 +1020,7 @@
 "Почта · %lld из %lld" = "Mail · %lld of %lld";
 "Почта не загрузилась: %@" = "Mail didn't load: %@";
 "Почта по умолчанию" = "Default Mail";
-"Почта, встречи и напоминания — на одной линии дня. Покажем главное на тестовых письмах и встречах: нажимайте смело — ваши почта и календарь не затронуты." = "Email, meetings and reminders on one line of your day. Here are the essentials on sample emails and meetings — click freely, your mail and calendar are untouched.";
+"Почта, календарь, заметки и телефон — в одном окне, а главное — линия дня. Покажем всё на тестовых письмах и встречах: нажимайте смело — ваши почта и календарь не затронуты." = "Mail, calendar, notes and phone in one window, with the day timeline at the heart. We'll show everything on sample emails and meetings: click freely — your mail and calendar aren't touched.";
 "Почта: открытых из всех писем за день" = "Mail: open out of all emails of the day";
 "Почтовые ящики" = "Mailboxes";
 "Правка" = "Edit";
@@ -1039,8 +1078,12 @@
 "Пройти обучение" = "Take the Tutorial";
 "Прокси" = "Proxy";
 "Пропустить обучение" = "Skip Tutorial";
+"Пропущенные" = "Missed";
 "Пропущенный" = "Missed";
+"Пропущенных нет" = "No missed calls";
 "Протокол" = "Minutes";
+"Профиль" = "Profile";
+"Профиль: почта, сочетания клавиш, обучение" = "Profile: mail, shortcuts, tutorial";
 "Прошло" = "Passed";
 "Пт" = "Fr";
 "Пятна света плывут" = "Light spots drift";
@@ -1050,6 +1093,7 @@
 "Раз в сутки спрашивает GitHub и скачивает новую версию фоном. Ставится только по вашей кнопке." = "Asks GitHub once a day and downloads a new version in the background. It's installed only when you click the button.";
 "Развернуть" = "Expand";
 "Разговор окончен" = "Call ended";
+"Разделы" = "Sections";
 "Разделы по датам: Сегодня, Вчера, дни недели, старше 7 и 30 дней" = "Date sections: Today, Yesterday, weekdays, older than 7 and 30 days";
 "Разделы сворачиваются щелчком по заголовку. При поиске список идёт одной лентой." = "Sections collapse by clicking the header. When searching, the list is one feed.";
 "Размер текста в чате" = "Chat text size";
@@ -1081,6 +1125,7 @@
 "Свернуть пересказ" = "Collapse Summary";
 "Сверху" = "Top";
 "Сверху — письма по времени прихода, снизу — встречи и напоминания. Красная линия — сейчас. Двойной щелчок по встрече открывает её редактор, по письму — отдельное окно." = "Emails on top by arrival time, meetings and reminders below. The red line is now. Double-click a meeting to edit it, an email to open it in its own window.";
+"Свободная" = "Free";
 "Сводка для плитки «Почта» и шкалы дня" = "Summary for the Mail tile and the day timeline";
 "Сводка и фокус" = "Summary and focus";
 "Своя картинка…" = "Custom picture…";
@@ -1093,7 +1138,10 @@
 "Сделать почтой по умолчанию" = "Make Default Mail App";
 "Сделать фоном" = "Set as Background";
 "Сегодня" = "Today";
+"Сегодня в календаре" = "Today in the calendar";
 "Сегодня вечером" = "This evening";
+"Сегодня звонков не было" = "No calls today";
+"Сегодня: звонков %lld, пропущенных %lld, разговора %lld мин" = "Today: %lld calls, %lld missed, %lld min of talk";
 "Сезон" = "Season";
 "Сейчас" = "Now";
 "Сейчас отвечает %@. Облачные модели Ollama не предлагаются: с ними письма ушли бы в интернет." = "%@ is answering now. Ollama cloud models aren't offered: with them, emails would go online.";
@@ -1147,8 +1195,10 @@
 "Скрыть Trudaybook" = "Hide Trudaybook";
 "Скрыть номера недель" = "Hide week numbers";
 "Скрыть остальные" = "Hide Others";
+"Скрыть папки" = "Hide folders";
 "Скрыть разобранные письма с таймлайна (⇧⌘H)" = "Hide handled emails from the timeline (⇧⌘H)";
 "Сланец" = "Slate";
+"Слева — разделы: почта, календарь, заметки и телефон на всё окно, а домик — домашняя, эта страница, где всё вместе (⌃⌘1–⌃⌘5). Под ними — «Сейчас»: дата, погода и ближайшая встреча. Круг сверху — профиль, внизу — ассистент и настройки. Дальше — по домашней." = "On the left are the sections: mail, calendar, notes and phone across the whole window, and the house is Home — this page, with everything together (⌃⌘1–⌃⌘5). Below them is “Now”: the date, the weather and the next meeting. The circle at the top is your profile; at the bottom — the assistant and settings. Next — a tour of Home.";
 "Следующая неделя" = "Next Week";
 "Следующая неделя (⌘])" = "Next week (⌘])";
 "Следующий год" = "Next Year";
@@ -1208,6 +1258,8 @@
 "Список дел с галочками" = "Checklist";
 "Список и таймлайн" = "List and timeline";
 "Список писем" = "Email list";
+"Список покупок\n• Хлеб\n• Молоко\n• Кофе" = "Shopping list\n• Bread\n• Milk\n• Coffee";
+"Справа — только избранные номера" = "Show only favorite numbers on the right";
 "Справка" = "Help";
 "Справляется со всем: пересказ, метки, повестка, чат." = "Handles everything: summaries, labels, agenda, chat.";
 "Спросите ассистента…" = "Ask the assistant…";
@@ -1265,6 +1317,7 @@
 "Убрано в архив: %lld" = "Archived: %lld";
 "Убрать" = "Remove";
 "Убрать из избранного" = "Remove from favorites";
+"Убрать из избранного — с кнопок внизу" = "Remove from favorites — from the buttons at the bottom";
 "Убрать ссылку" = "Remove link";
 "Уведомление" = "Notification";
 "Уведомления" = "Notifications";
@@ -1273,6 +1326,7 @@
 "Удалить" = "Delete";
 "Удалить встречу «%@»?" = "Delete the meeting “%@”?";
 "Удалить встречу?" = "Delete the meeting?";
+"Удалить заметку?" = "Delete the note?";
 "Удалить из журнала" = "Delete from log";
 "Удалить из календаря" = "Remove from Calendar";
 "Удалить напоминание «%@»?" = "Delete the reminder “%@”?";
@@ -1318,6 +1372,7 @@
 "Часы идут сверху вниз: слева — письма по времени прихода, посередине — встречи и напоминания, справа — погода по часам. Красная линия — сейчас (в обучении всегда утро). Листать дни — «‹ Сегодня ›» над таймлайном, рядом — «День | Неделя». Двойной щелчок по своей встрече открывает её редактор, по письму — отдельное окно." = "Hours run top to bottom: emails on the left by arrival time, meetings and reminders in the middle, hourly weather on the right. The red line is now (always morning in the tour). Page through days with “‹ Today ›” above the timeline, next to “Day | Week”. Double-click your meeting to open its editor, or an email to open it in a separate window.";
 "Чат с ИИ-ассистентом" = "AI assistant chat";
 "Чат с ассистентом" = "Assistant chat";
+"Чат с ассистентом (⌥⌘A)" = "Assistant chat (⌥⌘A)";
 "Через 1 час" = "In 1 hour";
 "Через неделю" = "In a week";
 "Через час" = "In an hour";

@@ -247,6 +247,9 @@ struct LabelFilterBar: View {
                     }
                 }
             }
+            // Отступ под капсулой раздела — для списков сверху вниз; полоске
+            // он раздул бы высоту.
+            .contentMargins(.vertical, 0, for: .scrollContent)
             Spacer(minLength: 6)
             status
             if model.aiEnabled {

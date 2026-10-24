@@ -10,27 +10,54 @@ import TrudaybookCore
 struct PhonePanel: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject var phone: PhoneService
-    @ViewState private var tab = Tab.recents
+    /// Список и редактор номера — общие с капсулой раздела «Телефон».
+    @ObservedObject private var choice = PhoneListChoice.shared
     @ViewState private var topHeight: CGFloat = 420
-    @ViewState private var editing: ContactDraft?
     @ViewState private var keypadInCall = false
     @FocusState private var numberFocused: Bool
+    /// Раздел «Телефон»: списки слева, набор справа, без кнопки «закрыть».
+    var wide = false
 
-    enum Tab: Hashable { case recents, contacts }
+    enum Tab: Hashable { case recents, missed, contacts, favorites }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: topHeight)
-            if phone.enabled, phone.account.isComplete {
-                lists.clipped()
+        Group {
+            if wide, !phone.enabled || !phone.account.isComplete {
+                // Не настроен — только приглашение настроить, без пустых списков.
+                VStack(spacing: 0) {
+                    top
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Panel())
+            } else if wide {
+                // Раздел: журнал слева, набор со звуком посередине, номера
+                // справа — всё сразу, без переключения списков.
+                HStack(spacing: MainView.gap) {
+                    column(String(localized: "Журнал звонков")) {
+                        recents
+                    }
+                    // Звук и сводка — сразу под набором: какие устройства
+                    // у звонка, видно, не открывая меню.
+                    VStack(spacing: 0) {
+                        top
+                        PhoneSoundCard(phone: phone)
+                            .padding(.top, Space.lg)
+                        PhoneTodayLine(phone: phone, now: model.now)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Panel())
+                    column(String(localized: "Номера")) {
+                        contactSearch
+                        contacts
+                    }
+                }
             } else {
-                Spacer(minLength: 0)
+                narrow
             }
         }
-        .overlay(alignment: .top) {
-            top.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { topHeight = $0 }
-        }
-        .sheet(item: $editing) { draft in
+        .sheet(item: $choice.editing) { draft in
             ContactEditor(draft: draft) { number, name in
                 phone.saveContact(number: number, name: name)
             }
@@ -44,6 +71,63 @@ struct PhonePanel: View {
             }
             phone.markMissedSeen()
             numberFocused = true
+        }
+    }
+
+    static let listsWidth: CGFloat = 360
+
+    /// Колонка раздела: заголовок и прокрутка, обрезанная по панели
+    /// (прокрутка на macOS 26 рисует за своей рамкой).
+    private func column(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.headline)
+                .padding(.horizontal, Space.lg)
+                .frame(height: AssistantChatView.tabsHeight)
+            Divider()
+            ScrollView {
+                LazyVStack(spacing: 0) { content() }
+                    .padding(Space.lg)
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .frame(width: Self.listsWidth)
+        .frame(maxHeight: .infinity)
+        .background(Panel())
+        .clipShape(RoundedRectangle(cornerRadius: Panel.radius, style: .continuous))
+    }
+
+    /// Поиск по сохранённым номерам — по имени и цифрам.
+    private var contactSearch: some View {
+        HStack(spacing: Space.xs) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Имя или номер", text: $choice.query)
+                .textFieldStyle(.plain)
+            if !choice.query.isEmpty {
+                Button { choice.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .labelHelp(String(localized: "Очистить поиск"))
+            }
+        }
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.xs)
+        .background(RoundedRectangle(cornerRadius: Radius.sm).fill(Fill.subtle))
+        .padding(.bottom, Space.md)
+    }
+
+    /// Колонка справа: списки под набором.
+    private var narrow: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: topHeight)
+            if phone.enabled, phone.account.isComplete {
+                lists.clipped()
+            } else {
+                Spacer(minLength: 0)
+            }
+        }
+        .overlay(alignment: .top) {
+            top.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { topHeight = $0 }
         }
     }
 
@@ -75,8 +159,10 @@ struct PhonePanel: View {
                     .padding(.vertical, Space.xl)
                     .transition(.opacity)
             }
-            if phone.enabled, phone.account.isComplete {
-                Picker("", selection: $tab) {
+            if !wide, phone.enabled, phone.account.isComplete {
+                // Пропущенные — из капсулы раздела; здесь они под «Недавними».
+                Picker("", selection: Binding(get: { choice.tab == .missed ? .recents : choice.tab == .favorites ? .contacts : choice.tab },
+                                              set: { choice.tab = $0 })) {
                     Text("Недавние").tag(Tab.recents)
                     Text("Номера").tag(Tab.contacts)
                 }
@@ -95,7 +181,8 @@ struct PhonePanel: View {
             Text("Телефон").font(.app(.body, weight: .semibold))
             RegistrationBadge(state: phone.registration, enabled: phone.enabled, user: phone.account.username)
             Spacer(minLength: Space.sm)
-            AudioDeviceMenu(phone: phone)
+            // В разделе устройства видны под набором — кнопка не нужна.
+            if !wide { AudioDeviceMenu(phone: phone) }
             Button { SettingsWindow.show(model: model, tab: .phone) } label: {
                 Image(systemName: "gearshape")
                     .frame(width: 24, height: 24)
@@ -103,13 +190,15 @@ struct PhonePanel: View {
             }
             .buttonStyle(.borderless)
             .labelHelp(String(localized: "Настройки телефона"))
-            Button { withAnimation(Motion.quick) { model.phoneOpen = false } } label: {
-                Image(systemName: "xmark")
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
+            if !wide {
+                Button { withAnimation(Motion.quick) { model.phoneOpen = false } } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .labelHelp(String(localized: "Закрыть телефон (⌥⌘P)"))
             }
-            .buttonStyle(.borderless)
-            .labelHelp(String(localized: "Закрыть телефон (⌥⌘P)"))
         }
         .padding(.horizontal, Space.lg)
     }
@@ -170,7 +259,7 @@ struct PhonePanel: View {
                 Label(contact.name, systemImage: contact.favorite ? "star.fill" : "person.fill")
                     .foregroundStyle(.secondary)
             } else {
-                Button("Сохранить номер…") { editing = ContactDraft(number: number, name: "") }
+                Button("Сохранить номер…") { choice.editing = ContactDraft(number: number, name: "") }
                     .buttonStyle(.link)
             }
         }
@@ -199,29 +288,34 @@ struct PhonePanel: View {
     private var lists: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                switch tab {
-                case .recents: recents
-                case .contacts: contacts
+                switch choice.tab {
+                case .recents, .missed: recents
+                case .contacts, .favorites: contacts
                 }
             }
-            .padding(.horizontal, Space.md)
+            // В разделе — те же поля, что у колонок почты и заметок.
+            .padding(.horizontal, wide ? Space.lg : Space.md)
             .padding(.bottom, Space.lg)
+            .padding(.top, wide ? Space.lg : 0)
         }
         .scrollContentBackground(.hidden)
     }
 
     @ViewBuilder private var recents: some View {
-        if phone.book.calls.isEmpty {
-            EmptyState(symbol: "phone.arrow.down.left", text: String(localized: "Звонков ещё не было"))
+        let missedOnly = wide ? choice.missedOnly : choice.tab == .missed
+        let calls = missedOnly ? phone.book.calls.filter { $0.outcome == .missed } : phone.book.calls
+        if calls.isEmpty {
+            EmptyState(symbol: "phone.arrow.down.left",
+                       text: missedOnly ? String(localized: "Пропущенных нет") : String(localized: "Звонков ещё не было"))
                 .padding(.top, Space.page)
         } else {
-            ForEach(phone.book.calls) { record in
+            ForEach(calls) { record in
                 RecentRow(record: record, now: model.now, name: phone.book.displayName(for: record.number, fallback: record.name),
                           saved: phone.book.contact(for: record.number), canCall: phone.isRegistered && !phone.inCall,
                           call: { phone.dial(record.number) },
                           pick: { phone.dialed = record.number },
                           edit: {
-                              editing = ContactDraft(number: record.number,
+                              choice.editing = ContactDraft(number: record.number,
                                                      name: phone.book.contact(for: record.number)?.name ?? record.name ?? "")
                           },
                           favorite: { phone.toggleFavorite(number: record.number) },
@@ -236,28 +330,43 @@ struct PhonePanel: View {
     }
 
     @ViewBuilder private var contacts: some View {
-        HStack {
-            Spacer()
-            Button {
-                editing = ContactDraft(number: PhoneNumber.dialable(phone.dialed), name: "")
-            } label: {
-                Label("Добавить номер", systemImage: "plus")
+        // В разделе номер добавляет «+» капсулы — второй кнопки не нужно.
+        if !wide {
+            HStack {
+                Spacer()
+                Button {
+                    choice.editing = ContactDraft(number: PhoneNumber.dialable(phone.dialed), name: "")
+                } label: {
+                    Label("Добавить номер", systemImage: "plus")
+                }
+                .buttonStyle(.borderless)
             }
-            .buttonStyle(.borderless)
+            .padding(.horizontal, Space.md)
+            .padding(.vertical, Space.sm)
         }
-        .padding(.horizontal, Space.md)
-        .padding(.vertical, Space.sm)
-        if phone.book.contacts.isEmpty {
+        let favoritesOnly = wide ? choice.favoritesOnly : choice.tab == .favorites
+        let query = wide ? choice.query.trimmingCharacters(in: .whitespaces) : ""
+        let digits = PhoneNumber.dialable(query)
+        let shown = phone.book.sortedContacts
+            .filter { !favoritesOnly || $0.favorite }
+            .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) || (!digits.isEmpty && $0.number.contains(digits)) }
+        if !query.isEmpty, shown.isEmpty, !phone.book.contacts.isEmpty {
+            EmptyState(symbol: "magnifyingglass", text: String(localized: "Ничего не нашлось"))
+                .padding(.top, Space.xl)
+        } else if favoritesOnly, shown.isEmpty, !phone.book.contacts.isEmpty {
+            EmptyState(symbol: "star", text: String(localized: "Избранных нет — отметьте номер звёздочкой."))
+                .padding(.top, Space.xl)
+        } else if phone.book.contacts.isEmpty {
             EmptyState(symbol: "star",
                        text: String(localized: "Сохранённых номеров нет. Дайте номеру имя — из недавних звонков или кнопкой «Добавить номер»."))
                 .padding(.top, Space.xl)
                 .padding(.horizontal, Space.xl)
         } else {
-            ForEach(phone.book.sortedContacts) { contact in
+            ForEach(shown) { contact in
                 ContactRow(contact: contact, canCall: phone.isRegistered && !phone.inCall,
                            call: { phone.dial(contact.number) },
                            pick: { phone.dialed = contact.number },
-                           edit: { editing = ContactDraft(number: contact.number, name: contact.name) },
+                           edit: { choice.editing = ContactDraft(number: contact.number, name: contact.name) },
                            favorite: { phone.toggleFavorite(number: contact.number) },
                            remove: { phone.removeContact(contact.id) })
             }
@@ -818,5 +927,67 @@ struct AudioDeviceOptions: View {
             return String(localized: "Как в системе — \(name)")
         }
         return String(localized: "Как в системе")
+    }
+}
+
+/// Какой список открыт и чей номер правят — общее у панели справа
+/// и у раздела «Телефон» (его капсула переключает списки и добавляет номер).
+@MainActor
+final class PhoneListChoice: ObservableObject {
+    static let shared = PhoneListChoice()
+    @Published var tab: PhonePanel.Tab = .recents
+    @Published var editing: ContactDraft?
+    /// Раздел «Телефон»: журнал — только пропущенные, номера — только
+    /// избранные, поиск по номерам.
+    @Published var missedOnly = false
+    @Published var favoritesOnly = false
+    @Published var query = ""
+}
+
+/// «Звук» под набором в разделе: какой микрофон и динамик у звонков —
+/// видно сразу, а не по кнопке.
+struct PhoneSoundCard: View {
+    @ObservedObject var phone: PhoneService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Label("Звук", systemImage: "speaker.wave.2")
+                .font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: Space.lg, verticalSpacing: Space.md) {
+                GridRow {
+                    Label("Микрофон", systemImage: "mic")
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $phone.inputDevice) { AudioDeviceOptions(phone: phone, input: true) }
+                        .labelsHidden()
+                }
+                GridRow {
+                    Label("Динамик", systemImage: "headphones")
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $phone.outputDevice) { AudioDeviceOptions(phone: phone, input: false) }
+                        .labelsHidden()
+                }
+            }
+        }
+        .padding(Space.lg)
+        .frame(maxWidth: 460, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Radius.lg, style: .continuous).fill(Fill.faint))
+        .padding(.horizontal, Space.lg)
+    }
+}
+
+/// Сводка дня под звуком: сколько звонков, пропущенных и минут разговора.
+struct PhoneTodayLine: View {
+    @ObservedObject var phone: PhoneService
+    let now: Date
+
+    var body: some View {
+        let today = phone.book.calls.filter { Calendar.current.isDate($0.start, inSameDayAs: now) }
+        let missed = today.filter(\.isMissed).count
+        let talk = Int((today.map(\.duration).reduce(0, +) / 60).rounded())
+        Text(today.isEmpty ? String(localized: "Сегодня звонков не было")
+             : String(localized: "Сегодня: звонков \(today.count), пропущенных \(missed), разговора \(talk) мин"))
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(Space.lg)
     }
 }

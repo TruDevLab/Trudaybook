@@ -37,7 +37,10 @@ enum KeyNavigation {
         guard event.type == .keyDown, arrow || priority != nil || erase || escape || open,
               let window, event.window === window, window.attachedSheet == nil,
               modifiers.isEmpty || extend || (erase && modifiers == .command),
-              model.draft == nil
+              model.draft == nil,
+              // Список и таймлайн, по которым ходят стрелки, — на домашней
+              // и в почте; в календаре Esc закрывает встречу справа.
+              model.section == .home || model.section == .mail || (escape && model.section == .calendar)
         else { return false }
         if let responder = window.firstResponder, isTextOrWeb(responder) { return false }
         if escape {

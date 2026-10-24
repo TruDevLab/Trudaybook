@@ -372,22 +372,6 @@ private struct FolderOrderCard: View {
 struct CalendarSettingsView: View {
     @EnvironmentObject private var model: AppModel
 
-    private func grouped(_ kind: CalendarSourceInfo.Kind) -> [(group: String, items: [CalendarSourceInfo])] {
-        let items = model.calendarSources.filter { $0.kind == kind }
-        // Порядок учётных записей: свои напрямую, iCloud, Exchange через macOS, остальное.
-        func rank(_ group: String) -> Int {
-            if group.hasPrefix("Exchange напрямую") { return 0 }
-            if group == "iCloud" { return 1 }
-            if group.hasPrefix("Exchange через macOS · учётная") { return 2 }
-            if group.hasPrefix("Exchange через macOS") { return 3 }
-            if group == "На этом Mac" { return 5 }
-            return 4
-        }
-        return Dictionary(grouping: items, by: \.group)
-            .map { ($0.key, $0.value.sorted { $0.title < $1.title }) }
-            .sorted { (rank($0.group), $0.group) < (rank($1.group), $1.group) }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xxl) {
             if let problem = model.accessProblem, !model.options.demo {
@@ -395,11 +379,11 @@ struct CalendarSettingsView: View {
                     .font(.callout)
             }
             SettingsCard(title: String(localized: "Календари на таймлайне"), icon: "calendar") {
-                checkboxes(kind: .events)
+                CalendarCheckboxes(kind: .events)
                 SettingsHint(String(localized: "Кружок с цветом — сменить цвет календаря. Только в Trudaybook: в самом календаре и у других людей цвет прежний."))
             }
             SettingsCard(title: String(localized: "Напоминания на таймлайне"), icon: "checklist") {
-                checkboxes(kind: .reminders)
+                CalendarCheckboxes(kind: .reminders)
             }
             SettingsHint(String(localized: "«Напрямую» — ящик Exchange, подключённый в Trudaybook. «Через macOS» — учётные записи из Системных настроек → Учётные записи интернета. Новые календари, добавленные в системе, появятся сами."))
             SettingsCard(title: String(localized: "По умолчанию"), icon: "star") {
@@ -450,9 +434,32 @@ struct CalendarSettingsView: View {
             .frame(maxWidth: 360)
         }
     }
+}
 
-    @ViewBuilder
-    private func checkboxes(kind: CalendarSourceInfo.Kind) -> some View {
+/// Календари и списки напоминаний галочками по учётным записям: какие
+/// показывать; у календаря встреч кружок — меню цвета (только в Trudaybook).
+/// Одни и те же — в настройках и в панели раздела «Календарь».
+struct CalendarCheckboxes: View {
+    @EnvironmentObject private var model: AppModel
+    let kind: CalendarSourceInfo.Kind
+
+    private func grouped(_ kind: CalendarSourceInfo.Kind) -> [(group: String, items: [CalendarSourceInfo])] {
+        let items = model.calendarSources.filter { $0.kind == kind }
+        // Порядок учётных записей: свои напрямую, iCloud, Exchange через macOS, остальное.
+        func rank(_ group: String) -> Int {
+            if group.hasPrefix("Exchange напрямую") { return 0 }
+            if group == "iCloud" { return 1 }
+            if group.hasPrefix("Exchange через macOS · учётная") { return 2 }
+            if group.hasPrefix("Exchange через macOS") { return 3 }
+            if group == "На этом Mac" { return 5 }
+            return 4
+        }
+        return Dictionary(grouping: items, by: \.group)
+            .map { ($0.key, $0.value.sorted { $0.title < $1.title }) }
+            .sorted { (rank($0.group), $0.group) < (rank($1.group), $1.group) }
+    }
+
+    var body: some View {
         let groups = grouped(kind)
         if groups.isEmpty {
             Text("Нет доступных").foregroundStyle(.secondary).font(.callout)

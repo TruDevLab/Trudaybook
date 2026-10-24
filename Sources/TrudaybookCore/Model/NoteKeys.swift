@@ -34,6 +34,50 @@ public enum NoteKeys {
         }
     }
 
+    /// Свободная заметка — без даты, со своим названием (первая строка).
+    /// Лежит в той же таблице, что и заметки периодов: редактор, запись
+    /// и сверка между окнами у них общие. В отметки календаря и в Trunook
+    /// не идёт — туда берутся только ключи дней.
+    public static let freePrefix = "note:"
+
+    public static func newFreeKey() -> String { freePrefix + UUID().uuidString }
+
+    public static func isFreeKey(_ key: String) -> Bool { key.hasPrefix(freePrefix) }
+
+    /// Период и его первый день по ключу: `2026-09-27`, `2026-W39`, `2026-09`.
+    /// У свободной заметки и у чужого ключа — `nil`.
+    public static func parse(_ key: String, calendar: Calendar = .current) -> (period: NotePeriod, date: Date)? {
+        let parts = key.split(separator: "-", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 2, parts[0].count == 4, let year = Int(parts[0]) else { return nil }
+        if parts.count == 3, isDayKey(key), let month = Int(parts[1]), let day = Int(parts[2]),
+           let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) {
+            return (.day, date)
+        }
+        if parts.count == 2, parts[1].hasPrefix("W"), let week = Int(parts[1].dropFirst()) {
+            let iso = isoCalendar(timeZone: calendar.timeZone)
+            guard let date = iso.date(from: DateComponents(weekOfYear: week, yearForWeekOfYear: year)) else { return nil }
+            return (.week, date)
+        }
+        if parts.count == 2, parts[1].count == 2, let month = Int(parts[1]), (1...12).contains(month),
+           let date = calendar.date(from: DateComponents(year: year, month: month, day: 1)) {
+            return (.month, date)
+        }
+        return nil
+    }
+
+    /// Название свободной заметки — первая непустая строка, без меток
+    /// списка, не длиннее 80 знаков. Пустая — `nil`.
+    public static func title(of text: String) -> String? {
+        let markers = [NoteMarkers.bullet, NoteMarkers.unchecked, NoteMarkers.checked, "- "]
+        for raw in text.split(whereSeparator: \.isNewline) {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            for marker in markers where line.hasPrefix(marker) { line.removeFirst(marker.count) }
+            guard !line.isEmpty else { continue }
+            return line.count > 80 ? String(line.prefix(79)) + "…" : line
+        }
+        return nil
+    }
+
     /// Ключ дня: ровно `ГГГГ-ММ-ДД`. Недели и месяцы в отметки календаря
     /// и в папку Trunook не идут.
     public static func isDayKey(_ key: String) -> Bool {

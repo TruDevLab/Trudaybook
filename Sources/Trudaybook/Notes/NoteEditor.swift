@@ -114,6 +114,9 @@ struct NoteEditorView: NSViewRepresentable {
     var inset = NSSize(width: 6, height: 8)
     /// Поле создано — можно загружать в него текст.
     var onAttach: (() -> Void)?
+    /// Белый лист: поле светлое и в тёмной теме — системный цвет текста
+    /// становится тёмным сам.
+    var paper = false
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -153,7 +156,10 @@ struct NoteEditorView: NSViewRepresentable {
         return scroll
     }
 
-    func updateNSView(_ view: NSScrollView, context: Context) {}
+    func updateNSView(_ view: NSScrollView, context: Context) {
+        let appearance = paper ? NSAppearance(named: .aqua) : nil
+        if view.appearance != appearance { view.appearance = appearance }
+    }
 }
 
 final class NoteTextView: NSTextView {

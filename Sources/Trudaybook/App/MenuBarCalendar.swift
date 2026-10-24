@@ -367,6 +367,7 @@ struct MenuBarCalendarView: View {
         close()
         model.show(day: item.time)
         model.selectedID = item.id
+        model.revealSelection()
         showMainWindow()
     }
 

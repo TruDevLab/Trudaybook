@@ -145,6 +145,13 @@ struct LaunchOptions {
     var keyProbe: String?
     /// Кнопка поиска для снимка: `--search-scope from|to|cc`.
     var searchScope: MailSearchQuery.Scope?
+    /// `--section mail|calendar|home|notes|phone` — открытый раздел окна.
+    var section: AppSection?
+    /// `--calendar year|month|week|day` — раздел «Календарь» с этим видом.
+    var calendarSpan: AppModel.CalendarSpan?
+    /// `--appearance light|dark` — светлое или тёмное окно для снимков README,
+    /// как бы ни была настроена система.
+    var appearance: String?
 
     static func parse(_ arguments: [String]) -> LaunchOptions {
         var options = LaunchOptions()
@@ -232,6 +239,11 @@ struct LaunchOptions {
             case "--list": options.list = iterator.next()
             case "--search": options.search = iterator.next()
             case "--settings": options.settings = iterator.next()
+            case "--section": options.section = iterator.next().flatMap(AppSection.init(rawValue:))
+            case "--appearance": options.appearance = iterator.next()
+            case "--calendar":
+                options.section = .calendar
+                options.calendarSpan = iterator.next().flatMap(AppModel.CalendarSpan.init(rawValue:))
             default: break
             }
         }
@@ -301,6 +313,17 @@ final class AppModel: ObservableObject {
     private var zoomedByHand = false
     /// Высота видимой части шкалы — от таймлайна, для подбора масштаба.
     private var timelineViewport: Double = 0
+    /// Сильнее не отдалить: сутки уже целиком в окне (00 сверху, 23 снизу) —
+    /// дальше под сеткой осталось бы пустое место без линий. Ставит видимая
+    /// шкала (день или неделя) по своей высоте.
+    @Published private(set) var hourWidthFloor: Double = TimelineScale.minHourWidth
+
+    func setHourWidthFloor(_ floor: Double) {
+        let value = min(max(floor, TimelineScale.minHourWidth), TimelineScale.maxHourWidth)
+        guard abs(value - hourWidthFloor) > 0.5 else { return }
+        hourWidthFloor = value
+        if hourWidth < value { hourWidth = value }
+    }
     /// Рабочий день — светлый участок шкалы; остальное чуть темнее.
     @Published var workStart = AppModel.storedInt("workDayStart", default: 8) {
         didSet { if !options.demo { UserDefaults.standard.set(workStart, forKey: "workDayStart") } }
@@ -323,6 +346,17 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.object(forKey: key) == nil ? value : UserDefaults.standard.integer(forKey: key)
     }
     /// Таймлайн под списком писем, месяцем и заметкой, а не над ними.
+    /// Избранные папки почты (до четырёх) — кнопки капсулы раздела «Почта»;
+    /// `unresolved` — «Не разобрано». `nil` — ещё не выбирали: тогда «Не
+    /// разобрано», Входящие, Отправленные, Архив (`favoriteMailFolders`).
+    @Published var mailFavorites: [String]? = UserDefaults.standard.stringArray(forKey: "mailFavorites") {
+        didSet { if !options.demo { UserDefaults.standard.set(mailFavorites, forKey: "mailFavorites") } }
+    }
+    /// Раздел главного окна. Помнится: открыли календарь — с него и начнётся
+    /// следующий запуск.
+    @Published var section = UserDefaults.standard.string(forKey: "section").flatMap(AppSection.init(rawValue:)) ?? .home {
+        didSet { if !options.demo { UserDefaults.standard.set(section.rawValue, forKey: "section") } }
+    }
     @Published var timelineAtBottom = UserDefaults.standard.bool(forKey: "timelineAtBottom") {
         didSet { if !options.demo { UserDefaults.standard.set(timelineAtBottom, forKey: "timelineAtBottom") } }
     }
@@ -449,6 +483,44 @@ final class AppModel: ObservableObject {
             Task { await reload() }
         }
     }
+    /// Вид раздела «Календарь». Неделя и день — те же, что на домашней
+    /// (`timelineSpan`): данные грузятся под них.
+    enum CalendarSpan: String, CaseIterable { case year, month, week, day }
+    @Published private(set) var calendarSpan = CalendarSpan(rawValue: UserDefaults.standard.string(forKey: "calendarSpan") ?? "") ?? .month {
+        didSet { if !options.demo { UserDefaults.standard.set(calendarSpan.rawValue, forKey: "calendarSpan") } }
+    }
+    /// Встречи и напоминания видимого месяца — для его сетки.
+    @Published private(set) var monthItems: [TimelineItem] = []
+    /// Растёт после каждой загрузки: сетка месяца перечитывает свои дни.
+    @Published private(set) var calendarRevision = 0
+
+    func showCalendar(_ span: CalendarSpan) {
+        if span != calendarSpan { DebugLog.write("календарь: вид \(span.rawValue)") }
+        withAnimation(Motion.quick) { calendarSpan = span }
+        switch span {
+        case .day: timelineSpan = .day
+        case .week: timelineSpan = .week
+        case .month, .year: break
+        }
+    }
+
+    /// Стрелки раздела «Календарь» — на шаг его вида.
+    func shiftCalendar(_ offset: Int) {
+        switch calendarSpan {
+        case .day, .week: shiftDay(offset)
+        case .month: if let target = calendar.date(byAdding: .month, value: offset, to: day) { show(day: target) }
+        case .year: if let target = calendar.date(byAdding: .year, value: offset, to: day) { show(day: target) }
+        }
+    }
+
+    func loadMonthItems(from start: Date, to end: Date) async {
+        let items = decorate(await calendarSource.items(from: start, to: end))
+        guard !Task.isCancelled else { return }
+        monthItems = items
+        // Щелчок по встрече в сетке открывает её справа — её ищут по номеру.
+        for item in items where byID[item.id] == nil { byID[item.id] = item }
+    }
+
     /// В неделе — только рабочие дни, пн–пт.
     @Published var workWeekOnly = UserDefaults.standard.bool(forKey: "workWeekOnly") {
         didSet {
@@ -866,6 +938,7 @@ final class AppModel: ObservableObject {
 
     init(options: LaunchOptions) {
         self.options = options
+        if let section = options.section { self.section = section }
         ai = LocalAI(demo: options.demo)
         phone = PhoneService(demo: options.demo)
         let offset = options.fixedNow.map { $0.timeIntervalSinceNow } ?? 0
@@ -914,6 +987,11 @@ final class AppModel: ObservableObject {
                 }
             }
             timelineSpan = options.week ? .week : .day
+            if let span = options.calendarSpan {
+                calendarSpan = span
+                if span == .week { timelineSpan = .week }
+                if span == .day { timelineSpan = .day }
+            }
             workWeekOnly = options.workWeek
             if let mode = options.weekMode.flatMap(WeekMode.init(rawValue:)) { weekMode = mode }
         }
@@ -1143,6 +1221,7 @@ final class AppModel: ObservableObject {
         weekItems = decorate(weekItems)
         events = decorate(events)
         recompute()
+        calendarRevision += 1
     }
 
     /// Письма, которые переносятся в архив прямо сейчас.
@@ -1178,7 +1257,7 @@ final class AppModel: ObservableObject {
             .sorted { StatusRules.effectiveTime(of: $0, local: states[$0.id]) > StatusRules.effectiveTime(of: $1, local: states[$1.id]) }
         // Письма из папок и найденное тоже открываются в правой панели.
         let listed = folderItems + (searchResults ?? []) + liveMatches
-        byID = Dictionary((allMail + events + weekItems + overdue + listed).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        byID = Dictionary((allMail + events + weekItems + overdue + listed + monthItems).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         trunook.publishState()
         publishWidgets()
         refreshCancellations()
@@ -1793,6 +1872,9 @@ final class AppModel: ObservableObject {
         saveNote(text, rich: nil, key: ItemStateStore.dayKey(day, calendar: calendar))
     }
 
+    /// Все заметки — для раздела «Заметки». Текст не логируется.
+    func allNotes() -> [StoredNote] { store.allNotes() }
+
     /// Заметка дня, недели или месяца: текст и оформление (RTF).
     func noteContent(_ key: String) -> (text: String, rich: Data?) {
         (store.note(for: key), store.richNote(for: key))
@@ -1844,6 +1926,14 @@ final class AppModel: ObservableObject {
         for (key, text) in Demo.dayNotes(around: now, calendar: calendar) where store.note(for: key).isEmpty {
             try? store.setNote(text, for: key, now: now)
             noteDays.insert(key)
+        }
+        // Свои заметки — для раздела «Заметки».
+        let free = [
+            ("demo-1", String(localized: "Идеи к квартальному плану\nСократить согласования до двух кругов\nЗапросить бюджет на подрядчиков")),
+            ("demo-2", String(localized: "Список покупок\n• Хлеб\n• Молоко\n• Кофе")),
+        ]
+        for (index, (id, text)) in free.enumerated() where store.note(for: NoteKeys.freePrefix + id).isEmpty {
+            try? store.setNote(text, for: NoteKeys.freePrefix + id, now: now.addingTimeInterval(Double(-3600 * (index + 1))))
         }
     }
 
@@ -3146,6 +3236,22 @@ final class AppModel: ObservableObject {
 
     /// Новая встреча там, куда бросили «+» или где подержали мышь: время —
     /// вниз до четверти часа, затем окно редактирования.
+    /// Бросок в клетку дня месяца: на весь день — на весь этот день,
+    /// со временем — на этот день в то же время.
+    func drop(_ id: String, onDay day: Date) {
+        guard let item = item(id) else {
+            DebugLog.write("бросок в день месяца: элемент не найден")
+            return
+        }
+        if item.isAllDay {
+            dropAllDay(id, on: day)
+            return
+        }
+        let time = calendar.dateComponents([.hour, .minute], from: item.time)
+        guard let date = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: day) else { return }
+        dropItem(id, at: date)
+    }
+
     func startNewEvent(dropped date: Date) {
         startNewEvent(at: Self.snapToQuarter(date))
     }
@@ -3982,8 +4088,16 @@ final class AppModel: ObservableObject {
         item.mail?.isRead == true || readHere.contains(item.id)
     }
 
+    /// В заметках и телефоне выбранного не видно — открытое извне
+    /// (уведомление, Trunook, строка меню) показывается на домашней.
+    /// Почта и календарь показывают выбранное справа сами.
+    func revealSelection() {
+        if section == .notes || section == .phone { show(.home) }
+    }
+
     /// Открыть элемент из уведомления: его день и его карточку (и ответ).
     func open(itemID: String, reply: Bool = false, prefill: String? = nil) {
+        revealSelection()
         Task {
             if let item = item(itemID) { show(day: effectiveTime(of: item)) }
             await reload()
@@ -3995,6 +4109,7 @@ final class AppModel: ObservableObject {
     /// «Ответить всем» или «Переслать» из превью письма в Trunook: день
     /// письма, его карточка и черновик.
     func openCompose(itemID: String, forward: Bool) {
+        revealSelection()
         Task {
             if let item = item(itemID) { show(day: effectiveTime(of: item)) }
             await reload()
@@ -4126,7 +4241,7 @@ final class AppModel: ObservableObject {
     /// Масштаб руками — кнопками, клавишами или щипком.
     func setHourWidth(_ value: Double) {
         zoomedByHand = true
-        hourWidth = TimelineScale.clampHourWidth(value)
+        hourWidth = max(TimelineScale.clampHourWidth(value), hourWidthFloor)
     }
 
     /// Шкала дня — под высоту таймлайна: видно `visibleHours` часов.
@@ -4135,7 +4250,7 @@ final class AppModel: ObservableObject {
         guard height > 0 else { return }
         timelineViewport = height
         guard !zoomedByHand else { return }
-        let fitted = TimelineScale.clampHourWidth(height * 2 / Double(max(visibleHours, 1)))
+        let fitted = max(TimelineScale.clampHourWidth(height * 2 / Double(max(visibleHours, 1))), hourWidthFloor)
         if abs(fitted - hourWidth) > 0.5 { hourWidth = fitted }
     }
 

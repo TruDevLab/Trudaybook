@@ -164,4 +164,9 @@ enum Motion {
     static var quick: Animation { SystemLook.reduceMotion ? .linear(duration: 0.1) : .easeOut(duration: 0.15) }
     /// Перестановка блоков: выезд панели, раскрытие раздела.
     static var move: Animation { SystemLook.reduceMotion ? .linear(duration: 0.1) : .spring(duration: 0.35, bounce: 0) }
+    /// Ползунок выбора переезжает к новой кнопке — с лёгким отскоком, как
+    /// стеклянная линза в системных панелях.
+    static var slide: Animation { SystemLook.reduceMotion ? .linear(duration: 0.1) : .spring(duration: 0.4, bounce: 0.2) }
+    /// Ползунок за курсором, пока его тянут: почти без запаздывания.
+    static var follow: Animation { SystemLook.reduceMotion ? .linear(duration: 0.05) : .interactiveSpring(response: 0.18, dampingFraction: 0.86) }
 }

@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = AppModel(options: LaunchOptions.parse(CommandLine.arguments))
         self.model = model
+        if model.options.demo, let appearance = model.options.appearance {
+            NSApp.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+        }
         NSApp.mainMenu = MainMenu.build(model: model)
         // AppKit дописывает свои пункты при первом показе меню — проверять после.
         DispatchQueue.main.async { ShortcutsWindow.logDuplicates() }
@@ -51,8 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.toolbar = NSToolbar(identifier: "TrudaybookMain")
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .none
-        // Таймлайну — 900, правой панели — 380 (см. `MainView`).
-        window.minSize = NSSize(width: 1300, height: 780)
+        // Панели разделов — 56, таймлайну — 900, правой панели — 380 (см. `MainView`).
+        window.minSize = NSSize(width: 1360, height: 780)
         // Нажатие в неактивном окне — сразу и нажатие: письмо или встречу из
         // фонового окна иначе удавалось выбрать или утащить только со второго раза.
         window.contentView = NSHostingView(rootView: MainView().environmentObject(model).allowsWindowActivationEvents(true))
@@ -362,6 +365,15 @@ enum MainMenu {
         main.addItem(submenu(String(localized: "Действия"), actions + [.separator()] + letterItems + [.separator(), submenu(String(localized: "Приоритет"), priorityItems),
             ClosureItem(String(localized: "Сортировать по приоритету"), key: "", on: { model.sortByPriority }) { model.sortByPriority.toggle() }]))
 
+        // Разделы окна — ⌃⌘1…⌃⌘5: ⌘1…⌘3 у приоритета, ⌥⌘1 и ⌥⌘2 у дня и недели.
+        main.addItem(submenu(String(localized: "Разделы"), AppSection.byKey.map { section in
+            ClosureItem(section.title, key: section.key, modifiers: [.command, .control],
+                        on: { model.section == section }) {
+                NSApp.windows.first { $0 is MainWindow }?.makeKeyAndOrderFront(nil)
+                model.show(section)
+            }
+        }))
+
         main.addItem(submenu(String(localized: "День"), [
             ClosureItem(String(localized: "Сегодня"), key: "t") { model.showToday() },
             ClosureItem(String(localized: "Предыдущий день"), key: "[") { model.shiftDay(-1) },
@@ -384,8 +396,13 @@ enum MainMenu {
                 withAnimation(Motion.move) { model.assistantOpen.toggle() }
             },
             ClosureItem(String(localized: "Телефон"), key: "p", modifiers: [.command, .option],
-                        on: { model.phoneOpen }) {
-                withAnimation(Motion.quick) { model.phoneOpen.toggle() }
+                        on: { model.phoneOpen || model.section == .phone }) {
+                // На домашней — панель справа, в других разделах — свой раздел.
+                if model.section == .home {
+                    withAnimation(Motion.quick) { model.phoneOpen.toggle() }
+                } else {
+                    model.show(.phone)
+                }
             },
             ClosureItem(String(localized: "Таймлайн внизу окна"), key: "b", modifiers: [.command, .option],
                         on: { model.timelineAtBottom }) {

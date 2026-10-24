@@ -172,6 +172,17 @@ public final class ItemStateStore {
         return result
     }
 
+    /// Все заметки — дней, недель, месяцев и свободные, — свежие первыми.
+    /// Для списка в разделе «Заметки».
+    public func allNotes() -> [StoredNote] {
+        var notes: [StoredNote] = []
+        db.query("SELECT day, text, updated_at FROM day_notes ORDER BY updated_at DESC") { row in
+            guard let key = row.text(0) else { return }
+            notes.append(StoredNote(key: key, text: row.text(1) ?? "", updated: row.date(2) ?? .distantPast))
+        }
+        return notes
+    }
+
     /// Дни, у которых есть заметка, — для отметки в календаре месяца.
     /// Заметки недель и месяцев сюда не попадают.
     public func daysWithNotes() -> Set<String> {
@@ -309,5 +320,19 @@ public final class ItemStateStore {
         let cutoff = Calendar.current.startOfDay(for: now).addingTimeInterval(-Double(days) * 86_400)
         try? setMeta("mail_cutoff", String(cutoff.timeIntervalSince1970))
         return cutoff
+    }
+}
+
+/// Заметка из базы: ключ (день, неделя, месяц или `note:…`), простой текст
+/// и когда её правили.
+public struct StoredNote: Equatable, Sendable {
+    public let key: String
+    public let text: String
+    public let updated: Date
+
+    public init(key: String, text: String, updated: Date) {
+        self.key = key
+        self.text = text
+        self.updated = updated
     }
 }

@@ -29,7 +29,13 @@ struct MainView: View {
     /// от зелёной и сливалась с ними.
     static let windowButtonsWidth: Double = 82
 
-    var body: some View {
+    /// Панель действий и строка раздела начинаются правее панели разделов,
+    /// но первая кнопка — всё там же, после кнопок окна.
+    static let barLeading: Double = max(0, windowButtonsWidth - SectionSidebar.column)
+
+    /// Домашняя: таймлайн, список, месяц и заметка слева, справа — чат
+    /// и выбранное.
+    private var home: some View {
         GeometryReader { geometry in
             // Правой панели — сколько просили, но таймлайну оставить его минимум.
             let limit = max(Self.minInspectorWidth, geometry.size.width - Self.minTimelineWidth - Self.gap)
@@ -52,9 +58,32 @@ struct MainView: View {
                     .padding([.top, .trailing, .bottom], Self.gap)
             }
         }
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SectionSidebar()
+            // Раздел собирается заново при переходе: спрятанная домашняя
+            // держала бы фокус и колёсико у невидимых полей.
+            ZStack {
+                switch model.section {
+                case .home:
+                    home.transition(.opacity)
+                case .calendar:
+                    CalendarSectionView().transition(.opacity)
+                case .mail:
+                    MailSectionView().transition(.opacity)
+                case .notes:
+                    NotesSectionView().transition(.opacity)
+                case .phone:
+                    PhoneSectionView().transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
         // Место заголовка окна — тоже наше (см. `applicationDidFinishLaunching`).
         .ignoresSafeArea(.container, edges: .top)
-        .frame(minWidth: Self.minTimelineWidth + Self.minInspectorWidth + Self.gap)
+        .frame(minWidth: SectionSidebar.column + Self.minTimelineWidth + Self.minInspectorWidth + Self.gap)
         // Свой фон (цвет, градиент, картинка, сияние) и под него — светлое
         // или тёмное окно.
         .background {
@@ -451,7 +480,7 @@ struct ActionBar: View {
                 .tourSpot(.create)
         }
         .padding(.horizontal, Space.sm)
-        .padding(.leading, MainView.windowButtonsWidth)
+        .padding(.leading, MainView.barLeading)
         .frame(height: MainView.barHeight)
         // Пустые места панели двигают окно — как заголовок, которого больше нет.
         .background(Color.clear.windowDragArea())
@@ -474,7 +503,7 @@ struct ActionBar: View {
 
 /// Какая почта и как у неё дела: адрес (или число ящиков), время
 /// обновления или ошибка.
-private struct MailStatus: View {
+struct MailStatus: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {

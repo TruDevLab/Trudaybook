@@ -2,261 +2,147 @@
 
 [Русский](README.md) · **English** · [简体中文](README.zh.md)
 
-Mail and calendar on one day timeline. Emails sit where they arrived,
-meetings where they start, and everything you haven't handled piles up
-in one list until you clear it.
+A macOS workspace: mail, calendar, notes and phone in one window. At its
+heart is the day timeline: emails sit where they arrived, meetings where
+they start, and everything still to sort piles up in one list until you
+clear it.
 
-![Day: emails and meetings on the timeline](docs/day-en.png)
+![Home: emails and meetings on the day timeline](docs/day-en.png)
 
 **Everything stays on your Mac.** Mail comes straight from your mail
-servers, passwords live in the macOS Keychain, and the app has no server
-of its own. What goes out and where is listed [in its own section](#what-leaves-your-mac).
+servers, passwords live in the macOS Keychain, AI runs on this same Mac,
+and the app has no server of its own. What goes where —
+[in a separate section](#what-leaves-your-mac).
 
 ---
 
 ## Contents
 
-- [How the day works](#how-the-day-works)
-- [Week](#week)
-- [Features](#features)
-- [Keyboard shortcuts](#keyboard-shortcuts)
+- [Home](#home) · [Mail](#mail) · [Calendar](#calendar) · [Notes](#notes) ·
+  [Phone](#phone)
+- [Assistant on this Mac](#assistant-on-this-mac) · [More](#more) ·
+  [Keyboard shortcuts](#keyboard-shortcuts)
 - [What leaves your Mac](#what-leaves-your-mac)
 - [Install](#install) · [Requirements](#requirements) ·
   [Limitations](#limitations) · [Development](#development)
 
 ---
 
-## How the day works
+## Home
 
-An hour scale runs across the top. The upper lane holds emails, placed by
-arrival time; close ones stack into a “+N” bundle. The lower lane holds
-meetings as blocks as long as they last, and reminders with a “done” circle.
+On the left is the section bar: Home, Mail, Calendar, Notes and Phone
+(⌃⌘1–⌃⌘5). Below it is “Now”: the date, the weather and the next meeting
+with a join button; at the bottom — the assistant and settings.
 
-Drag anything onto **Archive**, **Reply** or **Snooze** — or straight onto
-the timeline, to a new time. Handled items fade and get a checkmark.
-Everything unhandled from all days waits at the bottom in **To handle**:
-Inbox Zero. A snoozed email leaves that list and comes back at the hour
-you chose.
-
-On the right: the whole email or meeting (the 📄 button next to the priority flag
-shows the email on a white sheet in any theme; it is also in the email window and the
-reply window, and the choice is remembered). Reply, Reply All and Forward (⇧⌘F) are in
-the right panel, the email window and the toolbar. Replies with formatting,
-attachments, invitations with Accept and Decline (and, on someone else's
-meeting in the calendar, Your response: accept, maybe, decline or propose a
-new time — no need to look for the invitation email), attendees and the online
-meeting link.
-
-Swipe two fingers on the trackpad to go to the next or previous day (week in
-the week view), with the “‹ Today ›” buttons, or with ⌘[ and ⌘]. Hours run top to
-bottom. The timeline can also sit below the email list: drag it by the ≡ handle left
-of the date, or press ⌥⌘B. One day at a time: emails on the left, meetings and
-reminders in the middle (no wider than 420 points), hourly weather on the right.
-Above the columns is an all-day strip, which also holds
-meetings of a day or longer (a vacation, a business trip) on each of their days; drop a meeting
-or reminder onto it (or onto a week-day header) to make it all-day — while you
-drag, the strips are outlined; an all-day reminder stays out of To handle until its day
-is over. Drop “Create” onto a strip, or drag a
-press-and-hold placeholder into it, for a new all-day meeting. Working hours are lighter; which hours
-they are and how many hours you see at once (6 by default) — Settings →
-Calendars → Timeline. A checkmark on an email or a bundle means handled;
-a past meeting simply fades. A meeting card shows, when there is room, who set it
-up and how many people attend. Color a meeting, a whole series or a whole calendar with “Color” in
-the right-click menu, the calendar-name button in the right panel or the calendar’s
-color dot in Settings → Calendars; the color is yours only, the calendar doesn’t
-change. A stripe of the calendar’s color runs down the left of each card. An unanswered meeting is pale, outlined
-with a dashed line and marked “?”; a cancelled one is grey and struck through.
-While nothing is selected, the right panel shows a day summary: upcoming meetings,
-unhandled mail, reminders and the week ahead day by day. Clicking an empty spot in
-the calendar or the email list clears the selection and brings the summary back.
-
-## Week
-
-![Week](docs/week-en.png)
-
-Days as columns, hours top to bottom. Above the calendar you choose what
-it shows:
-
-| Mode | On the calendar |
-|---|---|
-| **Events** | Meetings and reminders |
-| **Emails** | Each day's emails by time |
-| **Weather** | Hourly weather, blue for the chance of rain |
-
-Next to it — **“5 days | 7 days”**. Each day's header shows the weather and
-the count of unhandled emails. Meetings you haven't answered, or answered
-“tentative”, are pale, outlined with a dashed line and marked “?”.
-
-![Hourly weather](docs/weather-en.png)
+Home has everything together. At the top is the day timeline: emails,
+meetings and reminders by the hour. Drag any item onto **Archive**,
+**Reply**, **Snooze** — or straight onto the timeline, to a new time. Below
+are **To sort** for all days (Inbox Zero), the month and the day note. On the
+right — the selected email or meeting in full, and with nothing selected,
+a summary of the day: meetings ahead, mail to sort, reminders and the week
+ahead.
 
 ---
 
-## Features
+## Mail
 
-**Mail**
+![The Mail section: folder tree, list, email](docs/mail-en.png)
+
 - iCloud, Gmail, Yandex, Mail.ru and any IMAP/SMTP server; corporate
-  Exchange directly over EWS (NTLM sign-in). Several mailboxes at once.
-- Mailbox folders with date sections. Search by subject, sender, recipients
-  and Cc; the “From”, “To”, “Cc” buttons (or `from:`, `to:`, `cc:`) narrow it
-  to one field; Return searches the full text on the server.
-- Conversations: emails of one thread in a single expandable row (turn it on
-  in Settings); archiving the first email archives the whole thread. Each row
-  shows whether you are a recipient (“Me”, red if only you) or in Cc.
-- Replies and new emails with formatting (bold, italic, font and size, text and
-  background color, lists, tables), quotes and attachments; recipients
-  as chips with address book suggestions, Bcc on demand; a signature per mailbox,
-  with formatting (font, size, color) and an image such as a logo, sent inside the email.
-  Drafts save themselves to the mailbox’s Drafts — a few seconds after an edit and
-  when the message is closed; Cancel asks whether to keep the draft. Continue a draft
-  from the folder with a double-click or “Continue Draft”. A started reply shows
-  right at its email — a “Reply draft” banner with “Continue” and a ✎ in the list;
-  Reply also continues it instead of starting over.
-- Priorities (yours and the sender's); swipe actions on list rows — which
-  ones is up to you in Settings.
-- Meeting invitations: a card with that day's calendar and answer buttons.
-- Open an email in its own window (double-click in the list or ⌘O), side by
-  side with others; `.eml` files from Finder open in the same kind of window.
-- Save a whole email as an `.eml` file with a button (⇧⌘S) or drag it to Finder.
-- Several emails at once: ⇧ for a range, ⌘ one by one; then archive them or
-  move them to the mailbox Trash (⌫).
-- Right-click an email, meeting or reminder for a menu of the main actions.
-- Pick which toolbar buttons to show and in what order in Settings →
-  Appearance; “New” sits on the right.
+  Exchange directly over EWS. Several mailboxes at once.
+- Folders as a tree; four favorites as buttons at the bottom (by default
+  To sort, Inbox, Sent, Archive).
+- Search by subject and people, and on the server — by message text.
+- Replies with formatting, attachments and a signature; drafts save themselves.
+- Priorities, swipes on a row, several emails at once, undo for archive and
+  delete (⌘Z).
 
-**Calendar**
+---
+
+## Calendar
+
+![The Calendar section: a month with meetings](docs/calendar-en.png)
+
+- Year, month, week and day; week numbers; which calendars to show and their
+  colors — in the panel on the right.
 - macOS calendars (iCloud, Google, Exchange via Internet Accounts) and
-  Exchange directly.
-- New meeting or email: drag “Create” from the toolbar onto the meetings lane
-  (the meeting starts where you drop it) or onto the mail lane; or press and
-  hold on an empty spot. While you drag a meeting you see where it will land;
-  moving a meeting with attendees asks for confirmation first.
-  An editor with repeat, attendees, location and a free/busy planner.
-- Double-click a meeting to edit it — the editor is its own window you can
-  move aside to keep the timeline in view.
-- macOS reminders on the timeline, checked off with one click.
-- The month title expands into the whole year by quarters, with week numbers;
-  click a day to open it on the timeline.
-- A note for every day under the month calendar, and in its own window (⌘J)
-  with formatting, lists and checklists; notes for the week and the month.
+  Exchange directly; macOS reminders on the timeline.
+- A new meeting — ＋, or drag ＋ onto the day and hour you want. An editor
+  with recurrence, attendees and their availability.
+- Respond to an invitation right in the meeting: accept, tentative, decline,
+  propose another time.
+- Join an online meeting with one button (Zoom, Teams, Telemost); ⌃⌥⌘J —
+  from any app.
 
-**Menu bar** — an icon with today's date: the month with week numbers, the
-day's meetings (the current or next one in focus — Return joins it) and a
-“Join” button for online meetings. ⌃⌥⌘J from any app joins the current or
-next meeting. Zoom, Teams and Telemost meetings open straight in their app if
-it's installed (the link goes only to an app signed by that service); others
-open in the browser. Turn it off in Settings → Calendars.
+---
 
-**Desktop widgets** — “Today” (upcoming meetings with a countdown, reminders,
-weather) and “To Handle” (how many emails are waiting and which matter):
-right-click the desktop → “Edit Widgets…”.
+## Notes
 
-**Defaults** — make Trudaybook your default mail app (“send email” links open
-a new message) and default calendar (`.ics` files open as a new event):
-Settings → Mail and → Calendars. Weather without Trunook comes straight from
-Open-Meteo, by city or by location.
+![The Notes section](docs/notes-en.png)
 
-**Notifications** — for new emails in macOS Notification Center; “Reply”
-right in the notification sends the answer without opening the window.
+- Daily, weekly and monthly notes, and free ones — titled by their first line.
+- Formatting, lists, checkboxes, tables; a white sheet in dark mode.
+- A day agenda and week or month summaries — by a model on this Mac.
 
-**Look** — Liquid Glass on macOS 26, light and dark, calm gradients and
-texture backgrounds, your own picture as a background. The Sky theme follows
-the time of day and the weather: the moon in its phase and stars at night,
-the sun, clouds, rain, snow, fog and storms by day; optionally the seasons:
-falling leaves in autumn, frost on the glass in winter, trees in bloom in
-spring, flowers in summer. Russian, English
-and Chinese interface.
+---
 
-**Tutorial** — on first launch Trudaybook walks you through the essentials on
-sample emails and meetings, including the assistant chat: tiles, attached
-emails, voice and the cards you confirm yourself, plus the phone: dialing,
-recents and saved numbers. You can skip it and take it again from Help → Trudaybook Tutorial or Settings → Appearance.
+## Phone
 
-**AI on this Mac** — through [Ollama](https://ollama.com) (free; Trudaybook
-offers to install it and download a suitable model itself, Settings → AI):
-- **assistant chat**: the question field always sits above the selected email
-  or meeting — just type, and after sending the chat expands with the answer;
-  the button left of the field or ⌥⌘A opens it too. The divider between the
-  chat and the email is draggable; it starts with tiles
-  of ready requests (My day, Awaiting reply, Summarize email, Meeting prep,
-  Reminder…); conversations in tabs,
-  questions about meetings, emails and the daily note, “what do I have today”,
-  “what did Orlov write”; attach an email or a meeting (`/mail` or `/cal` plus words from the subject) or a file (an image too, if
-  the model sees images) or dictate the question — speech is recognized on this
-  Mac. A reminder, meeting, email or daily-note entry is only **suggested as a
-  card** — you create and send it; the email opens in a separate window;
-- above each email there's a collapsed “Summary” bar: expand it and the model
-  summarizes the email; “To handle” gets labels — Important, Conversation,
-  Notifications, Newsletters — with a filter (newsletters and notifications
-  show up even without the model, from the email's headers);
-- “Daily Agenda” in the note window: key items for the day, meetings with a
-  Minutes section and emails from attendees, reminders, important emails;
-  week and month summaries from your daily notes;
-- “Prepare reply template” in the ✨ menu of the reply window: the model reads the email and
-  the earlier conversation and drafts a reply that answers every question;
-  it makes no decisions for you — those are left as [placeholders];
-- ✨ in the message window (and “AI” in the right-click menu) edits the selection:
-  fix mistakes, improve the writing, format and structure, make it shorter,
-  a formal or friendly tone; the new text replaces the selection, ⌘Z undoes it;
-- “Summarize Selection” in the right-click menu of an email or a meeting
-  description — a summary of the selected passage pops up next to it.
+![The Phone section](docs/phone-en.png)
 
-**SIP phone** (Settings → Phone, off by default) — calls through your PBX right
-in Trudaybook. The Phone button (⌥⌘P) opens a dialer with a keypad, recent
-calls and saved numbers with favorites on the right; give a number a name and
-it shows up that way in calls and the log. Incoming calls appear in a small
-window in the top-right corner above all windows, with a ringtone; missed calls
-show as a count on the button. During a call: mute, touch tones and echo
-cancellation; switch the microphone and speaker right in the phone, even
-mid-call. UDP, TCP or TLS; with TLS the call is encrypted (SRTP).
+Calls through your company's PBX (SIP) right in Trudaybook — turn it on in
+Settings → Phone. The call log, the dialer, saved and favorite numbers; the
+microphone and speaker are shown under the dialer and can be changed even
+mid-call. An incoming call shows a small window above all others. With TLS
+the call is encrypted.
 
-**Together with [Trunook](https://github.com/TruDevLab/Trunook)** — a MacBook
-notch app by the same author (optional, all off by default):
-- emails, invitations, upcoming meetings and snoozed emails coming back —
-  as banners in the notch; an email can be read as a preview right there —
-  Reply All, Archive, Forward, In 1 hour — and an invitation shows what it
-  overlaps with;
-- a Mail tile and emails on Trunook's day timeline;
-- while a Trunook timer runs, Trudaybook stays quiet and then sends one
-  summary notification;
-- a shared day note;
-- incoming calls of the Trudaybook phone — as a banner with Answer and Decline;
-- weather in the calendar and for the Sky theme comes from Trunook.
+---
+
+## Assistant on this Mac
+
+Through [Ollama](https://ollama.com) — free, and Trudaybook offers to install
+it (Settings → AI). Emails and notes go nowhere.
+
+- **Chat** knows your meetings, emails, reminders and notes; tiles with ready
+  requests (“My day”, “Awaiting reply”, “Summarize email”), questions by voice.
+  A reminder, meeting or email is only **offered as a card** — you create
+  and send it. ⌥⌘A — in any section.
+- **Email summary**, labels “Important”, “Conversation”, “Notifications”,
+  “Newsletters”.
+- **Reply template** and **editing a selection**: fix mistakes, shorten,
+  change the tone.
+
+---
+
+## More
+
+- **Menu bar** — the month, today's meetings and “Join”.
+- **Widgets** “Today” and “To sort” on the desktop.
+- **Notifications** for new emails, with a reply right from the notification.
+- **Look** — Liquid Glass on macOS 26, light and dark, backgrounds and the
+  “Sky” theme that follows the time of day and the weather. Russian, English
+  and Chinese.
+- **Tutorial** on first launch, on sample data; repeat it from the profile
+  menu or Help.
+- **Together with [Trunook](https://github.com/TruDevLab/Trunook)** (optional) —
+  emails and calls as banners in the MacBook notch, a shared day note, weather.
 
 ---
 
 ## Keyboard shortcuts
 
-| Keys | Action |
+| Keys | What it does |
 |---|---|
-| ⌘Z / ⇧⌘Z | Undo / redo: archive, trash, reschedule, priority, marks |
-| ⌘N / ⇧⌘N / ⌥⌘N | New email / event / reminder |
-| ⌘E | Archive |
-| ⌘R / ⇧⌘R | Reply / reply all |
-| ⇧⌘F | Forward |
+| ⌃⌘1 … ⌃⌘5 | Home, Mail, Calendar, Notes, Phone |
+| ⌘N / ⇧⌘N / ⌥⌘N | New email / meeting / reminder |
+| ⌘E / ⌘R / ⇧⌘F | Archive / reply / forward |
 | ⌘S | Snooze or reschedule |
-| ⌘D | Decline a meeting |
-| ⌘1 ⌘2 ⌘3 / ⌘0 | High, medium, low priority / clear (in the list, just 1 2 3 0) |
-| ⌘O or ↩ | Email in its own window |
-| ⌘P | Print the email |
-| ⌫ | Move to Trash |
-| Esc | Deselect — back to the day summary |
-| ⌘F | Search mail; in an email, reply or note — find in text, ⌘G / ⇧⌘G — next / previous |
-| ⌘T | Today |
-| ⌘J | Note in a window |
-| ⌃⌥⌘J | Join the current or next meeting (from any app) |
-| ⌘[ / ⌘] | Previous / next day (week in week view) |
-| ⌘= / ⌘− | Zoom in / out |
-| ⌥⌘1 / ⌥⌘2 | Day / week |
-| ⌥⌘B | Timeline at the bottom of the window |
-| ⌥⌘A / ⌥⌘P | Assistant chat / phone |
-| ⇧⌘H | Hide / show handled emails on the timeline |
-| ↑ ↓ | Neighbouring item (with ⇧ — select several) |
-| ⌘W | Hide the main window — mail and reminders keep working |
+| ⌘Z / ⇧⌘Z | Undo / redo |
+| ⌘F | Search |
+| ⌘T / ⌘[ / ⌘] | Today / previous / next day |
+| ⌥⌘A / ⌥⌘P | Assistant / phone |
+| ⌃⌥⌘J | Join a meeting (from any app) |
 | ⌘/ | All keyboard shortcuts |
-
-Archive and Trash reach the server after 10 seconds: while the Undo banner
-is visible at the bottom of the window, ⌘Z brings the email back and nothing
-changes on the server.
 
 ---
 
@@ -271,17 +157,16 @@ changes on the server.
 - **Remote images in emails** don't load until you click “Load” above the email —
   otherwise the sender would learn you opened the email. JavaScript in emails
   is always off.
-  An image inside the email itself opens with a click (or right-click → “Open
-  Image”, “Save Image…”) — in Preview, like an attachment.
 - **Passwords** — in the macOS Keychain, never written to the log. The mail
   cache on disk is encrypted with a key kept in the Keychain.
 - **Weather** comes from Trunook, if installed. Without it — only if you turn it
   on in Settings → Calendars → Weather: then the forecast is requested from
   Open-Meteo with coordinates rounded to about 10 km, or by city name.
-- **Summaries, labels, agendas, week summaries, reply templates and the chat** come only
-  from an Ollama model on this Mac (`127.0.0.1`); Ollama cloud models are never
-  offered or used, so neither emails nor notes go anywhere. The only downloads
-  are Ollama itself (ollama.com) and models — when you press the button.
+- **AI** — only an Ollama model on this Mac (`127.0.0.1`); Ollama cloud models
+  are never offered or used. The only downloads are Ollama itself (ollama.com)
+  and models — when you press the button.
+- **A response to an invitation** — to Exchange as a command to your own
+  server; for a macOS calendar — as an email to the organizer from your mailbox.
 - The **SIP phone** connects only to the PBX you entered; audio goes directly
   to the other party or through the PBX. Without TLS, numbers and the call travel
   unencrypted — choose TLS for calls over the internet. The password is in
