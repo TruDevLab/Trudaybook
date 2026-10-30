@@ -155,6 +155,10 @@ public protocol MailProvider: AnyObject, Sendable {
     /// В «Корзину» ящика — не стереть навсегда: письмо можно вернуть
     /// из «Корзины» здесь же или в любой почте. С таймлайна оно уходит.
     func trash(_ itemID: String) async throws
+    /// Вернуть письмо из другой папки (архив, своя папка) во Входящие.
+    /// `messageID` — чтобы убрать из кэша Входящих прежнюю копию, которую
+    /// мы сами когда-то унесли в архив: иначе на таймлайне их будет две.
+    func moveToInbox(_ itemID: String, messageID: String?) async throws
     /// Отправить. Если это ответ, `itemID` — исходное письмо: сервер
     /// пометит его отвеченным.
     func send(_ mail: OutgoingMail, replyingTo itemID: String?) async throws
@@ -185,12 +189,22 @@ public protocol MailProvider: AnyObject, Sendable {
 }
 
 public extension MailProvider {
+    func moveToInbox(_ itemID: String, messageID: String?) async throws { throw MoveError.unsupported }
+
     func saveDraft(_ mail: OutgoingMail) async throws -> String { throw DraftError.unsupported }
     func deleteDraft(_ handle: String) async throws { throw DraftError.unsupported }
     func draftHandle(of itemID: String) async -> String? { nil }
 
     func respond(to itemID: String, invitation: Invitation, response: InvitationResponse, comment: String?) async throws {
         throw InvitationError.unsupported
+    }
+}
+
+public enum MoveError: LocalizedError, Equatable {
+    case unsupported
+
+    public var errorDescription: String? {
+        String(localized: "этот ящик не умеет переносить письма во Входящие")
     }
 }
 

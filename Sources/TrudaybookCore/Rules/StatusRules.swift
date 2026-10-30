@@ -11,16 +11,21 @@ public struct LocalState: Hashable, Sendable {
     public var snoozedUntil: Date?
     /// Отмечено выполненным вручную — например, встреча убрана «в архив».
     public var doneAt: Date?
+    /// Письмо вернули в «Не разобрано» руками. Тогда «отвечено» с сервера
+    /// и порог старых писем его не прячут: человек сам сказал, что оно ждёт.
+    public var reopenedAt: Date?
 
-    public init(archivedAt: Date? = nil, answeredAt: Date? = nil, snoozedUntil: Date? = nil, doneAt: Date? = nil) {
+    public init(archivedAt: Date? = nil, answeredAt: Date? = nil, snoozedUntil: Date? = nil, doneAt: Date? = nil,
+                reopenedAt: Date? = nil) {
         self.archivedAt = archivedAt
         self.answeredAt = answeredAt
         self.snoozedUntil = snoozedUntil
         self.doneAt = doneAt
+        self.reopenedAt = reopenedAt
     }
 
     public var isEmpty: Bool {
-        archivedAt == nil && answeredAt == nil && snoozedUntil == nil && doneAt == nil
+        archivedAt == nil && answeredAt == nil && snoozedUntil == nil && doneAt == nil && reopenedAt == nil
     }
 }
 
@@ -122,7 +127,7 @@ public enum StatusRules {
         switch item.detail {
         case .mail(let info):
             if local?.archivedAt != nil { return .done(.archived) }
-            if local?.answeredAt != nil || info.isAnsweredOnServer { return .done(.answered) }
+            if local?.answeredAt != nil || (info.isAnsweredOnServer && local?.reopenedAt == nil) { return .done(.answered) }
             if local?.doneAt != nil { return .done(.marked) }
             if let until = local?.snoozedUntil, until > now { return .snoozed(until: until) }
             return .open
@@ -159,7 +164,7 @@ public enum StatusRules {
                                     calendar: Calendar = .current) -> Bool {
         guard status(of: item, local: local, now: now) == .open else { return false }
         switch item.kind {
-        case .mail: return item.time >= mailCutoff
+        case .mail: return item.time >= mailCutoff || local?.reopenedAt != nil
         case .reminder:
             guard item.isAllDay else { return true }
             let dayEnd = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: item.time)) ?? item.time

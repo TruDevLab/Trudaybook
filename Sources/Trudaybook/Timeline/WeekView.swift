@@ -2,8 +2,8 @@ import SwiftUI
 import TrudaybookCore
 
 /// Неделя: дни колонками, часы сверху вниз. Что на
-/// календаре — выбирается над ним: встречи и напоминания, письма или погода
-/// по часам. У дня в шапке — погода и счётчик неразобранных писем.
+/// календаре — выбирается над ним: встречи и напоминания или письма.
+/// У дня в шапке — погода и счётчик неразобранных писем.
 struct WeekView: View {
     @EnvironmentObject private var model: AppModel
     @ViewState private var pinchBase: Double?
@@ -13,12 +13,12 @@ struct WeekView: View {
 
     static let hoursWidth: CGFloat = 44
     static let inset: CGFloat = 8
-    /// Доля масштаба таймлайна, которая идёт на час недели.
-    static let scaleShare: Double = 0.3
 
-    /// Час по вертикали — от масштаба таймлайна, но мельче: неделе нужно
-    /// видеть рабочий день целиком.
-    private var hourHeight: Double { max(min(max(model.hourWidth * Self.scaleShare, 24), 90), fillHour) }
+    /// Час по вертикали — как у дня: масштаб общий и подбирается под высоту
+    /// сетки (`AppModel.fitTimeline`), видно «Видно на шкале дня» часов.
+    /// Раньше неделя брала треть масштаба и с запуска показывала почти сутки —
+    /// мелко.
+    private var hourHeight: Double { max(VerticalTimelineView.hourHeight(model.hourWidth), fillHour) }
 
     var body: some View {
         let days = model.weekDays
@@ -62,8 +62,6 @@ struct WeekView: View {
                                 DayMailColumn(items: model.mailItems(on: day),
                                               scale: TimelineScale(dayStart: day, hourWidth: hourHeight),
                                               width: columnWidth - 4)
-                            case .weather:
-                                HourlyWeatherColumn(day: day, hourHeight: hourHeight, width: columnWidth - 4)
                             }
                         }
                         .frame(width: columnWidth - 4, height: height, alignment: .topLeading)
@@ -89,7 +87,8 @@ struct WeekView: View {
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visible in
                 fillHour = max(Double(visible - Space.md * 2) / 24, 0)
-                model.setHourWidthFloor(fillHour / Self.scaleShare)
+                model.setHourWidthFloor(fillHour * 2)
+                model.fitTimeline(height: Double(visible - Space.md * 2))
             }
             .simultaneousGesture(
                 MagnifyGesture()
@@ -308,11 +307,6 @@ private struct WeekToolbar: View {
             .labelsHidden()
             .fixedSize()
             .help("Что показывать на календаре недели")
-            if model.weekMode == .weather, model.weekWeather == nil {
-                Text("Погоду присылает Trunook — включите в нём погоду")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             Spacer()
             Picker("", selection: $model.workWeekOnly) {
                 Text("5 дней").tag(true)
@@ -362,7 +356,7 @@ struct WeatherChip: View {
 }
 
 /// Погода по часам колонкой: значок и температура, синева — вероятность
-/// осадков. В неделе — режим «Погода», в дне — колонка справа.
+/// осадков. Колонка справа у дня; у недели и месяца погода — по дням, в шапке.
 struct HourlyWeatherColumn: View {
     @EnvironmentObject private var model: AppModel
     let day: Date

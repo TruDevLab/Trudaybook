@@ -62,6 +62,22 @@ struct MailStatusTests {
         #expect(!StatusRules.isUnresolved(mail(at: now.addingTimeInterval(-2 * 86_400)), local: nil, now: now, mailCutoff: cutoff))
     }
 
+    @Test("Вернули в «Не разобрано»: «отвечено» с сервера и порог не прячут, новый разбор — прячет")
+    func reopenedMailWaitsAgain() {
+        let cutoff = now.addingTimeInterval(-86_400)
+        let old = mail(at: now.addingTimeInterval(-30 * 86_400), answered: true)
+        let reopened = LocalState(reopenedAt: now)
+        #expect(!StatusRules.isUnresolved(old, local: nil, now: now, mailCutoff: cutoff))
+        #expect(StatusRules.status(of: old, local: reopened, now: now) == .open)
+        #expect(StatusRules.isUnresolved(old, local: reopened, now: now, mailCutoff: cutoff))
+        var answeredAgain = reopened
+        answeredAgain.answeredAt = now
+        #expect(StatusRules.status(of: old, local: answeredAgain, now: now) == .done(.answered))
+        var archived = reopened
+        archived.archivedAt = now
+        #expect(!StatusRules.isUnresolved(old, local: archived, now: now, mailCutoff: cutoff))
+    }
+
     @Test func snoozedIsNotUnresolvedUntilItReturns() {
         let cutoff = now.addingTimeInterval(-86_400)
         let local = LocalState(snoozedUntil: now.addingTimeInterval(600))

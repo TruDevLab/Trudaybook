@@ -237,10 +237,12 @@ enum EWSCalendarRequest {
         let invite = draft.attendees.isEmpty && draft.optionalAttendees.isEmpty || sendLater ? "SendToNone" : "SendToAllAndSaveCopy"
         var item = "<t:Subject>\(XMLEscape.text(draft.title.isEmpty ? "Новая встреча" : draft.title))</t:Subject>"
         if !draft.notes.isEmpty { item += "<t:Body BodyType=\"Text\">\(XMLEscape.text(draft.notes))</t:Body>" }
-        item += "<t:ReminderIsSet>\(draft.isAllDay ? "false" : "true")</t:ReminderIsSet>"
+        item += "<t:ReminderIsSet>\(draft.isAllDay || draft.outOfOffice ? "false" : "true")</t:ReminderIsSet>"
         item += "<t:ReminderMinutesBeforeStart>15</t:ReminderMinutesBeforeStart>"
         item += "<t:Start>\(EWSRequest.date(draft.start))</t:Start><t:End>\(EWSRequest.date(draft.end))</t:End>"
         item += "<t:IsAllDayEvent>\(draft.isAllDay)</t:IsAllDayEvent>"
+        // По схеме — сразу за `IsAllDayEvent`, до `Location`.
+        if draft.outOfOffice { item += "<t:LegacyFreeBusyStatus>OOF</t:LegacyFreeBusyStatus>" }
         if !draft.location.isEmpty { item += "<t:Location>\(XMLEscape.text(draft.location))</t:Location>" }
         if !draft.attendees.isEmpty { item += "<t:RequiredAttendees>\(attendees(draft.attendees))</t:RequiredAttendees>" }
         if !draft.optionalAttendees.isEmpty { item += "<t:OptionalAttendees>\(attendees(draft.optionalAttendees))</t:OptionalAttendees>" }
@@ -334,6 +336,18 @@ enum EWSCalendarRequest {
     /// но Id прежний; достаточно проверить, что всё прикрепилось.
     static func requireAttached(_ response: XMLTreeNode) throws {
         try EWSRequest.requireSuccess(response)
+    }
+
+    /// Переслать встречу (`ForwardItem` по самой встрече): адресаты получат
+    /// приглашение, организатор — уведомление о пересылке, как из Outlook.
+    /// Порядок по схеме: получатели, `ReferenceItemId`, затем текст.
+    static func forward(_ id: String, to people: [Person], comment: String?) -> String {
+        let recipients = people.filter { $0.address != nil }.map(mailbox).joined()
+        let note = comment?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let body = note.isEmpty ? "" : "<t:NewBodyContent BodyType=\"Text\">\(XMLEscape.text(note))</t:NewBodyContent>"
+        return "<m:CreateItem MessageDisposition=\"SendAndSaveCopy\"><m:Items><t:ForwardItem>"
+            + "<t:ToRecipients>\(recipients)</t:ToRecipients>"
+            + "<t:ReferenceItemId Id=\"\(XMLEscape.text(id))\"/>\(body)</t:ForwardItem></m:Items></m:CreateItem>"
     }
 
     /// Отказ организатору: Exchange отправит ответ и уберёт встречу из календаря.

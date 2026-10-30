@@ -123,6 +123,10 @@ public struct EventDraft: Hashable, Sendable {
     public var isRecurringSeries: Bool
     /// Файлы, которые прикрепить (и разослать участникам). Только Exchange.
     public var attachments: [MailBody.Attachment] = []
+    /// «Нет на месте»: время занято так, что другие видят отсутствие, а не
+    /// встречу (Exchange — `OOF`, календарь macOS — «недоступен»), без
+    /// напоминания. Так блокируется календарь на время автоответа.
+    public var outOfOffice = false
 
     public init(title: String = "", start: Date, end: Date, isAllDay: Bool = false, location: String = "",
                 notes: String = "", calendarID: String? = nil, attendees: [Person] = [],

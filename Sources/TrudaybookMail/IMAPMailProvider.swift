@@ -298,6 +298,19 @@ public actor IMAPMailProvider: MailProvider {
         changeHandler?()
     }
 
+    public func moveToInbox(_ itemID: String, messageID: String?) async throws {
+        guard let (mailbox, uid) = Self.parse(itemID), mailbox != "INBOX" else { return }
+        try await perform {
+            try await select(mailbox)
+            try await client.uidMove([uid], to: "INBOX")
+        }
+        try cache.delete([uid], mailbox: mailbox, account: account.id)
+        if let messageID { try cache.deleteMoved(messageID: messageID, mailbox: "INBOX", account: account.id) }
+        // Новый номер во Входящих узнаём сверкой — сразу, не ждать опроса.
+        try? await perform { try await syncMailbox("INBOX", since: syncedSince) }
+        changeHandler?()
+    }
+
     public func trash(_ itemID: String) async throws {
         guard let (mailbox, uid) = Self.parse(itemID) else { return }
         guard let trash = self.mailbox(for: .trash) else {

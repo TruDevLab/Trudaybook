@@ -31,8 +31,10 @@ and the app has no server of its own. What goes where —
 ## Home
 
 On the left is the section bar: Home, Mail, Calendar, Notes and Phone
-(⌃⌘1–⌃⌘5). Below it is “Now”: the date, the weather and the next meeting
-with a join button; at the bottom — the assistant and settings.
+(⌃⌘1–⌃⌘5). Below it is “Now”: the date, the weather, the next meeting
+with a join button and missed calls; at the bottom — connection status (mail
+and phone: “online”, “error” or “away” under the icon), the assistant and
+settings.
 
 Home has everything together. At the top is the day timeline: emails,
 meetings and reminders by the hour. Drag any item onto **Archive**,
@@ -54,6 +56,12 @@ ahead.
   To sort, Inbox, Sent, Archive).
 - Search by subject and people, and on the server — by message text.
 - Replies with formatting, attachments and a signature; drafts save themselves.
+  Attachments are large tiles above the text; paste a screenshot with ⌘V
+  right into the message.
+- Any email — from the archive, another folder or already answered — can be
+  moved back to To sort.
+- “Out of office” auto-reply (Exchange): on or scheduled, separate text for
+  colleagues and external senders; block your calendar for the same period.
 - Priorities, swipes on a row, several emails at once, undo for archive and
   delete (⌘Z).
 
@@ -64,13 +72,16 @@ ahead.
 ![The Calendar section: a month with meetings](docs/calendar-en.png)
 
 - Year, month, week and day; week numbers; which calendars to show and their
-  colors — in the panel on the right.
+  colors — in the panel on the right. Week and day open showing 8 hours
+  (changeable in Settings); weather by the hour in the day view and by the
+  day in the week and month.
 - macOS calendars (iCloud, Google, Exchange via Internet Accounts) and
   Exchange directly; macOS reminders on the timeline.
 - A new meeting — ＋, or drag ＋ onto the day and hour you want. An editor
   with recurrence, attendees and their availability.
 - Respond to an invitation right in the meeting: accept, tentative, decline,
-  propose another time.
+  propose another time. Forward someone else's meeting to a colleague (⇧⌘F).
+- An email dragged onto the meetings column becomes a reminder at that time.
 - Join an online meeting with one button (Zoom, Teams, Telemost); ⌃⌥⌘J —
   from any app.
 

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import TrudaybookCore
 
 /// Правка оформленного текста ответа поверх `NSTextView`.
@@ -242,14 +243,49 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
 
     // MARK: - Картинка
 
+    /// Файлы из буфера, которые не картинки, — вложениями письма. `nil` —
+    /// поле без вложений (подпись): такие файлы вставляются как обычно.
+    var onPasteFiles: (([URL]) -> Void)?
+
+    /// ⌘V. Снимок экрана в буфере (⌃⇧⌘4) и картинка из Просмотра —
+    /// картинкой в текст; файлы из Finder: картинки — в текст, остальное —
+    /// вложениями. Раньше поле без графики вставляло вместо них имя или
+    /// путь файла. `false` — вставить как обычно.
+    func pasteSpecial(from board: NSPasteboard) -> Bool {
+        let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if !urls.isEmpty {
+            var files: [URL] = []
+            for url in urls {
+                let isImage = UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true
+                if !(isImage && insertImage(from: url)) { files.append(url) }
+            }
+            guard !files.isEmpty else { return true }
+            guard let onPasteFiles else { return files.count < urls.count }
+            onPasteFiles(files)
+            return true
+        }
+        // Текст с оформлением (страница, письмо) — обычной вставкой: картинка
+        // в нём бывает лишь копией того же, что уже есть текстом.
+        guard board.availableType(from: [.rtfd, .rtf, .html]) == nil,
+              board.availableType(from: [.png, .tiff]) != nil,
+              let image = NSImage(pasteboard: board) else { return false }
+        return insertImage(image)
+    }
+
     /// Картинка из файла — в место курсора (подпись с логотипом). Пережимается:
     /// не шире 600 точек, на экране и в письме — до 300; метаданные снимка
     /// (а в фото бывают координаты съёмки) при этом не переносятся.
     @discardableResult
     func insertImage(from url: URL) -> Bool {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 20_000_000,
+              let image = NSImage(contentsOf: url) else { return false }
+        return insertImage(image)
+    }
+
+    @discardableResult
+    func insertImage(_ image: NSImage) -> Bool {
         guard let view = textView, let storage = view.textStorage,
-              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 20_000_000,
-              let image = NSImage(contentsOf: url), let encoded = Self.encodeImage(image) else { return false }
+              let encoded = Self.encodeImage(image) else { return false }
         let wrapper = FileWrapper(regularFileWithContents: encoded.data)
         wrapper.preferredFilename = "image." + encoded.ext
         let attachment = NSTextAttachment(fileWrapper: wrapper)
@@ -540,6 +576,17 @@ final class RichTextController: NSObject, ObservableObject, NSTextViewDelegate {
     }
 }
 
+/// Поле, которое вставляет картинки и файлы по ⌘V
+/// (`RichTextController.pasteSpecial`).
+final class PastingTextView: NSTextView {
+    weak var controller: RichTextController?
+
+    override func paste(_ sender: Any?) {
+        if controller?.pasteSpecial(from: .general) == true { return }
+        super.paste(sender)
+    }
+}
+
 /// Поле ввода с оформлением.
 struct RichTextEditorView: NSViewRepresentable {
     let controller: RichTextController
@@ -547,9 +594,10 @@ struct RichTextEditorView: NSViewRepresentable {
     var onWhite = false
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
+        let scroll = PastingTextView.scrollableTextView()
         scroll.drawsBackground = false
         guard let text = scroll.documentView as? NSTextView else { return scroll }
+        (text as? PastingTextView)?.controller = controller
         text.isRichText = true
         text.importsGraphics = false
         text.allowsUndo = true

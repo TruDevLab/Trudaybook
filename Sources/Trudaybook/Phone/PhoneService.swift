@@ -440,6 +440,12 @@ final class PhoneService: ObservableObject {
     // MARK: - Тестовый режим
 
     /// Входящий для снимка и обучения: `--incoming-call`.
+    /// Пропущенные — для снимка плитки «Сейчас».
+    func simulateMissed(_ count: Int) {
+        guard demo else { return }
+        unseenMissed = count
+    }
+
     func simulateIncoming() {
         guard demo, !inCall else { return }
         let caller = Demo.phoneCaller

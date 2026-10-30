@@ -98,6 +98,10 @@ struct ItemContextMenu: View {
             }
             Divider()
         }
+        Button { model.forwardEventTarget = item } label: {
+            Label("Переслать…", systemImage: ForwardButton.symbol)
+        }
+        .disabled(!model.canForwardEvent(item))
         action(.reschedule, String(localized: "Перенести…"))
         action(.archive, String(localized: "Разобрано"))
         reopen
@@ -150,9 +154,13 @@ struct ItemContextMenu: View {
 
     @ViewBuilder
     private var reopen: some View {
-        if model.states[item.id] != nil {
+        if model.canReopen(item) {
             Button { model.reopen(item.id) } label: {
-                Label("Вернуть в работу", systemImage: "arrow.uturn.backward")
+                if item.kind == .mail {
+                    Label("Вернуть в «Не разобрано»", systemImage: "tray.and.arrow.down")
+                } else {
+                    Label("Вернуть в работу", systemImage: "arrow.uturn.backward")
+                }
             }
         }
     }

@@ -230,6 +230,43 @@ public enum ICalendar {
         return lines.map(fold).joined(separator: "\r\n") + "\r\n"
     }
 
+    /// Пересылка приглашения (METHOD:REQUEST, RFC 5546, 3.2.2): та же встреча
+    /// с тем же `UID` и организатором, в участниках — и новые адресаты.
+    /// Ответят они организатору, как на обычное приглашение.
+    public static func forwarded(_ invitation: Invitation, to people: [Person], now: Date = Date()) -> String {
+        var lines = [
+            "BEGIN:VCALENDAR",
+            "PRODID:-//Trudaybook//RU",
+            "VERSION:2.0",
+            "METHOD:REQUEST",
+            "BEGIN:VEVENT",
+            "UID:\(invitation.uid)",
+            "SEQUENCE:\(invitation.sequence)",
+            "DTSTAMP:\(utcStamp(now))",
+        ]
+        if let recurrence = invitation.recurrenceID { lines.append("RECURRENCE-ID:\(utcStamp(recurrence))") }
+        lines += [
+            "DTSTART:\(utcStamp(invitation.start))",
+            "DTEND:\(utcStamp(invitation.end))",
+            "SUMMARY:\(escape(invitation.summary))",
+        ]
+        if let location = invitation.location, !location.isEmpty { lines.append("LOCATION:\(escape(location))") }
+        if let notes = invitation.notes, !notes.isEmpty { lines.append("DESCRIPTION:\(escape(notes))") }
+        if let organizer = invitation.organizer, let address = organizer.address {
+            let name = organizer.name.map { ";CN=\"\(sanitizeParameter($0))\"" } ?? ""
+            lines.append("ORGANIZER\(name):mailto:\(address)")
+        }
+        var known = Set<String>()
+        for person in invitation.attendees + people {
+            guard let address = person.address, known.insert(address.lowercased()).inserted else { continue }
+            let name = person.name.map { ";CN=\"\(sanitizeParameter($0))\"" } ?? ""
+            let rsvp = people.contains { $0.normalizedAddress == person.normalizedAddress } ? ";PARTSTAT=NEEDS-ACTION;RSVP=TRUE" : ""
+            lines.append("ATTENDEE\(rsvp)\(name):mailto:\(address)")
+        }
+        lines += ["END:VEVENT", "END:VCALENDAR"]
+        return lines.map(fold).joined(separator: "\r\n") + "\r\n"
+    }
+
     // MARK: - Разбор
 
     /// Строки со сложенными продолжениями (RFC 5545, 3.1).
@@ -438,6 +475,29 @@ public extension ICalendar {
             text: text,
             attachments: [MailBody.Attachment(name: "invite.ics", size: data.count,
                                               mimeType: "text/calendar; method=REPLY; charset=utf-8", data: data)]
+        )
+    }
+
+    /// Пересланное приглашение письмом: тема «Fwd: …», комментарий и время
+    /// текстом, сама встреча — частью `text/calendar; method=REQUEST`.
+    static func forwardMail(of invitation: Invitation, to people: [Person], comment: String?,
+                            now: Date = Date()) -> OutgoingMail {
+        let ics = forwarded(invitation, to: people, now: now)
+        let note = comment?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let day = AppLanguage.formatter(ru: "d MMMM yyyy", template: "dMMMMyyyy")
+        let time = AppLanguage.formatter(ru: "HH:mm", template: "HHmm")
+        let when = invitation.isAllDay
+            ? day.string(from: invitation.start)
+            : "\(day.string(from: invitation.start)), \(time.string(from: invitation.start))–\(time.string(from: invitation.end))"
+        var text = [note, invitation.summary, when].filter { !$0.isEmpty }
+        if let location = invitation.location, !location.isEmpty { text.append(location) }
+        let data = Data(ics.utf8)
+        return OutgoingMail(
+            to: people,
+            subject: ReplyBuilder.forwardSubject(invitation.summary),
+            text: text.joined(separator: "\n\n"),
+            attachments: [MailBody.Attachment(name: "invite.ics", size: data.count,
+                                              mimeType: "text/calendar; method=REQUEST; charset=utf-8", data: data)]
         )
     }
 

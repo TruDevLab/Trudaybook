@@ -129,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if model.options.phone { model.phoneOpen = true }
             if model.options.phoneCall { model.phone.simulateActive() }
             if model.options.incomingCall { model.phone.simulateIncoming() }
+            if model.options.missed > 0 { model.phone.simulateMissed(model.options.missed) }
             if let question = model.options.ask { model.assistant.send(question) }
             if let path = model.options.snapshotPath {
                 model.applyDebugSelection()
@@ -332,13 +333,17 @@ enum MainMenu {
         // Письмо в окне и файлом: ⌘S в окне письма сохраняет его, в главном — выбранное.
         let letterItems: [NSMenuItem] = [
             // Из окна письма — его, из главного — выбранное.
+            // Встречу — тоже: адресаты получат приглашение.
             ClosureItem(String(localized: "Переслать"), key: "f", modifiers: [.command, .shift],
-                        enabled: { LetterWindow.key != nil || model.selectedLetter != nil }) {
+                        enabled: { LetterWindow.key != nil || model.selectedLetter != nil
+                                   || model.selectedItem.map(model.canForwardEvent) == true }) {
                 if let document = LetterWindow.key {
                     model.startForward(fromWindow: document.item, body: document.body)
                     LetterWindow.showMainWindow()
                 } else if let item = model.selectedLetter {
                     model.startForward(of: item)
+                } else if let item = model.selectedItem, model.canForwardEvent(item) {
+                    model.forwardEventTarget = item
                 }
             },
             ClosureItem(String(localized: "Напечатать письмо…"), key: "p",

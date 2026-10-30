@@ -261,6 +261,21 @@ public final class MailCache: @unchecked Sendable {
         }
     }
 
+    /// Забыть копию, которую мы сами унесли из папки: письмо с этим
+    /// `Message-ID` вернулось в неё под новым номером. Заголовки в базе
+    /// зашифрованы — сверка после чтения, а не в запросе.
+    public func deleteMoved(messageID: String, mailbox: String, account: String) throws {
+        let moved = locked {
+            read("""
+                SELECT mailbox, uid, internal_date, flags, header, size FROM messages
+                WHERE account = ? AND mailbox = ? AND instr(flags, ?) > 0
+                """, [.text(account), .text(mailbox), .text(Self.movedFlag)])
+        }
+        let uids = moved.filter { String(decoding: $0.header, as: UTF8.self).contains(messageID) }.map(\.uid)
+        guard !uids.isEmpty else { return }
+        try delete(uids, mailbox: mailbox, account: account)
+    }
+
     /// Ушедшие письма старше даты — забыть совсем, вместе с телами.
     public func pruneMoved(before date: Date, account: String) throws {
         try locked {

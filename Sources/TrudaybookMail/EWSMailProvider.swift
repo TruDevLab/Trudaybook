@@ -313,6 +313,32 @@ public actor EWSMailProvider: AccountMailProvider {
         try forgetHandled(uid, in: folder)
     }
 
+    public func moveToInbox(_ itemID: String, messageID: String?) async throws {
+        let (folder, uid) = try locate(itemID)
+        guard folder != Self.inbox else { return }
+        try EWSRequest.requireSuccess(try await call("MoveItem", EWSRequest.move([try remoteID(uid)], to: Self.inbox)))
+        // После переноса у письма другой Id: старую строку — забыть,
+        // во Входящих оно придёт сверкой под новым номером.
+        try cache.delete([uid], mailbox: folder, account: account.id)
+        try cache.forgetRemoteIDs([uid], account: account.id)
+        headers[key(folder, uid)] = nil
+        if let messageID { try cache.deleteMoved(messageID: messageID, mailbox: Self.inbox, account: account.id) }
+        try? await sync(Self.inbox, since: syncedSince)
+        changeHandler?()
+    }
+
+    // MARK: - Автоответ
+
+    /// Автоответ «нет на месте» — с сервера. Тексты ответа в журнал не идут.
+    public func autoReply() async throws -> AutoReply {
+        try EWSOofRequest.parse(try await call("GetUserOofSettings", EWSOofRequest.get(account.email)))
+    }
+
+    public func setAutoReply(_ reply: AutoReply) async throws {
+        try EWSOofRequest.requireSuccess(try await call("SetUserOofSettings", EWSOofRequest.set(account.email, reply)))
+        log("автоответ: \(reply.state.rawValue)")
+    }
+
     /// В «Удалённые» (`deleteditems`) — `MoveItem`, а не `DeleteItem`:
     /// письмо вернётся из «Корзины» в Outlook или здесь.
     public func trash(_ itemID: String) async throws {

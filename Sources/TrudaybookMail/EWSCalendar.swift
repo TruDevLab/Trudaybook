@@ -258,6 +258,11 @@ public actor EWSCalendarService: SchedulingService {
         log(proposed == nil ? "ответ на встречу отправлен" : "предложено новое время")
     }
 
+    func forward(id: String, to people: [Person], comment: String?) async throws {
+        try EWSRequest.requireSuccess(try await call("CreateItem", EWSCalendarRequest.forward(id, to: people, comment: comment)))
+        log("встреча переслана, адресатов \(people.count)")
+    }
+
     /// Отказаться от встречи: организатор получит отказ.
     func decline(id: String) async throws {
         try EWSRequest.requireSuccess(try await call("CreateItem", EWSCalendarRequest.decline(id)))
@@ -398,6 +403,10 @@ public final class ExchangeCalendar: CalendarProvider {
     public func respond(_ item: TimelineItem, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws {
         try await service.respond(id: try remoteID(item), response: response, comment: comment, proposed: proposed)
         onChange?()
+    }
+
+    public func forward(_ item: TimelineItem, to people: [Person], comment: String?) async throws {
+        try await service.forward(id: try remoteID(item), to: people, comment: comment)
     }
 
     public func decline(_ item: TimelineItem) async throws {

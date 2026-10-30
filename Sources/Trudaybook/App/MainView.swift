@@ -146,6 +146,9 @@ struct MainView: View {
                 Text(info.canEdit ? String(localized: "Участники получат отмену встречи.") : String(localized: "Встреча удалится только из вашего календаря."))
             }
         }
+        .sheet(item: $model.forwardEventTarget) { item in
+            ForwardEventSheet(item: item).environmentObject(model)
+        }
         // Редактор встречи — своим окном (`EventEditorWindow`): лист не двигается.
         .alert("Не получилось", isPresented: Binding(
             get: { model.errorMessage != nil },

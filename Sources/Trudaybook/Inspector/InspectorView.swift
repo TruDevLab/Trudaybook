@@ -60,10 +60,11 @@ private struct InspectorHeader<Accessories: View>: View {
                 .foregroundStyle(.secondary)
             StatusTag(status: status)
             Spacer()
-            // Снять можно только то, что отметило само приложение: «отвечено»
-            // с сервера или прошедшую встречу не вернуть.
-            if model.states[item.id] != nil {
-                Button("Вернуть в работу") { model.reopen(item.id) }
+            // Письмо возвращается из любого места; у встречи и напоминания
+            // снимается только отметка приложения — прошедшую встречу не вернуть.
+            if model.canReopen(item) {
+                Button(item.kind == .mail ? String(localized: "Вернуть в «Не разобрано»")
+                                          : String(localized: "Вернуть в работу")) { model.reopen(item.id) }
                     .buttonStyle(.link)
                     .font(.callout)
                     .lineLimit(1)
@@ -1015,6 +1016,13 @@ private struct EventDetail: View {
                                                        .replyAll: String(localized: "Всем участникам"),
                                                        .decline: info.canEdit ? String(localized: "Отменить") : String(localized: "Отклонить")],
                                   hidden: answers ? [.decline] : [])
+                    HoverIconButton(title: String(localized: "Переслать…"), symbol: ForwardButton.symbol,
+                                    help: model.canForwardEvent(item)
+                                        ? String(localized: "Переслать приглашение на встречу")
+                                        : String(localized: "У встречи нет организатора — переслать приглашение не к кому привязать")) {
+                        model.forwardEventTarget = item
+                    }
+                    .disabled(!model.canForwardEvent(item))
                     HoverIconButton(title: String(localized: "Изменить…"), symbol: "pencil",
                                     help: info.canEdit ? String(localized: "Время, повтор, участники, описание")
                                                        : String(localized: "Изменить встречу может только организатор")) {
@@ -1268,6 +1276,12 @@ struct ComposerView: View {
             }
             .padding(.horizontal, Space.xxl)
 
+            // Вложения — под темой, над текстом: внизу, под длинным письмом
+            // и цитатой, их не было видно.
+            AttachmentChips(files: attachments)
+                .padding(.horizontal, Space.xxl)
+                .padding(.top, Space.lg)
+
             formatBar
                 .padding(.horizontal, Space.xxl)
                 .padding(.top, Space.lg)
@@ -1283,10 +1297,6 @@ struct ComposerView: View {
                         .padding(.horizontal, Space.xxl)
                         .padding(.vertical, Space.md)
 
-                    AttachmentChips(files: attachments)
-                        .padding(.horizontal, Space.xxl)
-                        .padding(.bottom, Space.sm)
-
                     if let quote = draft?.quote {
                         quoteSection(quote, available: geometry.size.height)
                     }
@@ -1298,6 +1308,7 @@ struct ComposerView: View {
             load()
             keeper.model = model
             editor.onChange = { keeper.changed() }
+            editor.onPasteFiles = { urls in addAttachments(urls.compactMap(AttachmentFiles.load)) }
             editor.onRewrite = model.aiEnabled ? { rewrite($0) } : nil
             if model.options.template, model.options.snapshotPath != nil, let item, item.kind == .mail {
                 requestTemplate(item)

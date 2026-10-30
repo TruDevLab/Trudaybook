@@ -84,6 +84,27 @@ struct InvitationTests {
         #expect(mail.attachments.first?.mimeType.hasPrefix("text/calendar; method=REPLY") == true)
     }
 
+    @Test("Пересылка встречи: тот же UID и организатор, новый адресат — участником с RSVP")
+    func forwardKeepsMeetingAndAddsPeople() throws {
+        let invitation = try #require(ICalendar.invitation(from: outlook, timeZone: { _ in nil }))
+        let olga = Person(name: "Ольга", address: "olga@company.test")
+        let mail = ICalendar.forwardMail(of: invitation, to: [olga], comment: "Тебе тоже стоит прийти")
+        #expect(mail.to == [olga])
+        #expect(mail.subject == "Fwd: Архитектурный комитет, этап 2")
+        #expect(mail.text.hasPrefix("Тебе тоже стоит прийти"))
+        let part = try #require(mail.attachments.first)
+        #expect(part.mimeType.hasPrefix("text/calendar; method=REQUEST"))
+        let ics = String(decoding: try #require(part.data), as: UTF8.self).replacingOccurrences(of: "\r\n ", with: "")
+        #expect(ics.contains("METHOD:REQUEST"))
+        #expect(ics.contains("UID:040000008200E00074C5B7101A82E00800000000ABCDEF"))
+        #expect(ics.contains("mailto:kozlov@company.test"))
+        #expect(ics.contains("ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=\"Ольга\":mailto:olga@company.test"))
+        // Разбирается обратно как приглашение — адресат увидит обычную карточку.
+        let parsed = try #require(ICalendar.invitation(from: ics, timeZone: { _ in nil }))
+        #expect(parsed.method == .request)
+        #expect(parsed.start == invitation.start)
+    }
+
     @Test func bodyKeepsCalendarPartOutOfText() {
         let raw = """
             Content-Type: multipart/alternative; boundary="b"\r

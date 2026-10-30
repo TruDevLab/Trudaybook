@@ -169,6 +169,7 @@ struct EWSTests {
             EWSRequest.findFolders(),
             EWSRequest.getFolders(["inbox", "sentitems"]),
             EWSRequest.createFolder("Архив"),
+            EWSCalendarRequest.forward("C=", to: [Person(name: "Ольга <О>", address: "olga@company.test")], comment: "Посмотри & скажи"),
         ]
         for request in requests {
             let envelope = try XMLTreeNode.parse(Data(EWSRequest.envelope(request).utf8))
@@ -178,6 +179,13 @@ struct EWSTests {
         #expect(find.first("QueryString")?.text == "отчёт & план")
         #expect(find.first("Restriction") == nil)
         #expect(find.first("FolderId")?.attributes["Id"] == "AAMk/Id+=")
+        // Пересылка встречи: получатели, затем ссылка на встречу, затем текст — порядок схемы.
+        let forward = try XMLTreeNode.parse(Data(EWSRequest.envelope(requests.last!).utf8))
+        let item = try #require(forward.first("ForwardItem"))
+        #expect(item.children.map(\.name) == ["ToRecipients", "ReferenceItemId", "NewBodyContent"])
+        #expect(item.first("EmailAddress")?.text == "olga@company.test")
+        #expect(item.first("ReferenceItemId")?.attributes["Id"] == "C=")
+        #expect(item.first("NewBodyContent")?.text == "Посмотри & скажи")
     }
 
     @Test func serverAddressBecomesEWSEndpoint() {
@@ -317,3 +325,68 @@ struct DraftRequestTests {
         #expect(IMAPMailProvider.draftParts("что-то").uid == nil)
     }
 }
+
+@Suite("Автоответ Exchange")
+struct AutoReplyTests {
+    @Test("Запрос: поля по порядку схемы, текст — разметкой и экранирован")
+    func setRequest() throws {
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        let reply = AutoReply(state: .scheduled, start: start, end: start.addingTimeInterval(86_400),
+                              internalMessage: "В отпуске до понедельника.\nСрочно — Ольге <olga@x>",
+                              externalMessage: "Out of office", audience: .known)
+        let envelope = try XMLTreeNode.parse(Data(EWSRequest.envelope(EWSOofRequest.set("me@company.test", reply)).utf8))
+        let settings = try #require(envelope.first("UserOofSettings"))
+        #expect(settings.children.map(\.name) == ["OofState", "ExternalAudience", "Duration", "InternalReply", "ExternalReply"])
+        #expect(settings.child("OofState")?.text == "Scheduled")
+        #expect(settings.child("ExternalAudience")?.text == "Known")
+        #expect(envelope.first("Address")?.text == "me@company.test")
+        let message = try #require(settings["InternalReply", "Message"]?.text)
+        #expect(message.contains("<br>"))
+        #expect(message.contains("&lt;olga@x&gt;"))
+        #expect(AutoReply.text(fromHTML: message) == reply.internalMessage)
+    }
+
+    @Test("Ответ сервера: состояние, срок без «Z», текст без разметки Outlook")
+    func parseResponse() throws {
+        let xml = """
+            <GetUserOofSettingsResponse xmlns="http://schemas.microsoft.com/exchange/services/2006/messages">
+            <ResponseMessage ResponseClass="Success"><ResponseCode>NoError</ResponseCode></ResponseMessage>
+            <OofSettings xmlns="http://schemas.microsoft.com/exchange/services/2006/types">
+            <OofState>Scheduled</OofState><ExternalAudience>None</ExternalAudience>
+            <Duration><StartTime>2026-11-02T00:00:00</StartTime><EndTime>2026-11-09T00:00:00Z</EndTime></Duration>
+            <InternalReply><Message>&lt;html&gt;&lt;head&gt;&lt;style&gt;p{}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;p&gt;Нет на месте&lt;/p&gt;&lt;p&gt;Пишите Ольге&amp;nbsp;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</Message></InternalReply>
+            <ExternalReply><Message/></ExternalReply>
+            </OofSettings><AllowExternalOof>All</AllowExternalOof>
+            </GetUserOofSettingsResponse>
+            """
+        let reply = try EWSOofRequest.parse(XMLTreeNode.parse(Data(xml.utf8)))
+        #expect(reply.state == .scheduled)
+        #expect(reply.audience == .none)
+        #expect(reply.end.timeIntervalSince(reply.start) == 7 * 86_400)
+        #expect(reply.internalMessage == "Нет на месте\nПишите Ольге")
+        #expect(reply.externalMessage.isEmpty)
+        #expect(reply.isActive(at: reply.start.addingTimeInterval(3600)))
+        #expect(!reply.isActive(at: reply.end))
+
+        let failed = try XMLTreeNode.parse(Data("""
+            <GetUserOofSettingsResponse><ResponseMessage ResponseClass="Error"><MessageText>Нет доступа</MessageText>\
+            <ResponseCode>ErrorAccessDenied</ResponseCode></ResponseMessage></GetUserOofSettingsResponse>
+            """.utf8))
+        #expect(throws: MailNetworkError.self) { try EWSOofRequest.parse(failed) }
+    }
+
+    @Test("Блокировка календаря: «нет на месте» без напоминания, по схеме — за IsAllDayEvent")
+    func outOfOfficeEvent() throws {
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        var draft = EventDraft(title: "Нет на месте", start: start, end: start.addingTimeInterval(86_400), isAllDay: true)
+        draft.outOfOffice = true
+        let envelope = try XMLTreeNode.parse(Data(EWSRequest.envelope(EWSCalendarRequest.create(draft, recurrence: nil)).utf8))
+        let item = try #require(envelope.first("CalendarItem"))
+        let names = item.children.map(\.name)
+        let allDay = try #require(names.firstIndex(of: "IsAllDayEvent"))
+        #expect(names[allDay + 1] == "LegacyFreeBusyStatus")
+        #expect(item.child("LegacyFreeBusyStatus")?.text == "OOF")
+        #expect(item.child("ReminderIsSet")?.text == "false")
+    }
+}
+

@@ -39,7 +39,45 @@ enum AttachmentFiles {
     }
 }
 
-/// Прикреплённые файлы плашками: имя, размер, крестик.
+/// Файл плиткой: значок типа из Finder, имя и размер в две строки.
+/// Раньше вложения были мелкими плашками с подписью `caption` — их не
+/// замечали ни в письме, ни при создании.
+struct AttachmentTile<Accessory: View>: View {
+    let file: MailBody.Attachment
+    var highlighted = false
+    @ViewBuilder var accessory: Accessory
+
+    static var maxWidth: CGFloat { 260 }
+
+    var body: some View {
+        HStack(spacing: Space.md) {
+            Image(nsImage: NSWorkspace.shared.icon(for: AttachmentSaver.contentType(of: file)))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Space.xxs) {
+                Text(file.name)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            accessory
+        }
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.sm)
+        .frame(maxWidth: Self.maxWidth, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).fill(highlighted ? Fill.hover : Fill.subtle))
+        .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).strokeBorder(Fill.stroke.opacity(0.5)))
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+/// Прикреплённые файлы плитками: значок, имя, размер, крестик.
 struct AttachmentChips: View {
     @Binding var files: [MailBody.Attachment]
 
@@ -50,20 +88,17 @@ struct AttachmentChips: View {
             VStack(alignment: .leading, spacing: Space.xs) {
                 CollapsingFlow(expanded: true, spacing: Space.sm, lineSpacing: Space.sm) {
                     ForEach(Array(files.enumerated()), id: \.offset) { index, file in
-                        HStack(spacing: Space.xs) {
-                            Image(systemName: "paperclip")
-                            Text("\(file.name) · \(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))")
-                                .lineLimit(1)
+                        AttachmentTile(file: file) {
                             Button { files.remove(at: index) } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
                             .labelHelp(String(localized: "Убрать"))
                         }
-                        .font(.caption)
-                        .padding(.horizontal, Space.md)
-                        .padding(.vertical, Space.xs)
-                        .background(Capsule().fill(Fill.subtle))
+                        .help(file.name)
+                        .layoutValue(key: FlowRole.self, value: .item)
                     }
                 }
                 if total > AttachmentFiles.warnSize {
@@ -247,7 +282,7 @@ struct ReceivedAttachments: View {
                         Button("В папку…") { run { try AttachmentSaver.saveAll(files) } }
                     } label: {
                         Label("Сохранить все", systemImage: "square.and.arrow.down.on.square")
-                            .font(.caption)
+                            .font(.callout)
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
@@ -275,20 +310,13 @@ struct ReceivedAttachments: View {
 
     private func chip(_ file: MailBody.Attachment) -> some View {
         let available = file.data != nil
-        return HStack(spacing: Space.xs) {
-            Image(systemName: icon(for: file))
-            Text(file.name).lineLimit(1).truncationMode(.middle)
-            Text(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))
-                .foregroundStyle(.secondary)
+        return AttachmentTile(file: file, highlighted: hovered == file.name) {
             Image(systemName: "chevron.down")
-                .font(.app(.micro, weight: .semibold))
+                .font(.app(.small, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
-        .font(.caption)
-        .padding(.horizontal, Space.md)
-        .padding(.vertical, Space.xs)
-        .background(Capsule().fill(Color.primary.opacity(hovered == file.name ? 0.12 : 0.07)))
-        .contentShape(Capsule())
+        .contentShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+        .layoutValue(key: FlowRole.self, value: .item)
         .opacity(available ? 1 : Alpha.disabled)
         .onHover { inside in hovered = inside ? file.name : (hovered == file.name ? nil : hovered) }
         .help(available
@@ -381,16 +409,6 @@ struct ReceivedAttachments: View {
         case .open: AttachmentSaver.open(file, at: url)
         case .reveal: AttachmentSaver.reveal([url])
         }
-    }
-
-    private func icon(for file: MailBody.Attachment) -> String {
-        let type = file.mimeType.lowercased()
-        if type.hasPrefix("image/") { return "photo" }
-        if type == "application/pdf" { return "doc.richtext" }
-        if type.contains("zip") || type.contains("compressed") { return "doc.zipper" }
-        if type.contains("sheet") || type.contains("excel") { return "tablecells" }
-        if type == "message/rfc822" { return "envelope" }
-        return "doc"
     }
 
     private func run(_ action: () throws -> [URL]) {

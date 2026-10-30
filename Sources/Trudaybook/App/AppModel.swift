@@ -110,6 +110,10 @@ struct LaunchOptions {
     var incomingCall = false
     /// Разговор в тестовом режиме — для снимка панели: `--phone-call`.
     var phoneCall = false
+    /// Новое письмо с вложениями: `--new mail --attach`.
+    var attach = false
+    /// Пропущенные звонки в тестовом режиме — плитка слева: `--missed 2`.
+    var missed = 0
     /// Письмо из файла `.eml` — отдельным окном: `--open-file /путь/письмо.eml`.
     var openFile: String?
     /// Выделить первые N строк списка, как ⇧-щелчком: `--multi 3`.
@@ -178,6 +182,8 @@ struct LaunchOptions {
             case "--assistant": options.assistant = true
             case "--phone": options.phone = true
             case "--incoming-call": options.incomingCall = true
+            case "--attach": options.attach = true
+            case "--missed": options.missed = iterator.next().flatMap(Int.init) ?? 1
             case "--phone-call":
                 options.phone = true
                 options.phoneCall = true
@@ -331,9 +337,9 @@ final class AppModel: ObservableObject {
     @Published var workEnd = AppModel.storedInt("workDayEnd", default: 19) {
         didSet { if !options.demo { UserDefaults.standard.set(workEnd, forKey: "workDayEnd") } }
     }
-    /// Сколько часов видно на шкале дня без прокрутки. По умолчанию 6:
-    /// панель таймлайна невысокая, а при 12 часах встреча в час — одна строка.
-    @Published var visibleHours = AppModel.storedInt("timelineVisibleHours", default: 6) {
+    /// Сколько часов видно на шкале дня и недели без прокрутки. По умолчанию
+    /// 8 — рабочий день; при 12 часах встреча в час — одна строка.
+    @Published var visibleHours = AppModel.storedInt("timelineVisibleHours", default: 8) {
         didSet {
             if !options.demo { UserDefaults.standard.set(visibleHours, forKey: "timelineVisibleHours") }
             zoomedByHand = false
@@ -535,20 +541,20 @@ final class AppModel: ObservableObject {
 
     /// Что недельный вид показывает на календаре.
     enum WeekMode: String, CaseIterable, Identifiable {
-        case events, mail, weather
+        // Режима «Погода» больше нет: погода — по часам у дня и по дням
+        // в шапке недели и месяца. Сохранённое «weather» читается как события.
+        case events, mail
         var id: String { rawValue }
         var title: String {
             switch self {
             case .events: String(localized: "События")
             case .mail: String(localized: "Письма")
-            case .weather: String(localized: "Погода")
             }
         }
         var symbol: String {
             switch self {
             case .events: "calendar"
             case .mail: "envelope"
-            case .weather: "cloud.sun"
             }
         }
     }
@@ -846,6 +852,10 @@ final class AppModel: ObservableObject {
     /// Встреча, которую просят удалить из меню правой кнопки, — ждёт
     /// подтверждения (у серии — ещё и выбора: эту или все).
     @Published var deleteEventTarget: TimelineItem?
+    /// Встреча, которую пересылают: открыт лист с адресатами.
+    @Published var forwardEventTarget: TimelineItem?
+    /// Пересылка встречи идёт — кнопки ждут.
+    @Published private(set) var forwardingEvent: String?
     /// Открытый редактор встречи: новой или существующей.
     @Published var eventEditor: EventEditorRequest?
     @Published private(set) var isSavingEvent = false
@@ -1200,11 +1210,12 @@ final class AppModel: ObservableObject {
         let span: [Date] = showsWeek ? weekDays : summaryDays(from: day)
         let spanStart = span.min()
         let spanEnd = span.max().flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
-        let mailFrom = min(spanStart ?? day, mailCutoff)
+        let mailFrom = min(spanStart ?? day, mailCutoff, reopenedSince ?? mailCutoff)
         let mailTo = max(spanEnd ?? dayEnd, now.addingTimeInterval(60))
         do {
             allMail = try await mail.messages(from: mailFrom, to: mailTo)
             clearFalseArchiveMarks()
+            applyReopened()
             noticeNewMail()
         } catch {
             errorMessage = String(localized: "Почта не загрузилась: \(error.localizedDescription)")
@@ -1413,6 +1424,114 @@ final class AppModel: ObservableObject {
             providers[account.id].map { CombinedMailProvider.Box(accountID: account.id, name: account.email, provider: $0) }
         }
         mail = boxes.isEmpty ? DemoMailProvider(clock: clock) : CombinedMailProvider(boxes)
+        Task { await refreshAutoReplies() }
+    }
+
+    // MARK: - Автоответ
+
+    /// Ящик в настройках автоответа. `supported` — автоответ ставится
+    /// отсюда (Exchange); у IMAP общего способа нет, остаётся блокировка
+    /// календаря.
+    struct AutoReplyBox: Identifiable, Hashable {
+        let id: String
+        let title: String
+        let supported: Bool
+    }
+
+    var autoReplyBoxes: [AutoReplyBox] {
+        if accounts.isEmpty, options.demo {
+            return [AutoReplyBox(id: "demo", title: String(localized: "Тестовая почта"), supported: true)]
+        }
+        return accounts.map { AutoReplyBox(id: $0.id, title: $0.email, supported: $0.kind == .exchange) }
+    }
+
+    private static var autoReplyUnsupported: MailNetworkError {
+        .server(String(localized: "автоответ настраивается здесь только у ящиков Exchange"))
+    }
+
+    /// Автоответы, известные с сервера, по ящикам — для подсказки в панели связи.
+    @Published private(set) var autoReplies: [String: AutoReply] = [:]
+    /// Тестовый автоответ — в памяти, до выхода.
+    private var demoAutoReply: AutoReply?
+
+    /// Ящики, где автоответ отвечает сейчас.
+    var activeAutoReplies: [(box: String, reply: AutoReply)] {
+        autoReplyBoxes.compactMap { box in
+            autoReplies[box.id].flatMap { $0.isActive(at: now) ? (box.title, $0) : nil }
+        }
+    }
+
+    func loadAutoReply(_ boxID: String) async throws -> AutoReply {
+        if boxID == "demo", accounts.isEmpty {
+            let start = calendar.startOfDay(for: now)
+            return demoAutoReply ?? AutoReply(start: start, end: start.addingTimeInterval(7 * 86_400))
+        }
+        guard let provider = providers[boxID] as? EWSMailProvider else { throw Self.autoReplyUnsupported }
+        let reply = try await provider.autoReply()
+        autoReplies[boxID] = reply
+        return reply
+    }
+
+    private func refreshAutoReplies() async {
+        for box in autoReplyBoxes where box.supported && box.id != "demo" {
+            if let reply = try? await loadAutoReply(box.id) { autoReplies[box.id] = reply }
+        }
+    }
+
+    /// Сохранить автоответ на сервере и, если просили, занять календарь
+    /// на его срок. Ошибка — в `errorMessage`, `false`.
+    func saveAutoReply(_ reply: AutoReply, for boxID: String, blockCalendar: Bool) async -> Bool {
+        do {
+            if boxID == "demo", accounts.isEmpty {
+                demoAutoReply = reply
+                autoReplies[boxID] = reply
+            } else if autoReplyBoxes.first(where: { $0.id == boxID })?.supported == true {
+                guard let provider = providers[boxID] as? EWSMailProvider else { throw Self.autoReplyUnsupported }
+                try await provider.setAutoReply(reply)
+                autoReplies[boxID] = reply
+            }
+            DebugLog.write("автоответ сохранён: \(reply.state.rawValue)")
+        } catch {
+            errorMessage = String(localized: "Автоответ не сохранился: \(MailAccounts.describe(error))")
+            return false
+        }
+        guard blockCalendar else { return true }
+        return await blockCalendarTime(from: reply.start, to: reply.end, boxID: boxID)
+    }
+
+    /// Занять календарь: событие «Нет на месте» с занятостью «нет на месте» —
+    /// коллеги в планировщике видят отсутствие, а не свободное время. В
+    /// календарь Exchange этого ящика, если он подключён напрямую, иначе —
+    /// в календарь по умолчанию. Такое же событие на тот же срок второй
+    /// раз не заводится.
+    func blockCalendarTime(from start: Date, to end: Date, boxID: String) async -> Bool {
+        guard end > start else {
+            errorMessage = String(localized: "Конец срока раньше начала.")
+            return false
+        }
+        let title = String(localized: "Нет на месте")
+        let exchange = "ews-cal:\(boxID)"
+        let calendarID = eventCalendars.first { $0.id == exchange }?.id ?? newEventCalendarID
+        // Целые дни — событием на весь день: так его видно полосой сверху.
+        let whole = calendar.startOfDay(for: start) == start && calendar.startOfDay(for: end) == end
+        let existing = await calendarSource.items(from: start, to: end).contains { item in
+            item.kind == .event && item.title == title && abs(item.time.timeIntervalSince(start)) < 60
+        }
+        if existing {
+            DebugLog.write("блокировка календаря: такое событие уже есть")
+            return true
+        }
+        var draft = EventDraft(title: title, start: start, end: end, isAllDay: whole, calendarID: calendarID)
+        draft.outOfOffice = true
+        do {
+            try await calendarSource.create(draft)
+            DebugLog.write("блокировка календаря: событие «нет на месте» создано")
+            await reload()
+            return true
+        } catch {
+            errorMessage = String(localized: "Календарь не заблокировался: \(MailAccounts.describe(error))")
+            return false
+        }
     }
 
     /// Два тестовых ящика: как выглядит работа с несколькими, без настоящих.
@@ -2566,6 +2685,47 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Переслать встречу можно, если адресатам будет на что ответить:
+    /// Exchange пересылает её сам, календарю macOS нужны UID и организатор
+    /// для письма iTIP. Отменённую пересылать незачем.
+    func canForwardEvent(_ item: TimelineItem) -> Bool {
+        guard let info = item.event, !info.isCancelled else { return false }
+        return EventResponseBlock.viaExchange(info) || Invitation.event(item) != nil
+    }
+
+    /// Переслать встречу — например, чужую, коллеге. Exchange — своей
+    /// командой (организатор узнает о пересылке, как из Outlook); календарь
+    /// macOS — письмом-приглашением iTIP из ящика, чей адрес у меня
+    /// в участниках: адресаты ответят организатору.
+    func forwardEvent(_ item: TimelineItem, to people: [Person], comment: String, done: @escaping (Bool) -> Void = { _ in }) {
+        let recipients = people.filter { $0.address?.contains("@") == true }
+        guard forwardingEvent == nil, !recipients.isEmpty else { return }
+        let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = text.isEmpty ? nil : text
+        forwardingEvent = item.id
+        Task {
+            defer { forwardingEvent = nil }
+            do {
+                do {
+                    try await calendarSource.forward(item, to: recipients, comment: note)
+                } catch InvitationError.unsupported {
+                    guard let invitation = Invitation.event(item) else { throw InvitationError.noOrganizer }
+                    let myAddress = item.event?.attendees.first(where: \.isMe)?.person.normalizedAddress
+                    guard let account = accounts.first(where: { $0.email.lowercased() == myAddress }) ?? accounts.first
+                    else { throw InvitationError.unsupported }
+                    var letter = ICalendar.forwardMail(of: invitation, to: recipients, comment: note)
+                    letter.accountID = account.id
+                    try await mail.send(letter, replyingTo: nil)
+                }
+                DebugLog.write("встреча: переслана, адресатов \(recipients.count)")
+                done(true)
+            } catch {
+                errorMessage = String(localized: "Встреча не переслалась: \(MailAccounts.describe(error))")
+                done(false)
+            }
+        }
+    }
+
     /// Ответ, данный в этом запуске, — пока календарь macOS его не покажет
     /// (письмом он меняет только календарь организатора).
     @Published private(set) var eventResponses: [String: InvitationResponse] = [:]
@@ -2867,11 +3027,95 @@ final class AppModel: ObservableObject {
         reschedule(item, to: Self.dropTime(date))
     }
 
-    /// Вернуть разобранное в работу: снять отметки приложения.
+    /// Вернуть разобранное в работу: снять отметки приложения. Письмо —
+    /// в «Не разобрано» (`returnToUnresolved`): у него бывает и «отвечено»
+    /// с сервера, и папка, отличная от Входящих.
     func reopen(_ id: String) {
+        if item(id)?.kind == .mail { return returnToUnresolved(id) }
         let before = snapshot([id])
         mark(id) { $0 = LocalState() }
         registerUndo(String(localized: "Вернуть в работу")) { $0.restore(before, select: id) }
+    }
+
+    // MARK: - Вернуть в «Не разобрано»
+
+    /// `Message-ID` писем, которые унесли во Входящие на сервере: там у них
+    /// новый номер, и отметку «вернули» получает новая копия при загрузке.
+    private var pendingReopen: Set<String> = []
+
+    /// Есть ли смысл в «Вернуть в работу»: письмо — если его нет в «Не
+    /// разобрано» (свои письма не в счёт: разбирать в них нечего, а перенос
+    /// унёс бы их из «Отправленных»); встреча и напоминание — если есть
+    /// отметка приложения.
+    func canReopen(_ item: TimelineItem) -> Bool {
+        guard item.kind == .mail else { return states[item.id] != nil }
+        guard let info = item.mail, !EmailFile.isFileItem(item.id), !isMine(info.from) else { return false }
+        return !unresolved.contains { $0.id == item.id }
+    }
+
+    /// Письмо — снова в «Не разобрано». Из Входящих — отметкой (она
+    /// перекрывает и «отвечено» с сервера, и порог старых писем); из
+    /// архива и других папок — ещё и переносом во Входящие на сервере.
+    func returnToUnresolved(_ id: String) {
+        guard let item = item(id), let info = item.mail, !EmailFile.isFileItem(id) else { return }
+        if item.time < mailCutoff { loadMail(since: item.time) }
+        if allMail.contains(where: { $0.id == id }) {
+            let before = snapshot([id])
+            mark(id) { $0 = LocalState(reopenedAt: self.now) }
+            registerUndo(String(localized: "Вернуть в «Не разобрано»")) { $0.restore(before, select: id) }
+            DebugLog.write("письмо возвращено в «Не разобрано»")
+            return
+        }
+        if let messageID = info.messageID { pendingReopen.insert(messageID) }
+        folderItems.removeAll { $0.id == id }
+        searchResults?.removeAll { $0.id == id }
+        if selectedID == id { selectedID = nil }
+        recompute()
+        Task {
+            do {
+                try await mail.moveToInbox(id, messageID: info.messageID)
+                await reload()
+                let waiting = info.messageID.map { pendingReopen.contains($0) } == true
+                DebugLog.write("письмо перенесено во Входящие" + (waiting ? ", во Входящих ещё не видно" : " и возвращено в «Не разобрано»"))
+            } catch {
+                if let messageID = info.messageID { pendingReopen.remove(messageID) }
+                errorMessage = String(localized: "Письмо не удалось вернуть во Входящие: \(MailAccounts.describe(error))")
+                await reloadList()
+            }
+        }
+    }
+
+    /// Письмо старше порога «Не разобрано» — почту грузить и с его дня,
+    /// иначе вернувшееся письмо в списке не появится. Помнится между
+    /// запусками, пока такие письма ждут разбора.
+    private func loadMail(since date: Date) {
+        let day = calendar.startOfDay(for: date)
+        guard reopenedSince.map({ day < $0 }) ?? true else { return }
+        reopenedSince = day
+    }
+
+    private var reopenedSince: Date? {
+        get { store.meta("reopened_since").flatMap(Double.init).map(Date.init(timeIntervalSince1970:)) }
+        set { try? store.setMeta("reopened_since", newValue.map { String($0.timeIntervalSince1970) } ?? "") }
+    }
+
+    /// После загрузки почты: новым копиям перенесённых писем — отметку
+    /// «вернули»; старое окно загрузки — забыть, когда старых вернутых
+    /// писем в работе не осталось.
+    private func applyReopened() {
+        if !pendingReopen.isEmpty {
+            for item in allMail {
+                guard let messageID = item.mail?.messageID, pendingReopen.contains(messageID) else { continue }
+                pendingReopen.remove(messageID)
+                mark(item.id) { $0 = LocalState(reopenedAt: self.now) }
+            }
+        }
+        guard reopenedSince != nil, pendingReopen.isEmpty else { return }
+        let waiting = allMail.contains { item in
+            item.time < mailCutoff && states[item.id]?.reopenedAt != nil
+                && StatusRules.status(of: item, local: states[item.id], now: now) == .open
+        }
+        if !waiting { reopenedSince = nil }
     }
 
     /// Письмо разобрано без ответа и архива — просто отметка приложения.
@@ -3234,6 +3478,33 @@ final class AppModel: ObservableObject {
         reschedule(item, to: when)
     }
 
+    /// Письмо брошено на дорожку встреч — напоминание о нём на это время
+    /// в списке по умолчанию: тема письма, отправитель и ссылка, которая
+    /// открывает письмо в Trudaybook. Само письмо не меняется. Текст письма
+    /// в напоминание не идёт — оно уйдёт в «Напоминания» iCloud.
+    func remind(aboutLetter id: String, at date: Date) {
+        guard let item = item(id), let info = item.mail else { return }
+        let when = Self.dropTime(date)
+        guard when > now else { return }
+        var link = URLComponents()
+        link.scheme = "trudaybook"
+        link.host = "item"
+        link.queryItems = [URLQueryItem(name: "id", value: id)]
+        let notes = [String(localized: "Письмо от \(info.from.display)"), link.url?.absoluteString]
+            .compactMap { $0 }.joined(separator: "\n")
+        let draft = ReminderDraft(title: item.title.isEmpty ? String(localized: "Письмо без темы") : item.title,
+                                  due: when, hasTime: true, notes: notes, listID: newReminderListID)
+        Task {
+            do {
+                try await calendarSource.createReminder(draft)
+                DebugLog.write("бросок на шкалу: из письма — напоминание")
+                await reload()
+            } catch {
+                errorMessage = String(localized: "Напоминание не сохранилось: \(error.localizedDescription)")
+            }
+        }
+    }
+
     /// Новая встреча там, куда бросили «+» или где подержали мышь: время —
     /// вниз до четверти часа, затем окно редактирования.
     /// Бросок в клетку дня месяца: на весь день — на весь этот день,
@@ -3448,7 +3719,7 @@ final class AppModel: ObservableObject {
         if text == "mail" { return lane == .mail ? .newMail : nil }
         if text.hasPrefix("move:") {
             guard lane == .events, let item = selectedItem, let time = debugTime(String(text.dropFirst(5)), on: dayStart) else { return nil }
-            return .move(item, time)
+            return item.kind == .mail ? .remind(item, time) : .move(item, time)
         }
         guard lane == .events, let time = debugTime(text, on: dayStart) else { return nil }
         return .newEvent(time)
@@ -4375,7 +4646,17 @@ final class AppModel: ObservableObject {
         if let scope = options.searchScope { searchScope = scope }
         if let search = options.search { searchText = search }
         switch options.new {
-        case "mail": startNewMail(to: [Demo.people[0]])
+        case "mail":
+            startNewMail(to: [Demo.people[0]])
+            // `--new mail --attach` — с вложениями, для снимка плиток над текстом.
+            if options.attach {
+                let sample = Data("Trudaybook\n".utf8)
+                draft?.attachments = [
+                    MailBody.Attachment(name: "Budget-Q4.xlsx", size: 48_200,
+                                        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data: sample),
+                    MailBody.Attachment(name: "Contract.pdf", size: 312_000, mimeType: "application/pdf", data: sample),
+                ]
+            }
         case "event": startNewEvent(attendees: Array(Demo.people[0...2]))
         case "meeting": startNewEvent()
         case "reminder": startNewReminder()

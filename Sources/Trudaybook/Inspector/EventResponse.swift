@@ -163,3 +163,53 @@ private struct ProposeTimeSheet: View {
         .frame(width: 440)
     }
 }
+
+/// Переслать встречу: адресаты и комментарий. Лист закрывается, когда
+/// приглашение ушло; при ошибке остаётся — адресатов не набирать заново.
+struct ForwardEventSheet: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let item: TimelineItem
+    @ViewState private var people: [Person] = []
+    @ViewState private var typed = ""
+    @ViewState private var note = ""
+
+    var body: some View {
+        let recipients = PeopleField.merged(people, typed: typed)
+        let sending = model.forwardingEvent == item.id
+        VStack(alignment: .leading, spacing: Space.xl) {
+            Text("Переслать встречу").font(.title3.weight(.semibold))
+            Text("«\(item.title)» · \(Format.when(item))")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: Space.sm) {
+                Text("Кому").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                PeopleField(people: $people, text: $typed)
+            }
+            TextField("Комментарий — необязательно", text: $note, axis: .vertical)
+                .lineLimit(2...5)
+                .textFieldStyle(.roundedBorder)
+            Text(item.event.map(EventResponseBlock.viaExchange) == true
+                 ? "Адресаты получат приглашение и смогут ответить организатору. Организатора Exchange уведомит о пересылке."
+                 : "Приглашение уйдёт письмом из вашего ящика. Адресаты смогут принять его и ответить организатору.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                if sending { ProgressView().controlSize(.small) }
+                Spacer()
+                Button("Отмена") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Переслать") {
+                    model.forwardEvent(item, to: recipients, comment: note) { sent in
+                        if sent { dismiss() }
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(recipients.isEmpty || sending)
+            }
+        }
+        .padding(Space.page)
+        .frame(width: 460)
+    }
+}

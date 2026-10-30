@@ -320,6 +320,9 @@ private struct MonthDayCell: View {
         let shown = items.count > room ? max(room - 1, 0) : items.count
         VStack(alignment: .leading, spacing: Space.xxs) {
             HStack {
+                // Погода дня — значком и максимумом, как в шапке недели;
+                // прогноз есть только на ближайшие дни.
+                WeatherChip(day: day, style: .full)
                 Spacer(minLength: 0)
                 Text(verbatim: "\(calendar.component(.day, from: day))")
                     .font(.app(.text, weight: today || chosen ? .bold : .regular).monospacedDigit())

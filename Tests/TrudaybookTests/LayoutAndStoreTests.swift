@@ -79,6 +79,17 @@ struct ItemStateStoreTests {
         #expect(store.allStates().count == 1)
     }
 
+    @Test("Отметка «вернули в Не разобрано» сохраняется и снимается")
+    func reopenedMarkRoundTrip() throws {
+        let store = try ItemStateStore.inMemory()
+        let date = Date(timeIntervalSince1970: 1_790_000_000)
+        try store.update("mail:a:1") { $0 = LocalState(reopenedAt: date) }
+        #expect(store.state(for: "mail:a:1") == LocalState(reopenedAt: date))
+        #expect(store.allStates()["mail:a:1"]?.reopenedAt == date)
+        try store.update("mail:a:1") { $0.reopenedAt = nil }
+        #expect(store.state(for: "mail:a:1") == nil)
+    }
+
     @Test func emptyStateDeletesRow() throws {
         let store = try ItemStateStore.inMemory()
         try store.update("mail:a:1") { $0.snoozedUntil = Date() }

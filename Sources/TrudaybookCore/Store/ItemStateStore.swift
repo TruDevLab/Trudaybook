@@ -67,25 +67,29 @@ public final class ItemStateStore {
         var hasRich = false
         db.query("PRAGMA table_info(day_notes)") { row in if row.text(1) == "rich" { hasRich = true } }
         if !hasRich { try db.execute("ALTER TABLE day_notes ADD COLUMN rich BLOB") }
+        // «Вернули в Не разобрано» — колонка появилась в 1.1.
+        var hasReopened = false
+        db.query("PRAGMA table_info(item_state)") { row in if row.text(1) == "reopened_at" { hasReopened = true } }
+        if !hasReopened { try db.execute("ALTER TABLE item_state ADD COLUMN reopened_at REAL") }
     }
 
     // MARK: - Отметки
 
     public func allStates() -> [String: LocalState] {
         var result: [String: LocalState] = [:]
-        db.query("SELECT id, archived_at, answered_at, snoozed_until, done_at FROM item_state") { row in
+        db.query("SELECT id, archived_at, answered_at, snoozed_until, done_at, reopened_at FROM item_state") { row in
             guard let id = row.text(0) else { return }
             result[id] = LocalState(archivedAt: row.date(1), answeredAt: row.date(2),
-                                    snoozedUntil: row.date(3), doneAt: row.date(4))
+                                    snoozedUntil: row.date(3), doneAt: row.date(4), reopenedAt: row.date(5))
         }
         return result
     }
 
     public func state(for id: String) -> LocalState? {
         var found: LocalState?
-        db.query("SELECT archived_at, answered_at, snoozed_until, done_at FROM item_state WHERE id = ?", [.text(id)]) { row in
+        db.query("SELECT archived_at, answered_at, snoozed_until, done_at, reopened_at FROM item_state WHERE id = ?", [.text(id)]) { row in
             found = LocalState(archivedAt: row.date(0), answeredAt: row.date(1),
-                               snoozedUntil: row.date(2), doneAt: row.date(3))
+                               snoozedUntil: row.date(2), doneAt: row.date(3), reopenedAt: row.date(4))
         }
         return found
     }
@@ -97,16 +101,17 @@ public final class ItemStateStore {
             return
         }
         try db.run("""
-            INSERT INTO item_state (id, archived_at, answered_at, snoozed_until, done_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO item_state (id, archived_at, answered_at, snoozed_until, done_at, reopened_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 archived_at = excluded.archived_at,
                 answered_at = excluded.answered_at,
                 snoozed_until = excluded.snoozed_until,
                 done_at = excluded.done_at,
+                reopened_at = excluded.reopened_at,
                 updated_at = excluded.updated_at
             """, [.text(id), .date(state.archivedAt), .date(state.answeredAt),
-                  .date(state.snoozedUntil), .date(state.doneAt), .date(now)])
+                  .date(state.snoozedUntil), .date(state.doneAt), .date(state.reopenedAt), .date(now)])
     }
 
     /// Меняет отметки элемента и возвращает, что получилось.

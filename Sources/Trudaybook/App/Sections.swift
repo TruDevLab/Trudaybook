@@ -68,8 +68,8 @@ extension AppModel {
 // MARK: - Панель разделов
 
 /// Панель слева: профиль, разделы одной стеклянной капсулой, под ними
-/// «Сейчас» (дата, погода, ближайшая встреча) — нужное в любом разделе;
-/// внизу ассистент и настройки. Домашняя — посередине разделов, значок
+/// «Сейчас» (дата, погода, ближайшая встреча, пропущенные звонки) — нужное
+/// в любом разделе; внизу связь (почта, телефон), ассистент и настройки. Домашняя — посередине разделов, значок
 /// крупнее: к ней возвращаются чаще всего.
 struct SectionSidebar: View {
     @EnvironmentObject private var model: AppModel
@@ -97,8 +97,9 @@ struct SectionSidebar: View {
             .frame(width: Self.width)
             .background(GlassPanelBackground(cornerRadius: Self.width / 2))
             .tourSpot(.sections)
-            NowCapsule()
+            NowCapsule(phone: model.phone)
             Spacer(minLength: 0)
+            ConnectionCapsule(phone: model.phone)
             AssistantCircle()
             SettingsCircle()
         }
@@ -293,10 +294,12 @@ private struct GlassCircle: ViewModifier {
 }
 
 /// «Сейчас» под разделами — то, что нужно в любом из них: дата (щелчок —
-/// сегодня в календаре), погода этого часа и ближайшая встреча (идёт и есть
-/// ссылка — зелёная камера, щелчок подключает).
+/// сегодня в календаре), погода этого часа, ближайшая встреча (идёт и есть
+/// ссылка — зелёная камера, щелчок подключает) и пропущенные звонки
+/// (щелчок — «Телефон» с пропущенными).
 private struct NowCapsule: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject var phone: PhoneService
     @ViewState private var meeting: TimelineItem?
 
     private static let weekday = AppLanguage.formatter(ru: "EE", template: "EE")
@@ -311,6 +314,7 @@ private struct NowCapsule: View {
             dateTile
             weatherTile
             meetingTile
+            missedTile
         }
         .padding(.vertical, SectionSidebar.inset)
         .frame(width: SectionSidebar.width)
@@ -377,6 +381,168 @@ private struct NowCapsule: View {
                         .monospacedDigit()
                 }
             }
+        }
+    }
+}
+
+extension NowCapsule {
+    @ViewBuilder fileprivate var missedTile: some View {
+        if phone.unseenMissed > 0 {
+            let count = phone.unseenMissed
+            NowTile(tint: Palette.danger,
+                    help: String(localized: "Пропущенных звонков: \(count)") + "\n" + String(localized: "Нажмите — открыть пропущенные")) {
+                PhoneListChoice.shared.tab = .recents
+                PhoneListChoice.shared.missedOnly = true
+                model.show(.phone)
+            } label: {
+                VStack(spacing: Space.xxs) {
+                    Image(systemName: "phone.arrow.down.left")
+                        .font(.title3)
+                        .foregroundStyle(Palette.danger)
+                    Text(verbatim: "\(count)")
+                        .font(.app(.small, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.danger)
+                }
+            }
+            .accessibilityLabel(Text("Пропущенных звонков: \(count)"))
+        }
+    }
+}
+
+/// Связь — над ассистентом и настройками: почта и телефон (если он
+/// включён). Под значком — слово о состоянии его цветом («в сети»,
+/// «связь…», «ошибка», «выкл.»), как градусы под погодой: точка в углу
+/// значка читалась как счётчик непрочитанного. Подробности — в подсказке.
+/// Щелчок: всё в порядке — проверить почту или открыть телефон, иначе —
+/// настройки, где это чинится.
+private struct ConnectionCapsule: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var phone: PhoneService
+
+    enum Health {
+        case ok, busy, problem, off
+
+        var color: Color {
+            switch self {
+            case .ok: Palette.success
+            case .busy: Palette.warning
+            case .problem: Palette.danger
+            case .off: Color.secondary
+            }
+        }
+
+        var word: String {
+            switch self {
+            case .ok: String(localized: "в сети")
+            case .busy: String(localized: "связь…")
+            case .problem: String(localized: "ошибка")
+            case .off: String(localized: "выкл.")
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: SectionSidebar.inset) {
+            mailTile
+            if phone.enabled { phoneTile }
+        }
+        .padding(.vertical, SectionSidebar.inset)
+        .frame(width: SectionSidebar.width)
+        .background(GlassPanelBackground(cornerRadius: SectionSidebar.width / 2))
+    }
+
+    private var mailTile: some View {
+        let (health, text) = mailState
+        let away = health == .ok && !model.activeAutoReplies.isEmpty
+        return NowTile(help: text) {
+            if away { return SettingsWindow.show(model: model, tab: .autoReply) }
+            switch health {
+            case .ok, .busy where !model.accounts.isEmpty: model.refreshMail()
+            default: SettingsWindow.show(model: model, tab: .mail)
+            }
+        } label: {
+            ConnectionIcon(symbol: away ? "airplane" : (model.accounts.count > 1 ? "tray.2" : "tray"), health: health,
+                           word: away ? String(localized: "автоответ") : nil)
+        }
+        .accessibilityLabel(Text(text))
+    }
+
+    private var phoneTile: some View {
+        let (health, text) = phoneState
+        return NowTile(help: text) {
+            if health == .ok || health == .busy { model.show(.phone) } else { SettingsWindow.show(model: model, tab: .phone) }
+        } label: {
+            ConnectionIcon(symbol: "phone", health: health)
+        }
+        .accessibilityLabel(Text(text))
+    }
+
+    private var mailState: (Health, String) {
+        guard !model.accounts.isEmpty else {
+            return model.options.demo
+                ? (.ok, String(localized: "Почта: тестовая"))
+                : (.off, String(localized: "Почта не подключена — нажмите, чтобы подключить"))
+        }
+        let title = String(localized: "Почта")
+        let lines = model.accounts.map { account -> String in
+            let status = model.syncStatuses[account.id]
+            let state = status?.error
+                ?? (status?.isSyncing == true ? String(localized: "обновляю…") : nil)
+                ?? status?.lastSync.map { String(localized: "обновлено в \(Format.time($0))") }
+                ?? String(localized: "подключаюсь…")
+            return "\(account.email) — \(state)"
+        }
+        let status = model.mailStatus
+        let health: Health = if status?.error != nil {
+            .problem
+        } else if status?.lastSync != nil {
+            .ok
+        } else {
+            .busy
+        }
+        let hint = health == .problem ? String(localized: "Нажмите — настройки почты") : String(localized: "Нажмите — проверить почту сейчас")
+        // Автоответ включён — сказать здесь: о нём легко забыть, вернувшись.
+        let away = model.activeAutoReplies.map { active in
+            active.reply.state == .scheduled
+                ? String(localized: "Автоответ до \(Format.dayTitle(active.reply.end)) — \(active.box)")
+                : String(localized: "Автоответ включён — \(active.box)")
+        }
+        return (health, ([title] + lines + away + [hint]).joined(separator: "\n"))
+    }
+
+    private var phoneState: (Health, String) {
+        let number = phone.account.username.isEmpty ? "" : " · \(phone.account.username)"
+        switch phone.registration {
+        case .registered:
+            return (.ok, String(localized: "Телефон: на связи") + number + "\n" + String(localized: "Нажмите — открыть телефон"))
+        case .registering:
+            return (.busy, String(localized: "Телефон: подключаюсь…") + number)
+        case .failed(let reason):
+            return (.problem, String(localized: "Телефон: \(reason)") + "\n" + String(localized: "Нажмите — настройки телефона"))
+        case .off:
+            return (.off, String(localized: "Телефон не подключён") + "\n" + String(localized: "Нажмите — настройки телефона"))
+        }
+    }
+}
+
+/// Значок связи и слово о состоянии под ним.
+private struct ConnectionIcon: View {
+    let symbol: String
+    let health: ConnectionCapsule.Health
+    /// Вместо слова о связи — своё: «автоответ», пока он включён.
+    var word: String?
+
+    var body: some View {
+        VStack(spacing: Space.xxs) {
+            Image(systemName: symbol)
+                .font(.title3)
+                .foregroundStyle(health == .problem ? Palette.danger : .secondary)
+            Text(word ?? health.word)
+                .font(.app(.small, weight: .semibold))
+                .foregroundStyle(word == nil ? health.color : Palette.warning)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
     }
 }

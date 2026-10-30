@@ -149,7 +149,10 @@ struct ToolbarExtraButton: View {
     /// Почему кнопка сейчас ничего не сделает; `nil` — сделает.
     private var problem: String? {
         switch button {
-        case .forward, .meeting, .openWindow:
+        case .forward:
+            if model.selectedItem.map(model.canForwardEvent) == true { return nil }
+            return model.selectedLetter == nil ? String(localized: "Сначала выберите письмо или встречу") : nil
+        case .meeting, .openWindow:
             return model.selectedLetter == nil ? String(localized: "Сначала выберите письмо") : nil
         case .saveLetter:
             if model.selectedLetter == nil { return String(localized: "Сначала выберите письмо") }
@@ -163,7 +166,7 @@ struct ToolbarExtraButton: View {
 
     private var help: String {
         switch button {
-        case .forward: String(localized: "Переслать выбранное письмо · ⇧⌘F")
+        case .forward: String(localized: "Переслать выбранное письмо или встречу · ⇧⌘F")
         case .meeting: String(localized: "Назначить встречу с участниками выбранного письма")
         case .openWindow: String(localized: "Открыть выбранное письмо в отдельном окне · ⌘O")
         case .saveLetter: String(localized: "Сохранить выбранное письмо файлом · ⇧⌘S")
@@ -177,7 +180,12 @@ struct ToolbarExtraButton: View {
     private func perform() {
         guard problem == nil else { return }
         switch button {
-        case .forward: if let item = model.selectedLetter { model.startForward(of: item) }
+        case .forward:
+            if let item = model.selectedLetter {
+                model.startForward(of: item)
+            } else if let item = model.selectedItem, model.canForwardEvent(item) {
+                model.forwardEventTarget = item
+            }
         case .meeting: if let item = model.selectedLetter { model.startMeeting(with: item) }
         case .openWindow: if let item = model.selectedLetter { LetterWindow.show(item, model: model) }
         case .saveLetter:

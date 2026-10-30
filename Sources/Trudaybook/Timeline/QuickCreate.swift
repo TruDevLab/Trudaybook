@@ -142,6 +142,8 @@ enum DropGhost: Equatable {
     case newMail
     /// Своя встреча, напоминание или письмо — новое время.
     case move(TimelineItem, Date)
+    /// Письмо над дорожкой встреч — станет напоминанием на это время.
+    case remind(TimelineItem, Date)
 }
 
 /// Какая дорожка принимает бросок: что на ней создаёт «Создать».
@@ -181,6 +183,11 @@ struct TimeDropTarget: ViewModifier {
             NewMailHighlight()
         case .move(let item, let start):
             MoveGhost(item: item, start: start, scale: scale)
+        case .remind(_, let start):
+            let past = start <= model.now
+            TimeGhost(start: start, minutes: 30, scale: scale, symbol: past ? "nosign" : "bell",
+                      range: past ? String(localized: "Уже прошло") : String(localized: "Напоминание в \(Format.time(start))"),
+                      tint: past ? .secondary : Palette.warning)
         case nil:
             EmptyView()
         }
@@ -298,7 +305,13 @@ struct TimelineDropDelegate: DropDelegate {
             let text = id as String
             Task { @MainActor in
                 model.dragging = nil
-                model.dropItem(text, at: when)
+                // Письмо на дорожке встреч — напоминанием о нём; на дорожке
+                // писем — как раньше, отложить до этого времени.
+                if lane == .events, model.item(text)?.kind == .mail {
+                    model.remind(aboutLetter: text, at: when)
+                } else {
+                    model.dropItem(text, at: when)
+                }
             }
         }
         return true
@@ -310,6 +323,8 @@ struct TimelineDropDelegate: DropDelegate {
             case .mail: setGhost(.newMail)
             case .events: setGhost(.newEvent(AppModel.snapToQuarter(date(info.location))))
             }
+        } else if let item = model.dragging, lane == .events, item.kind == .mail {
+            setGhost(.remind(item, AppModel.dropTime(date(info.location))))
         } else if let item = model.dragging {
             setGhost(.move(item, AppModel.dropTime(date(info.location))))
         } else {

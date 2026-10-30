@@ -10,12 +10,13 @@ import TrudaybookMail
 @MainActor
 enum SettingsWindow {
     enum Tab: String, CaseIterable, Identifiable {
-        case mail, calendars, notifications, phone, ai, trunook, appearance, updates
+        case mail, autoReply, calendars, notifications, phone, ai, trunook, appearance, updates
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .mail: String(localized: "Почта")
+            case .autoReply: String(localized: "Автоответ")
             case .calendars: String(localized: "Календари")
             case .notifications: String(localized: "Уведомления")
             case .phone: String(localized: "Телефон")
@@ -29,6 +30,7 @@ enum SettingsWindow {
         var icon: String {
             switch self {
             case .mail: "envelope.fill"
+            case .autoReply: "airplane"
             case .calendars: "calendar"
             case .notifications: "bell.badge.fill"
             case .phone: "phone.fill"
@@ -42,6 +44,7 @@ enum SettingsWindow {
         var tint: Color {
             switch self {
             case .mail: Palette.blue
+            case .autoReply: Palette.amber
             case .calendars: Palette.rose
             case .notifications: Palette.amber
             case .phone: Palette.success
@@ -108,6 +111,7 @@ struct SettingsView: View {
                         .font(.app(.title, weight: .semibold))
                     switch tab {
                     case .mail: AccountSettingsView()
+                    case .autoReply: AutoReplySettingsView()
                     case .calendars: CalendarSettingsView()
                     case .notifications: NotificationSettingsView(notifier: model.notifier)
                     case .phone: PhoneSettingsView(phone: model.phone)

@@ -78,6 +78,10 @@ public protocol CalendarProvider: AnyObject {
     /// `InvitationError.unsupported` — календарь так не умеет (EventKit),
     /// тогда ответ уходит письмом iTIP.
     func respond(_ item: TimelineItem, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws
+    /// Переслать приглашение на встречу: адресаты получат его и смогут
+    /// ответить организатору. `InvitationError.unsupported` — календарь так
+    /// не умеет (EventKit), тогда приглашение уходит письмом iTIP.
+    func forward(_ item: TimelineItem, to people: [Person], comment: String?) async throws
 
     /// Чей это элемент и календарь — чтобы общий календарь знал, кому
     /// передать правку.
@@ -93,6 +97,10 @@ public extension CalendarProvider {
     /// Календарь macOS отвечать на приглашения не умеет (`EKParticipant`
     /// только для чтения).
     func respond(_ item: TimelineItem, response: InvitationResponse, comment: String?, proposed: DateInterval?) async throws {
+        throw InvitationError.unsupported
+    }
+
+    func forward(_ item: TimelineItem, to people: [Person], comment: String?) async throws {
         throw InvitationError.unsupported
     }
 
@@ -366,6 +374,7 @@ public final class EventKitCalendar: CalendarProvider {
         let event = EKEvent(eventStore: store)
         event.calendar = try writableCalendar(draft.calendarID)
         apply(draft, to: event, withRecurrence: true)
+        if draft.outOfOffice { event.availability = .unavailable }
         try store.save(event, span: .thisEvent, commit: true)
     }
 

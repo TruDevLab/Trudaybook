@@ -34,4 +34,22 @@ struct MailCacheSealingTests {
         #expect(cache.body(uid: 1, mailbox: "INBOX", account: "a") == Data("тело".utf8))
         #expect(cache.message(uid: 1, mailbox: "INBOX", account: "a")?.header == header)
     }
+
+    @Test("Вернувшееся во Входящие письмо: прежняя унесённая копия забывается, остальные — нет")
+    func возврат() throws {
+        let key = try #require(DataSealer(keyData: DataSealer.newKeyData()))
+        let cache = try MailCache.inMemory(sealer: key)
+        func header(_ id: String) -> Data { Data("Message-ID: <\(id)>\r\nSubject: x\r\n\r\n".utf8) }
+        try cache.upsert([
+            CachedMessage(mailbox: "INBOX", uid: 1, internalDate: Date(), flags: [], header: header("a@x"), size: 1),
+            CachedMessage(mailbox: "INBOX", uid: 2, internalDate: Date(), flags: [], header: header("b@x"), size: 1),
+            CachedMessage(mailbox: "INBOX", uid: 3, internalDate: Date(), flags: [], header: header("a@x"), size: 1),
+        ], account: "a")
+        try cache.markMoved([1, 2], mailbox: "INBOX", account: "a")
+        try cache.deleteMoved(messageID: "a@x", mailbox: "INBOX", account: "a")
+        #expect(cache.message(uid: 1, mailbox: "INBOX", account: "a") == nil)
+        #expect(cache.message(uid: 2, mailbox: "INBOX", account: "a") != nil)
+        // Новая копия (не унесённая) остаётся.
+        #expect(cache.message(uid: 3, mailbox: "INBOX", account: "a") != nil)
+    }
 }

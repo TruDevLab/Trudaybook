@@ -188,6 +188,13 @@ public actor DemoMailProvider: MailProvider {
         trashed.insert(itemID)
     }
 
+    /// В тестовом ящике письмо в архиве и во Входящих — под одним номером:
+    /// вернуть — значит снять «в архиве» и «отвечено».
+    public func moveToInbox(_ itemID: String, messageID: String?) {
+        archived.remove(itemID)
+        answered.remove(itemID)
+    }
+
     public func send(_ mail: OutgoingMail, replyingTo itemID: String?) {
         if let itemID { answered.insert(itemID) }
         sent.append(TimelineItem(
@@ -593,6 +600,11 @@ public final class DemoCalendar: CalendarProvider {
         guard let key = Self.baseKey(of: item.id) else { throw CalendarError.notFound }
         deleted.insert(key)
         onChange?()
+    }
+
+    /// Пересылка в тестовом календаре — как у Exchange, но никуда не уходит.
+    public func forward(_ item: TimelineItem, to people: [Person], comment: String?) async throws {
+        guard Self.baseKey(of: item.id) != nil else { throw CalendarError.notFound }
     }
 
     /// Как Exchange: отказ убирает встречу, предложение времени — «под вопросом».
